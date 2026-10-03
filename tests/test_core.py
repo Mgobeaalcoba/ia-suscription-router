@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.environ["PATH"] = str(ROOT / "tests" / "fake_bin") + os.pathsep + os.environ["PATH"]
 
-from llm_router import core, state  # noqa: E402
+from ia_router import core, state  # noqa: E402
 
 
 class CoreTests(unittest.TestCase):
@@ -24,16 +24,21 @@ class CoreTests(unittest.TestCase):
         d = core.route("Arreglá este bug en mi función Python, falla el test", self.cfg)
         self.assertEqual(d["chosen"], "codex")
 
+    def test_write_a_function_is_coding_not_writing(self):
+        d = core.route("Escribí una función Python que sume los elementos de una lista", self.cfg)
+        self.assertNotIn("writing", d["weights"])
+        self.assertIn("coding", d["weights"])
+
     def test_writing_goes_to_claude(self):
         d = core.route("Redactá un mail de seguimiento para un cliente con tono cordial", self.cfg)
         self.assertEqual(d["chosen"], "claude")
 
-    def test_long_context_goes_to_gemini(self):
+    def test_long_context_goes_to_antigravity(self):
         f = Path(self.tmp.name) / "big.txt"
         f.write_text("lorem ipsum " * 15000)  # ~180k chars
         _, ctx_len, _ = core.build_prompt("Resumí este documento", [str(f)])
         d = core.route("Resumí este documento", self.cfg, ctx_len)
-        self.assertEqual(d["chosen"], "gemini")
+        self.assertEqual(d["chosen"], "antigravity")
 
     def test_cooldown_excludes_model(self):
         state.set_cooldown("codex", 30)
@@ -66,7 +71,7 @@ class CoreTests(unittest.TestCase):
     def test_big_prompt_uses_stdin(self):
         f = Path(self.tmp.name) / "big.txt"
         f.write_text("x" * 150_000)
-        res = core.ask("Resumí este documento largo", self.cfg, model="gemini", context_files=[str(f)])
+        res = core.ask("Resumí este documento largo", self.cfg, model="claude", context_files=[str(f)])
         self.assertTrue(res["ok"])
         self.assertIn("recibi 15", res["output"])  # llegó el texto grande por stdin
 

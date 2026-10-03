@@ -1,0 +1,466 @@
+# Guía de uso — ia-suscription-router
+
+Esta guía explica **cómo se usa** el router, paso a paso y con ejemplos. Para una visión general del diseño, ver el [README](../README.md).
+
+Todos los ejemplos asumen que estás en la carpeta del repo:
+
+```bash
+cd ~/Documents/ia-suscription-router
+```
+
+Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16). Los pasos de esta guía —instalación desde cero, registro por MCP y modo interactivo de `manifest refine`— fueron probados de punta a punta.
+
+---
+
+## 1. Qué es y cómo funciona, en 30 segundos
+
+El router **no es un modelo**. Es un programa que decide a cuál de tus CLIs de IA (`claude`, `codex`, `agy`) mandarle cada tarea, y lo ejecuta usando **tu suscripción** de cada uno.
+
+```
+tu tarea ──► clasificar ──► consultar manifiesto ──► elegir modelo ──► ejecutar su CLI
+            (reglas o       (tus preferencias         (con fallback si     (con tu login
+             manager LLM)    por tipo de tarea)        hay rate limit)      y tu cuota)
+```
+
+Hay tres conceptos:
+
+| Concepto | Qué es |
+|---|---|
+| **Modelos** | Los CLIs oficiales instalados y logueados en tu máquina. Se definen en `models.json`. |
+| **Manager** | Un modelo **barato que elegís vos** (por defecto Claude Haiku). Clasifica tareas y mantiene el manifiesto. |
+| **Manifiesto** | Un archivo con el orden de preferencia de modelos por tipo de tarea. Lo arma el manager y lo ajustás conversando con él. |
+
+El router **nunca lee ni copia tus tokens**: cada CLI usa su propio login.
+
+---
+
+## 2. Requisitos e instalación
+
+### Qué necesitás
+
+| Requisito | Cómo verificarlo |
+|---|---|
+| Python 3.9 o superior | `python3 --version` |
+| Al menos un CLI instalado **y logueado** | Ver tabla de abajo |
+| Nada más | El router no tiene dependencias externas (solo librería estándar) |
+
+### Instalar y loguear cada CLI
+
+| CLI | Instalación | Login |
+|---|---|---|
+| `claude` (Claude Code) | Ver la documentación de Claude Code | Ejecutá `claude` una vez y seguí el login |
+| `codex` (OpenAI) | Ver la documentación de Codex CLI | Ejecutá `codex` una vez y seguí el login |
+| `agy` (Google Antigravity) | `brew install --cask antigravity-cli` | Ejecutá `agy` **sin argumentos** en una terminal y elegí iniciar sesión con Google |
+
+> **Gemini CLI ya no se usa.** Google lo dio de baja para cuentas individuales (el login falla con *"This client is no longer supported"*). Su reemplazo es `agy`.
+
+No hace falta instalar los tres. Con uno solo el router funciona, aunque con menos para repartir.
+
+### Instalar el router
+
+No hay que instalar nada: es un clon del repo.
+
+```bash
+gh repo clone Mgobeaalcoba/ia-suscription-router ~/Documents/ia-suscription-router   # el repo es privado: requiere `gh auth login`
+cd ~/Documents/ia-suscription-router
+python3 -m unittest discover -s tests    # opcional: debe terminar en OK
+```
+
+---
+
+## 3. Primer uso (recorrido completo)
+
+### Paso 1 — Verificar el entorno
+
+```bash
+python3 cli.py doctor
+```
+
+(Antes de correr `setup` dice `manifiesto: no`; después, `manifiesto: sí`.)
+
+```
+Config: 3 modelos | estado en: /Users/mgobea/.ia-router | manifiesto: no (corré: cli.py setup)
+
+claude   instalado     cooldown=0s
+codex    instalado     cooldown=0s
+antigravity instalado     cooldown=0s
+```
+
+Esto solo mira si los ejecutables existen. **No** comprueba que estés logueado. Para eso:
+
+```bash
+python3 cli.py doctor --probe
+```
+
+Hace **una llamada mínima real a cada CLI** (gasta una pizca de cuota) y muestra login, latencia y versión:
+
+```
+claude   instalado     cooldown=0s  auth=ok 6.06s 2.1.288 (Claude Code)
+codex    instalado     cooldown=0s  auth=ok 6.45s codex-cli 0.160.0
+antigravity instalado  cooldown=0s  auth=ok 5.85s 1.2.16
+```
+
+Si un modelo está instalado pero sin sesión, verás `auth=missing` y la indicación de qué hacer.
+
+### Paso 2 — Crear tu manifiesto
+
+```bash
+python3 cli.py setup
+```
+
+En una terminal interactiva te pregunta dos cosas:
+
+1. **Qué modelo usar como manager.** Es el que clasifica tus tareas y arma el manifiesto. Conviene uno barato y rápido. Enter acepta el valor por defecto (`claude`, que usa Haiku).
+2. **Tus preferencias**, en lenguaje natural. Por ejemplo: *"Codex para código, Claude para escribir, Antigravity para contexto largo"*. Podés dejarlo vacío.
+
+Después prueba cada CLI y arma el manifiesto. Para hacerlo sin preguntas:
+
+```bash
+python3 cli.py setup --manager claude \
+  --notes "Prefiero Codex para código y debugging. Claude para escribir y análisis. Antigravity para contexto largo, multimodal e investigación."
+```
+
+Salida (resumida):
+
+```
+Probando cada CLI con un prompt mínimo...
+  claude   instalado=True auth=ok 6.06s 2.1.288 (Claude Code)
+  codex    instalado=True auth=ok 6.45s codex-cli 0.160.0
+  antigravity instalado=True auth=ok 5.85s 1.2.16
+
+Manifiesto — manager: claude · origen: manager LLM · actualizado: 2026-10-03T17:34:26
+Preferencias del usuario: Prefiero Codex para código y debugging. ...
+
+coding        codex > claude > antigravity   Codex es especialista en código (preferencia usuario).
+debugging     codex > claude > antigravity   Codex especialista en debugging (preferencia usuario).
+writing       claude > antigravity > codex   Claude es el mejor para escritura (preferencia usuario).
+analysis      claude > antigravity > codex   Claude especialista (preferencia usuario).
+research      antigravity > claude > codex   Antigravity es investigador fuerte + contexto largo.
+multimodal    antigravity > claude > codex   Antigravity domina multimodal (preferencia usuario).
+long_context  antigravity > claude > codex   Antigravity es experto (preferencia usuario).
+...
+Guardado en /Users/mgobea/.ia-router/manifest.json
+```
+
+Cada fila dice **qué modelo va primero, segundo y tercero** para ese tipo de tarea, y por qué.
+
+Opciones de `setup`:
+
+| Opción | Efecto |
+|---|---|
+| `--manager claude\|codex\|antigravity` | Elige el manager sin preguntar. |
+| `--notes "texto"` | Tus preferencias, sin preguntar. |
+| `--no-probe` | No hace llamadas de prueba a los CLIs (no gasta cuota, pero no mide login ni latencia). |
+
+### Paso 3 — Usarlo
+
+```bash
+python3 cli.py ask "Escribí una función Python que sume los elementos de una lista. Solo el código."
+```
+
+```
+Clasificación (reglas, manifiesto: sí): coding×2
+modelo   score  estado
+codex     10.0  OK             coding×2→10
+claude     8.0  OK             coding×2→8
+antigravity 6.0  OK            coding×2→6
+→ elegido: codex
+intento codex: OK (7.98s)
+
+[codex]
+def sumar_lista(lista):
+    return sum(lista)
+```
+
+La tabla va por **stderr** y la respuesta por **stdout**. Así podés redirigir solo la respuesta: `python3 cli.py ask "..." > respuesta.txt`.
+
+---
+
+## 4. Los comandos, con ejemplos
+
+### 4.1 `ask` — rutear y ejecutar
+
+```bash
+python3 cli.py ask "TAREA" [-m MODELO] [-c ARCHIVO]... [--llm] [--dry-run]
+```
+
+| Opción | Efecto |
+|---|---|
+| `-m`, `--model` | `auto` (por defecto) o forzar `claude` / `codex` / `antigravity`. |
+| `-c`, `--context` | Agrega un archivo como contexto. Se puede repetir. |
+| `--llm` | Clasifica la tarea con el manager en vez de solo con reglas. |
+| `--dry-run` | Muestra la decisión y el orden de intento, **sin ejecutar** nada. |
+
+**Ejemplos**
+
+```bash
+# Automático: el router elige
+python3 cli.py ask "Redactá un saludo de una sola frase para un cliente nuevo."
+
+# Forzar un modelo
+python3 cli.py ask "Explicame qué hace este código" -m claude -c cli.py
+
+# Con varios archivos de contexto
+python3 cli.py ask "Compará estos dos documentos y resumí las diferencias" -c a.md -c b.md
+
+# Contexto muy largo: el router lo manda al modelo de long_context
+python3 cli.py ask "Resumí este documento largo" -c transcripcion.txt
+
+# Ver qué haría, sin gastar cuota
+python3 cli.py ask "Analizá los pros y contras de migrar a microservicios" --dry-run
+```
+
+El `--dry-run` real de ese último ejemplo:
+
+```
+Clasificación (reglas, manifiesto: sí): analysis×1
+modelo   score  estado
+claude    10.0  OK             analysis×1→10
+antigravity 8.0 OK             analysis×1→8
+codex      6.0  OK             analysis×1→6
+→ elegido: claude
+(dry-run) orden de intento: ['claude', 'antigravity', 'codex']
+```
+
+**Fallback automático.** Si el modelo elegido falla, prueba el siguiente (máximo 3 intentos):
+
+| Situación | Qué hace el router |
+|---|---|
+| Rate limit (cuota agotada) | Pone ese modelo en *cooldown* 30 min y prueba el siguiente. |
+| Sin login | Pone ese modelo en cooldown 60 min y prueba el siguiente. |
+| Timeout u otro error | Prueba el siguiente. |
+
+**Código de salida:** `0` si hubo respuesta, `1` si fallaron todos los intentos, `2` si pediste un modelo inexistente.
+
+### 4.2 `route` — solo decidir
+
+Igual que `ask --dry-run`, pero más corto. Útil para entender por qué elige lo que elige.
+
+```bash
+python3 cli.py route "Arreglá el bug de esta función Python que falla con un KeyError" --llm
+```
+
+```
+Clasificación (manager claude, manifiesto: sí): debugging×3, coding×2
+modelo   score  estado
+codex     10.0  OK             debugging×3→10, coding×2→10
+claude     8.0  OK             debugging×3→8, coding×2→8
+antigravity 1.0 no disponible  ...
+→ elegido: codex
+```
+
+Cómo leer la tabla: `debugging×3→10` significa *categoría debugging, peso 3, este modelo tiene puntaje 10 ahí*. El `score` es el promedio ponderado de todas las categorías detectadas.
+
+### 4.3 `manifest` — ver y ajustar tus preferencias
+
+```bash
+python3 cli.py manifest show                    # ver el manifiesto actual
+python3 cli.py manifest refine "TEXTO"          # cambiarlo con una instrucción
+python3 cli.py manifest refine                  # modo interactivo
+python3 cli.py manifest generate                # rehacerlo desde cero
+python3 cli.py manifest path                    # dónde está el archivo
+```
+
+**Cambiar con una instrucción** (el caso más común):
+
+```bash
+python3 cli.py manifest refine "Para matemática prefiero Claude antes que Codex"
+```
+
+```
+Cambios propuestos:
+  math: codex > claude  →  claude > codex
+Aplicado (versión anterior en /Users/mgobea/.ia-router/manifest.prev.json).
+```
+
+Otros ejemplos de instrucciones válidas:
+
+```bash
+python3 cli.py manifest refine "No quiero usar Antigravity para nada por ahora"
+python3 cli.py manifest refine "Usá Codex para todo lo que tenga que ver con código y tests"
+python3 cli.py manifest refine "Para investigación poné primero a Claude"
+```
+
+**Modo interactivo.** Sin texto, abre una conversación. Cada propuesta muestra el cambio y pide confirmación:
+
+```
+$ python3 cli.py manifest refine
+(muestra el manifiesto)
+
+Decime qué cambiar, en lenguaje natural. Enter vacío para terminar.
+feedback> en investigación poné primero a Claude
+Cambios propuestos:
+  research: antigravity > claude > codex  →  claude > antigravity > codex
+¿Aplicar? [S/n]: n          ← rechazado: no cambia nada
+feedback> en investigación poné primero a Claude
+Cambios propuestos:
+  research: antigravity > claude > codex  →  claude > antigravity > codex
+¿Aplicar? [S/n]: s          ← aceptado
+Aplicado.
+feedback>                   ← Enter vacío para terminar
+```
+
+Reglas del manifiesto:
+
+- Guarda **solo la versión anterior** (`manifest.prev.json`) y un historial de motivos dentro del archivo (últimos 20 cambios).
+- Si el manager devuelve algo inválido, **no cambia nada** y te lo avisa. Reformulá la instrucción.
+- `generate` **sobrescribe** el manifiesto (conserva tus notas anteriores). Si querés volver atrás, copiá primero `manifest.prev.json`.
+
+También podés editar `~/.ia-router/manifest.json` a mano. Formato mínimo de una categoría:
+
+```json
+"coding": { "prefer": ["codex", "claude", "antigravity"], "why": "mi preferencia" }
+```
+
+Para desactivar un modelo por completo, ponelo en la lista `"disabled"` del mismo archivo.
+
+### 4.4 `doctor` — diagnóstico
+
+```bash
+python3 cli.py doctor            # rápido, gratis: ¿están instalados?
+python3 cli.py doctor --probe    # real: ¿están logueados? ¿qué latencia tienen?
+```
+
+### 4.5 `stats` — qué pasó realmente
+
+```bash
+python3 cli.py stats
+```
+
+```
+modelo   corridas  éxito seg. medio rate limits  auth
+claude          4   100%        5.6           0     0
+antigravity     2   100%        7.3           0     0
+codex           1   100%        8.0           0     0
+```
+
+Sale del log local (`~/.ia-router/log.jsonl`). El log **no guarda tus prompts**, solo modelo, éxito, duración y errores.
+
+### 4.6 `reset-cooldowns`
+
+Si un modelo quedó en cooldown y ya lo arreglaste (volviste a loguearte, o pasó el límite de cuota):
+
+```bash
+python3 cli.py reset-cooldowns
+```
+
+---
+
+## 5. Usarlo desde Claude Code (MCP)
+
+Permite que Claude delegue subtareas a los otros modelos dentro de una conversación.
+
+**Registrar el servidor** (una sola vez):
+
+```bash
+claude mcp add ia-router -- python3 ~/Documents/ia-suscription-router/cli.py mcp
+```
+
+**Herramientas que verá Claude:**
+
+| Herramienta | Qué hace |
+|---|---|
+| `route_task` | Decide qué modelo conviene, sin ejecutar. Devuelve el ranking con motivos. |
+| `ask_model` | Ejecuta una tarea en otro modelo. `model` puede ser `auto` o un modelo concreto. Acepta `context_files` y `timeout_seconds`. |
+| `list_models` | Lista modelos, si están instalados y si están en cooldown. |
+
+**Ejemplos de prompts para Claude Code:**
+
+> *"Pedile a Antigravity que resuma estos 3 archivos y a Codex que revise el bug; integrá ambas respuestas."*
+
+> *"Usá `route_task` para decirme qué modelo conviene para migrar esta base de datos."*
+
+> *"Mostrame con `list_models` cuáles están disponibles."*
+
+El servidor MCP **usa el mismo manifiesto** que el CLI. Si tardan mucho las tareas, subí el timeout de herramientas MCP de tu cliente (variable `MCP_TOOL_TIMEOUT` en Claude Code).
+
+---
+
+## 6. Dónde se guarda todo
+
+| Qué | Dónde |
+|---|---|
+| Manifiesto | `~/.ia-router/manifest.json` |
+| Versión anterior del manifiesto | `~/.ia-router/manifest.prev.json` |
+| Cooldowns | `~/.ia-router/state.json` |
+| Log de ejecuciones (sin prompts) | `~/.ia-router/log.jsonl` |
+| Modelos, comandos y timeouts | `models.json` (en el repo) |
+
+Para empezar de cero: `rm -r ~/.ia-router` (borra manifiesto, cooldowns y log).
+
+---
+
+## 7. Configuración avanzada
+
+### 7.1 Variables de entorno
+
+| Variable | Efecto | Ejemplo |
+|---|---|---|
+| `ROUTER_HOME` | Cambia la carpeta de estado (por defecto `~/.ia-router`). | `ROUTER_HOME=/tmp/prueba python3 cli.py doctor` |
+| `ROUTER_MODELS` | Usa otro `models.json`. | `ROUTER_MODELS=~/mis-modelos.json python3 cli.py doctor` |
+| `ROUTER_CMD_<MODELO>` | Reemplaza el comando de un modelo (lista JSON). `{prompt}` se sustituye por la tarea. | `ROUTER_CMD_CODEX='["codex","exec","{prompt}"]'` |
+
+`ROUTER_HOME` es útil para probar sin tocar tu manifiesto real.
+
+### 7.2 `models.json`
+
+Cada modelo se define así:
+
+```json
+"claude": {
+  "label": "Claude (CLI oficial: claude)",
+  "cmd": ["claude", "-p", "{prompt}"],
+  "cmd_stdin": ["claude", "-p"],
+  "cheap_cmd": ["claude", "-p", "--model", "haiku", "{prompt}"],
+  "timeout": 300,
+  "strengths": { "general": 8, "coding": 9, "writing": 9 }
+}
+```
+
+| Campo | Para qué sirve |
+|---|---|
+| `cmd` | Comando que ejecuta la tarea. `{prompt}` es la tarea. |
+| `cmd_stdin` | Comando alternativo cuando el prompt supera 100.000 caracteres (viaja por stdin). Si falta, viaja por argumento. |
+| `cheap_cmd` | Comando barato, usado **cuando este modelo actúa de manager**. |
+| `timeout` | Segundos máximos por intento. |
+| `strengths` | Puntajes 0–10 por categoría. Son **hipótesis iniciales**: cuando existe un manifiesto, este los reemplaza. |
+
+Ajustes globales: `cooldown_minutes` (rate limit, 30), `auth_cooldown_minutes` (sin login, 60), `default_manager` (`claude`).
+
+**Agregar un modelo nuevo:** sumá una entrada en `"models"` con su `cmd`, corré `python3 cli.py doctor --probe` para confirmar que funciona y luego `python3 cli.py manifest generate` para que el manager lo incluya.
+
+### 7.3 Categorías de tareas
+
+El router distingue estos tipos de tarea. Son los que aparecen en el manifiesto:
+
+`coding`, `debugging`, `writing`, `analysis`, `data`, `research`, `math`, `multimodal`, `long_context`, `quick`.
+
+Una tarea puede tener varias a la vez (por ejemplo `debugging×3, coding×2`). `long_context` se activa solo cuando tarea + archivos superan 30.000 caracteres (peso fuerte desde 100.000). `quick` se activa con palabras como "rápido", "breve" o "tl;dr", o con tareas muy cortas sin otra categoría.
+
+---
+
+## 8. Problemas comunes
+
+| Síntoma | Causa probable | Qué hacer |
+|---|---|---|
+| `doctor --probe` muestra `auth=missing` | El CLI está instalado pero sin sesión. | Iniciá sesión en ese CLI (ejecutalo sin argumentos). Después `python3 cli.py reset-cooldowns`. |
+| `agy` o `gemini` dicen *"This client is no longer supported"* | Google dio de baja el Gemini CLI. | Usá `agy` (Antigravity) en su lugar. |
+| `ningún modelo disponible` | Todos están sin instalar, desactivados o en cooldown. | `python3 cli.py doctor` y, si corresponde, `reset-cooldowns`. |
+| Un modelo "no disponible" en la tabla | No instalado, desactivado en el manifiesto, o en cooldown. | Revisá `doctor` y la lista `disabled` del manifiesto. |
+| Siempre elige el mismo modelo | Es lo que dice tu manifiesto. | `manifest show` y ajustalo con `manifest refine`. |
+| El router eligió mal una tarea | La clasificación por reglas no la entendió. | Probá `--llm` para que clasifique el manager, o forzá con `-m`. |
+| `manifest refine` dice que no devolvió un manifiesto válido | El manager respondió algo no parseable. | Reformulá la instrucción; no se cambió nada. |
+| `Error: modelo desconocido` | Pasaste un `-m` que no existe en `models.json`. | Usá `auto` o uno de los modelos listados en el mensaje. |
+| Un comando falla con *timeout* | La tarea tardó más que el `timeout` del modelo. | Subí `timeout` en `models.json`. |
+| Falla el flag de un CLI tras actualizarlo | Los CLIs cambian seguido sus opciones. | Revisá `<cli> --help` y ajustá `cmd` en `models.json`, o usá `ROUTER_CMD_<MODELO>`. |
+
+---
+
+## 9. Límites que conviene conocer
+
+- **Es para uso personal.** Corre con tus suscripciones, a ritmo humano. Si algún día lo distribuís a terceros, revisá los términos de cada proveedor (Anthropic, por ejemplo, exige API key para productos de terceros).
+- **Cada `ask` y cada `setup` gastan cuota real** de tus suscripciones. `route` y `--dry-run` no gastan.
+- **`agy` no lee el prompt por stdin** en modo headless, así que los prompts muy grandes viajan por argumento.
+- **Seguridad:** los CLIs corren en modo no interactivo con sus permisos por defecto. El router **no** activa flags de "permitir todo".
+- **El manifiesto refleja preferencias, no mediciones propias.** Todavía no hay evals que lo calibren con resultados medidos.
+- **Todavía no hay** sesiones (continuar una conversación), streaming de salida ni versión de escritorio.

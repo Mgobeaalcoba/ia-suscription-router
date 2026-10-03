@@ -1,6 +1,6 @@
 """Estado persistente mínimo: cooldowns por proveedor y log de ejecuciones.
 
-Se guarda en ~/.llm-router-poc (o en $ROUTER_HOME). Sin dependencias externas.
+Se guarda en ~/.ia-router (o en $ROUTER_HOME). Sin dependencias externas.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Dict
 
 
 def home() -> Path:
-    return Path(os.environ.get("ROUTER_HOME") or (Path.home() / ".llm-router-poc"))
+    return Path(os.environ.get("ROUTER_HOME") or (Path.home() / ".ia-router"))
 
 
 def _state_path() -> Path:
@@ -63,3 +63,27 @@ def log_event(event: Dict) -> None:
             fh.write(json.dumps(event, ensure_ascii=False) + "\n")
     except OSError:
         pass  # el log es best-effort
+
+
+def stats() -> Dict[str, Dict]:
+    """Resumen objetivo por modelo a partir de log.jsonl: corridas, tasa de éxito, latencia media, rate limits."""
+    out: Dict[str, Dict] = {}
+    try:
+        lines = (home() / "log.jsonl").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        try:
+            ev = json.loads(line)
+            m = out.setdefault(ev["model"], {"runs": 0, "ok": 0, "rate_limits": 0, "auth_errors": 0, "_secs": 0.0})
+        except (ValueError, KeyError, TypeError):
+            continue
+        m["runs"] += 1
+        m["ok"] += 1 if ev.get("ok") else 0
+        m["rate_limits"] += 1 if ev.get("error") == "rate_limited" else 0
+        m["auth_errors"] += 1 if ev.get("error") == "auth_required" else 0
+        m["_secs"] += float(ev.get("seconds") or 0)
+    for m in out.values():
+        m["ok_rate"] = round(m["ok"] / m["runs"], 2)
+        m["avg_seconds"] = round(m.pop("_secs") / m["runs"], 1)
+    return out

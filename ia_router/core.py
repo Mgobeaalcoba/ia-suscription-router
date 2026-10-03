@@ -6,14 +6,15 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from . import adapters, router, state
+from . import adapters, manifest as manifest_mod, router, state
 
 MAX_CONTEXT_CHARS = 400_000
 
 
-def load_config(path: Optional[str] = None) -> Dict:
+def load_config(path: Optional[str] = None, apply_manifest: bool = True) -> Dict:
     p = Path(path or os.environ.get("ROUTER_MODELS") or Path(__file__).resolve().parent.parent / "models.json")
-    return json.loads(p.read_text(encoding="utf-8"))
+    cfg = json.loads(p.read_text(encoding="utf-8"))
+    return manifest_mod.apply_to_config(cfg, manifest_mod.load()) if apply_manifest else cfg
 
 
 def build_prompt(task: str, context_files: Optional[List[str]] = None) -> Tuple[str, int, List[str]]:
@@ -36,14 +37,23 @@ def build_prompt(task: str, context_files: Optional[List[str]] = None) -> Tuple[
     return "".join(parts), used, warnings
 
 
-def _classifier_runner(cfg: Dict):
-    cmd = cfg.get("classifier_cmd")
-    if not cmd:
-        return None
-    spec = {"cmd": cmd, "timeout": 60}
+def manager_name(cfg: Dict) -> str:
+    """Modelo barato que clasifica tareas y mantiene el manifiesto (lo elige el usuario)."""
+    m = (manifest_mod.load() or {}).get("manager") or cfg.get("default_manager", "claude")
+    return m if m in cfg["models"] else next(iter(cfg["models"]))
+
+
+def manager_runner(cfg: Dict, name: Optional[str] = None, timeout: float = 120):
+    """Devuelve run(prompt)->texto|None usando el modo barato (`cheap_cmd`) del manager si lo define."""
+    name = name or manager_name(cfg)
+    spec = dict(cfg["models"][name])
+    if spec.get("cheap_cmd"):
+        spec["cmd"] = spec["cheap_cmd"]
+        spec.pop("cmd_stdin", None)
+    spec["timeout"] = timeout
 
     def run(prompt: str) -> Optional[str]:
-        res = adapters.run_cli("classifier", spec, prompt)
+        res = adapters.run_cli(name, spec, prompt)
         return res["output"] if res["ok"] else None
 
     return run
@@ -53,20 +63,20 @@ def route(task: str, cfg: Dict, context_len: int = 0, prefer: Optional[str] = No
     weights = router.detect(task, context_len)
     source = "reglas"
     if use_llm:
-        runner = _classifier_runner(cfg)
-        llm_weights = router.classify_with_llm(task, runner) if runner else None
+        llm_weights = router.classify_with_llm(task, manager_runner(cfg, timeout=60))
         if llm_weights:
-            weights, source = llm_weights, "clasificador LLM"
+            weights, source = llm_weights, f"manager {manager_name(cfg)}"
     models = cfg["models"]
     ranking = router.rank(
         weights,
         models,
-        is_available=lambda n: adapters.is_available(n, models[n]),
+        is_available=lambda n: models[n].get("enabled", True) and adapters.is_available(n, models[n]),
         cooldown=state.cooldown_remaining,
         prefer=prefer,
     )
     chosen = next((r["name"] for r in ranking if r["usable"]), None)
-    return {"weights": weights, "classifier": source, "ranking": ranking, "chosen": chosen}
+    return {"weights": weights, "classifier": source, "ranking": ranking, "chosen": chosen,
+            "manifest": bool(cfg.get("_manifest"))}
 
 
 def ask(
@@ -100,7 +110,7 @@ def ask(
 
     for name in order:
         res = adapters.run_cli(name, models[name], prompt, timeout=timeout, cwd=cwd)
-        attempt = {k: res[k] for k in ("seconds", "returncode", "rate_limited", "error")}
+        attempt = {k: res[k] for k in ("seconds", "returncode", "rate_limited", "auth_required", "error")}
         attempt["model"] = name
         result["attempts"].append(attempt)
         state.log_event({"model": name, "ok": res["ok"], "seconds": res["seconds"], "error": res["error"],
@@ -110,15 +120,17 @@ def ask(
             return result
         if res["rate_limited"]:
             state.set_cooldown(name, cfg.get("cooldown_minutes", 30))
+        elif res["auth_required"]:  # sin login/API key: no reintentar hasta que el usuario lo arregle
+            state.set_cooldown(name, cfg.get("auth_cooldown_minutes", 60))
     result["error"] = "todos los intentos fallaron"
     return result
 
 
 def format_ranking(decision: Dict) -> str:
-    lines = [f"Clasificación ({decision['classifier']}): " + (", ".join(f"{c}×{w:g}" for c, w in decision["weights"].items()) or "general")]
+    lines = [f"Clasificación ({decision['classifier']}, manifiesto: {'sí' if decision.get('manifest') else 'no'}): " + (", ".join(f"{c}×{w:g}" for c, w in decision["weights"].items()) or "general")]
     lines.append(f"{'modelo':<8} {'score':>5}  estado")
     for r in decision["ranking"]:
-        status = "OK" if r["usable"] else ("no instalado" if not r["available"] else f"cooldown {r['cooldown_s']}s")
+        status = "OK" if r["usable"] else ("no disponible" if not r["available"] else f"cooldown {r['cooldown_s']}s")
         lines.append(f"{r['name']:<8} {r['score']:>5}  {status:<14} {r['why']}")
     lines.append(f"→ elegido: {decision['chosen'] or 'ninguno'}")
     return "\n".join(lines)

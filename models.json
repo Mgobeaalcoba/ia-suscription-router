@@ -1,37 +1,99 @@
 {
-  "_comment": "Las 'strengths' (0-10) son HIPÓTESIS iniciales, no verdades. Reemplazalas con los resultados de tu propio set de evals (etapa 2). Los comandos son plantillas: verificá los flags con `python3 cli.py doctor` y `<cli> --help`.",
+  "_comment": "Las 'strengths' (0-10) son HIPÓTESIS iniciales; el manifiesto (python3 cli.py setup) las reemplaza con las preferencias del usuario. Los comandos son plantillas: verificalos con `python3 cli.py doctor --probe`. 'cheap_cmd' es el modo barato usado cuando el modelo actúa como manager. 'antigravity' reemplaza a Gemini CLI (Google lo dio de baja el 18/06/2026). agy no lee el prompt por stdin en modo headless: sin 'cmd_stdin'.",
   "cooldown_minutes": 30,
-  "classifier_cmd": ["claude", "-p", "--model", "haiku", "{prompt}"],
   "models": {
     "claude": {
       "label": "Claude (CLI oficial: claude)",
-      "cmd": ["claude", "-p", "{prompt}"],
-      "cmd_stdin": ["claude", "-p"],
+      "cmd": [
+        "claude",
+        "-p",
+        "{prompt}"
+      ],
+      "cmd_stdin": [
+        "claude",
+        "-p"
+      ],
       "timeout": 300,
       "strengths": {
-        "general": 8, "coding": 9, "debugging": 8, "writing": 9, "analysis": 9,
-        "data": 8, "research": 7, "math": 7, "quick": 6, "long_context": 7, "multimodal": 7
-      }
+        "general": 8,
+        "coding": 9,
+        "debugging": 8,
+        "writing": 9,
+        "analysis": 9,
+        "data": 8,
+        "research": 7,
+        "math": 7,
+        "quick": 6,
+        "long_context": 7,
+        "multimodal": 7
+      },
+      "cheap_cmd": [
+        "claude",
+        "-p",
+        "--model",
+        "haiku",
+        "{prompt}"
+      ]
     },
     "codex": {
       "label": "OpenAI Codex (CLI oficial: codex exec)",
-      "cmd": ["codex", "exec", "--skip-git-repo-check", "{prompt}"],
-      "cmd_stdin": ["codex", "exec", "--skip-git-repo-check", "-"],
+      "cmd": [
+        "codex",
+        "exec",
+        "--skip-git-repo-check",
+        "{prompt}"
+      ],
+      "cmd_stdin": [
+        "codex",
+        "exec",
+        "--skip-git-repo-check",
+        "-"
+      ],
       "timeout": 600,
       "strengths": {
-        "general": 7, "coding": 9, "debugging": 9, "writing": 6, "analysis": 7,
-        "data": 7, "research": 6, "math": 8, "quick": 6, "long_context": 6, "multimodal": 5
+        "general": 7,
+        "coding": 9,
+        "debugging": 9,
+        "writing": 6,
+        "analysis": 7,
+        "data": 7,
+        "research": 6,
+        "math": 8,
+        "quick": 6,
+        "long_context": 6,
+        "multimodal": 5
       }
     },
-    "gemini": {
-      "label": "Gemini (CLI oficial: gemini -p)",
-      "cmd": ["gemini", "-p", "{prompt}"],
-      "cmd_stdin": ["gemini", "-p", "Follow the instructions provided via stdin."],
+    "antigravity": {
+      "label": "Google Antigravity (CLI oficial: agy -p)",
+      "cmd": [
+        "agy",
+        "-p",
+        "{prompt}"
+      ],
+      "cheap_cmd": [
+        "agy",
+        "--model",
+        "gemini-3.8-flash-low",
+        "-p",
+        "{prompt}"
+      ],
       "timeout": 300,
       "strengths": {
-        "general": 7, "coding": 7, "debugging": 7, "writing": 7, "analysis": 8,
-        "data": 7, "research": 8, "math": 8, "quick": 8, "long_context": 10, "multimodal": 9
+        "general": 7,
+        "coding": 7,
+        "debugging": 7,
+        "writing": 7,
+        "analysis": 8,
+        "data": 7,
+        "research": 8,
+        "math": 8,
+        "quick": 8,
+        "long_context": 10,
+        "multimodal": 9
       }
     }
-  }
+  },
+  "default_manager": "claude",
+  "auth_cooldown_minutes": 60
 }

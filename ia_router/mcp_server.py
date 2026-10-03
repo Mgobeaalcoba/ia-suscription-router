@@ -16,7 +16,7 @@ PROTOCOL_DEFAULT = "2025-06-18"
 TOOLS = [
     {
         "name": "route_task",
-        "description": "Decide qué modelo (claude/codex/gemini) conviene para una tarea SIN ejecutarla. Devuelve ranking con motivos.",
+        "description": "Decide qué modelo (claude/codex/antigravity) conviene para una tarea SIN ejecutarla. Devuelve ranking con motivos.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -30,13 +30,13 @@ TOOLS = [
         "name": "ask_model",
         "description": (
             "Ejecuta una tarea en otro modelo vía su CLI oficial. model='auto' rutea solo y hace fallback si hay rate limit. "
-            "Usalo para delegar subtareas (p. ej. análisis de contexto largo a gemini, depuración a codex)."
+            "Usalo para delegar subtareas (p. ej. análisis de contexto largo a antigravity, depuración a codex)."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "task": {"type": "string"},
-                "model": {"type": "string", "enum": ["auto", "claude", "codex", "gemini"], "default": "auto"},
+                "model": {"type": "string", "description": "auto o el nombre de un modelo de list_models", "default": "auto"},
                 "context_files": {"type": "array", "items": {"type": "string"}},
                 "timeout_seconds": {"type": "number", "description": "Tiempo máximo por intento"},
             },
@@ -91,7 +91,7 @@ def handle(msg: Dict[str, Any], cfg: Dict) -> Optional[Dict[str, Any]]:
         result = {
             "protocolVersion": version,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "llm-router-poc", "version": __version__},
+            "serverInfo": {"name": "ia-suscription-router", "version": __version__},
         }
     elif method == "ping":
         result = {}
@@ -110,7 +110,7 @@ def handle(msg: Dict[str, Any], cfg: Dict) -> Optional[Dict[str, Any]]:
 
 def main() -> None:
     cfg = core.load_config()
-    print("llm-router-poc MCP listo (stdio)", file=sys.stderr)
+    print("ia-suscription-router MCP listo (stdio)", file=sys.stderr)
     for line in sys.stdin:
         line = line.strip()
         if not line:

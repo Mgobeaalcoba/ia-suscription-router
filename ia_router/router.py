@@ -25,7 +25,7 @@ PATTERNS: Dict[str, List[str]] = {
         r"no funciona|falla\b|fallando|arregl\w+|\bfix\b|rompi\w+",
     ],
     "writing": [
-        r"redact\w+|escrib\w+|\bwrite\b|\bdraft\b|borrador",
+        r"redact\w+|\bdraft\b|borrador",  # sin "escrib*"/"write": son verbos genéricos que también aparecen en tareas de código
         r"\b(mail|correo|email|art[ií]culo|post|copy|gui[oó]n|syllabus|newsletter)\b",
         r"resum\w+|traduc\w+|\btono\b|reescrib\w+|summar\w+|translat\w+",
     ],

@@ -20,7 +20,7 @@ class McpTests(unittest.TestCase):
                               capture_output=True, text=True, env=env, timeout=30)
         out = {json.loads(l)["id"]: json.loads(l) for l in proc.stdout.splitlines()}
         self.assertEqual(set(out), {1, 2, 3, 4, 5})  # la notificación no recibe respuesta
-        self.assertEqual(out[1]["result"]["serverInfo"]["name"], "llm-router-poc")
+        self.assertEqual(out[1]["result"]["serverInfo"]["name"], "ia-suscription-router")
         self.assertEqual({t["name"] for t in out[2]["result"]["tools"]}, {"route_task", "ask_model", "list_models"})
         self.assertIn("elegido: codex", out[3]["result"]["content"][0]["text"])
         self.assertIn("[fake-claude]", out[4]["result"]["content"][0]["text"])

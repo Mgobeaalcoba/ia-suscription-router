@@ -10,6 +10,12 @@ body = stdin_text or (args[-1] if args else "")
 if mode == "ratelimit":
     sys.stderr.write("Error 429: rate limit exceeded, try again later\n")
     sys.exit(1)
+if mode == "auth":
+    sys.stderr.write("Please set an Auth method in settings.json\n")
+    sys.exit(41)
+if os.environ.get(f"FAKE_{name}_OUT"):
+    print(os.environ[f"FAKE_{name}_OUT"])
+    sys.exit(0)
 if mode == "fail":
     sys.stderr.write("boom\n")
     sys.exit(2)
