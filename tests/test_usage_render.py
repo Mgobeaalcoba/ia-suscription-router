@@ -1,4 +1,4 @@
-import os, sys, tempfile, unittest
+import os, re, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -93,38 +93,70 @@ class UsageTests(unittest.TestCase):
 
 
 class RenderTests(unittest.TestCase):
-    def strip(self, s):
-        import re
-        return re.sub(r"\033\[[0-9;]*m", "", s)
+    def plain(self, s, **kw):
+        return re.sub(r"\033\[[0-9;]*m", "", render.render(s, width=80, **kw))
 
     def test_no_color_returns_text_unchanged(self):
         t = "# Título\n**negrita** y `código`"
         self.assertEqual(render.render(t, color=False), t)
 
-    def test_signs_are_preserved(self):
-        t = ("# Título\n\nTexto con **negrita**, *itálica*, `código` y ~~tachado~~ y [link](http://x.io).\n"
-             "- item uno\n1. item dos\n> cita\n---\n| a | b |\n|---|---|\n| 1 | 2 |\n```python\nx = **no_es_negrita**\n```\nfin")
-        self.assertEqual(self.strip(render.render(t)), t)
+    def test_no_markdown_signs_remain(self):
+        t = ("# Título\n\n## Sub\n\nTexto con **negrita**, *itálica*, `código`, ~~tachado~~ y [link](http://x.io).\n"
+             "- item\n> cita\n---\n```python\nx = 1\n```\nfin")
+        out = self.plain(t)
+        for sign in ("#", "**", "`", "~~", "](", "> "):
+            self.assertNotIn(sign, out.replace("# Cada", ""), sign)
+        self.assertIn("Título", out)
+        self.assertIn("negrita", out)
+        self.assertIn("• item", out)
+        self.assertIn("▎ cita", out)
+        self.assertIn("link (http://x.io)", out)
 
-    def test_styles_applied(self):
-        r = render.render("**hola**")
-        self.assertIn(render.BOLD + "hola", r)
-        self.assertIn(render.CYAN + "x", render.render("`x`"))
-        self.assertTrue(render.render("# T").startswith(render.BOLD))
+    def test_code_block_hides_fences_keeps_content_and_comments(self):
+        out = self.plain("```python\n# comentario\ngrupos = df.groupby([\"X1\"]).ngroup()\n```")
+        self.assertNotIn("```", out)
+        self.assertIn("# comentario", out)
+        self.assertIn('df.groupby(["X1"]).ngroup()', out)
+        self.assertIn("python", out)
 
-    def test_code_block_content_not_styled_inline(self):
-        r = render.render("```\n**a**\n```")
+    def test_code_block_highlights_but_not_inline_markdown(self):
+        r = render.render("```python\ndef f(): return '**a**'\n```", width=80)
+        self.assertIn(render.MAGENTA + "def", r)
+        self.assertIn(render.GREEN + "'**a**'", r)
         self.assertNotIn(render.BOLD, r)
 
+    def test_hash_inside_string_is_not_a_comment(self):
+        r = render.render('```python\nx = "a # b"\n```', width=80)
+        self.assertNotIn(render.GRAY + "# b", r)
+
+    def test_unclosed_fence_still_renders_code(self):
+        self.assertIn("código", self.plain("```\ncódigo"))
+
+    def test_table_is_aligned_box(self):
+        out = self.plain("| Modelo | Tokens |\n|:--|--:|\n| claude | 16.5k |\n| codex | **7** |").splitlines()
+        self.assertEqual(len({len(l) for l in out}), 1)  # todas las filas del mismo ancho
+        self.assertTrue(out[0].startswith("┌") and out[-1].startswith("└"))
+        self.assertIn("│ claude │  16.5k │", out[3])
+        self.assertNotIn("|", "".join(out))
+
+    def test_lists_tasks_and_numbers(self):
+        out = self.plain("- a\n  - b\n- [x] ok\n- [ ] no\n1. uno")
+        self.assertEqual(out.splitlines(), ["• a", "  ◦ b", "☑ ok", "☐ no", "1. uno"])
+
+    def test_styles_applied(self):
+        self.assertIn(render.BOLD + "hola", render.render("**hola**"))
+        self.assertIn(render.SPAN_ON, render.render("`x`"))
+        self.assertTrue(render.render("# T").startswith(render.BOLD))
+
     def test_code_span_protects_markers(self):
-        self.assertNotIn(render.BOLD, render.render("`**a**`"))
+        self.assertEqual(self.plain("`**a**`").strip(), "**a**")
+
+    def test_escapes_are_literal(self):
+        self.assertEqual(self.plain(r"\*no\* es literal"), "*no* es literal")
 
     def test_snake_case_and_math_not_italic(self):
         for t in ("usá mi_variable_larga aquí", "2 * 3 * 4"):
             self.assertNotIn(render.ITALIC, render.render(t))
-
-    def test_unclosed_fence_resets_style(self):
-        self.assertTrue(render.render("```\ncódigo").endswith(render.RESET))
 
     def test_chat_md_toggle(self):
         out = []
@@ -139,7 +171,7 @@ class RenderTests(unittest.TestCase):
             c.command("/md off")
             c.run_task("hola")
             self.assertIn("**ok**", "\n".join(out))
-            self.assertNotIn(render.BOLD + "ok", "\n".join(out[1:]))
+            self.assertNotIn(render.BOLD, "\n".join(out[1:]))
         finally:
             del os.environ["FAKE_CLAUDE_OUT"]
 

@@ -24,7 +24,7 @@ Atajos:
   /stats             éxito y latencia por modelo /model X     fijar un modelo (X = claude|codex|... o auto)
   /manager X         cambiar el modelo barato    /llm on|off  clasificar tareas con el manager
   /explain on|off    mostrar la tabla de ruteo   /setup       rearmar el manifiesto desde cero
-  /md on|off         markdown con estilos o texto crudo
+  /md on|off         markdown interpretado o texto crudo
   /ask texto         forzar "es una tarea"       /config texto forzar "es configuración"
   /clear             olvidar la conversación     /help        esta ayuda      /exit  salir"""
 
@@ -239,7 +239,7 @@ class Chat:
             self.say(f"Tabla de ruteo: {'visible' if self.explain else 'oculta'}.")
         elif cmd == "md":
             self.markdown = arg != "off"
-            self.say(f"Markdown: {'con estilos (los signos # ** ` se conservan)' if self.markdown else 'texto crudo'}.")
+            self.say(f"Markdown: {'interpretado (como un README en GitHub, sin signos)' if self.markdown else 'texto crudo'}.")
         elif cmd == "setup":
             self.setup(notes=arg or (manifest.load() or {}).get("user_notes", ""))
         elif cmd == "clear":

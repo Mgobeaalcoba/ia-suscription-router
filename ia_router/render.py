@@ -1,4 +1,5 @@
-"""Markdown en la terminal: estilos ANSI que CONSERVAN los signos (#, **, `, ```, >, -), sin dependencias.
+"""Markdown interpretado en la terminal, como se ve un README en GitHub: sin los signos (#, **, `, ```, >, |),
+con estilos ANSI, viñetas, tablas alineadas y bloques de código con fondo y colores. Sin dependencias.
 
 Sin color (pipe, NO_COLOR, tests) devuelve el texto tal cual. Es un renderizador por líneas, no un parser
 completo: cubre lo que suelen devolver los modelos (títulos, listas, citas, código, tablas, énfasis, links).
@@ -6,83 +7,216 @@ completo: cubre lo que suelen devolver los modelos (títulos, listas, citas, có
 from __future__ import annotations
 
 import re
+import shutil
+from typing import List, Optional
 
 RESET = "\033[0m"
-BOLD, ITALIC, UNDER, STRIKE, DIM = "\033[1m", "\033[3m", "\033[4m", "\033[9m", "\033[2m"
-CYAN, YELLOW, BLUE, MAGENTA = "\033[36m", "\033[33m", "\033[34m", "\033[35m"
+BOLD, BOLD_OFF = "\033[1m", "\033[22m"
+ITALIC, ITALIC_OFF = "\033[3m", "\033[23m"
+UNDER, UNDER_OFF = "\033[4m", "\033[24m"
+STRIKE, STRIKE_OFF = "\033[9m", "\033[29m"
+DIM = "\033[2m"
+FG_OFF = "\033[39m"
+CYAN, YELLOW, BLUE, MAGENTA, GREEN, GRAY = "\033[36m", "\033[33m", "\033[34m", "\033[35m", "\033[32m", "\033[90m"
+CODE_BG, CODE_BG_OFF = "\033[48;5;236m", "\033[49m"      # bloque de código
+SPAN_ON, SPAN_OFF = "\033[38;5;216m\033[48;5;238m", "\033[39m\033[49m"  # `código en línea`
 
-_FENCE = re.compile(r"^(\s*)(`{3,}|~{3,})(.*)$")
-_HEADING = re.compile(r"^(\s{0,3})(#{1,6})(\s+.*)$")
-_BULLET = re.compile(r"^(\s*)([-*+]|\d+[.)])(\s+)(.*)$")
-_QUOTE = re.compile(r"^(\s*>+)(.*)$")
+_ANSI = re.compile(r"\033\[[0-9;]*m")
+_FENCE = re.compile(r"^(\s*)(`{3,}|~{3,})\s*([\w+#.-]*)\s*$")
+_HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
+_BULLET = re.compile(r"^(\s*)([-*+]|\d+[.)])\s+(.*)$")
+_TASK = re.compile(r"^\[([ xX])\]\s+(.*)$")
+_QUOTE = re.compile(r"^\s*((?:>\s?)+)(.*)$")
 _HR = re.compile(r"^\s{0,3}([-*_])(\s*\1){2,}\s*$")
 _TABLE = re.compile(r"^\s*\|.*\|\s*$")
+_TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$")
 _CODE_SPAN = re.compile(r"(`+)(.+?)\1")
+_ESCAPE = re.compile(r"\\([\\`*_{}\[\]()#+\-.!|>~])")
 _INLINE = [
-    (re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*|__(?=\S)(.+?)(?<=\S)__"), BOLD, "\033[22m"),
-    (re.compile(r"~~(?=\S)(.+?)(?<=\S)~~"), STRIKE, "\033[29m"),
-    (re.compile(r"(?<![\w*])\*(?=[^\s*])([^*\n]+?)(?<=[^\s*])\*(?![\w*])"), ITALIC, "\033[23m"),
-    (re.compile(r"(?<![\w_])_(?=[^\s_])([^_\n]+?)(?<=[^\s_])_(?![\w_])"), ITALIC, "\033[23m"),
+    (re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*|__(?=\S)(.+?)(?<=\S)__"), BOLD, BOLD_OFF),
+    (re.compile(r"~~(?=\S)(.+?)(?<=\S)~~"), STRIKE, STRIKE_OFF),
+    (re.compile(r"(?<![\w*])\*(?=[^\s*])([^*\n]+?)(?<=[^\s*])\*(?![\w*])"), ITALIC, ITALIC_OFF),
+    (re.compile(r"(?<![\w_])_(?=[^\s_])([^_\n]+?)(?<=[^\s_])_(?![\w_])"), ITALIC, ITALIC_OFF),
 ]
-_LINK = re.compile(r"\[([^\]\n]+)\]\(([^)\s]+)\)")
+_LINK = re.compile(r"!?\[([^\]\n]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+_AUTOLINK = re.compile(r"<(https?://[^>\s]+)>")
+
+_HASH_COMMENT = {"python", "py", "bash", "sh", "shell", "zsh", "yaml", "yml", "toml", "ruby", "rb", "r", "dockerfile", "makefile", "ini"}
+_SLASH_COMMENT = {"js", "javascript", "ts", "typescript", "jsx", "tsx", "java", "c", "cpp", "c++", "cs", "csharp", "go", "rust", "rs", "kotlin", "swift", "php", "scala", "json5", "jsonc"}
+_KEYWORDS = (r"def|class|return|if|elif|else|for|while|in|not|and|or|is|import|from|as|with|try|except|finally|raise|lambda|yield|pass|break|continue|"
+             r"None|True|False|function|const|let|var|new|this|async|await|export|default|switch|case|typeof|null|undefined|true|false|"
+             r"public|private|static|void|int|float|string|bool|struct|fn|func|package|interface|enum|impl|use|mut|select|insert|update|delete|where|join|"
+             r"create|table|group|order|by|limit|echo|then|fi|do|done")
+_CODE_TOKEN = re.compile(
+    r"(?P<str>\"\"\".*?\"\"\"|'''.*?'''|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)"
+    rf"|(?P<kw>\b(?:{_KEYWORDS})\b)"
+    r"|(?P<num>\b\d+(?:\.\d+)?\b)",
+    re.S,
+)
 
 
-def _inline_text(s: str) -> str:
-    """Énfasis y links sobre texto sin code spans. Los marcadores quedan visibles pero atenuados."""
-    s = _LINK.sub(lambda m: f"{DIM}[{RESET}{UNDER}{BLUE}{m.group(1)}{RESET}{DIM}]({m.group(2)}){RESET}", s)
+def _vlen(s: str) -> int:
+    """Largo visible (sin secuencias ANSI)."""
+    return len(_ANSI.sub("", s))
+
+
+# ---------- texto en línea ----------
+
+def _emphasis(s: str) -> str:
+    s = _ESCAPE.sub(lambda m: chr(0xE000 + ord(m.group(1))), s)  # \* y similares: se protegen y se restauran al final
+    s = _AUTOLINK.sub(lambda m: f"{UNDER}{BLUE}{m.group(1)}{FG_OFF}{UNDER_OFF}", s)
+
+    def link(m):
+        text, url = m.group(1), m.group(2)
+        label = f"{UNDER}{BLUE}{text or url}{FG_OFF}{UNDER_OFF}"
+        return label if not text or text == url else f"{label} {GRAY}({url}){FG_OFF}"
+    s = _LINK.sub(link, s)
     for pat, on, off in _INLINE:
-        def sub(m, on=on, off=off):
-            body = next(g for g in m.groups() if g is not None)
-            mark = m.group(0)[: (len(m.group(0)) - len(body)) // 2]
-            return f"{DIM}{mark}{RESET}{on}{body}{off}{DIM}{mark}{RESET}"
-        s = pat.sub(sub, s)
-    return s
+        s = pat.sub(lambda m, on=on, off=off: on + next(g for g in m.groups() if g is not None) + off, s)
+    return re.sub("[\ue000-\ue0ff]", lambda m: chr(ord(m.group(0)) - 0xE000), s)
 
 
 def inline(s: str) -> str:
     out, pos = [], 0
     for m in _CODE_SPAN.finditer(s):
-        out.append(_inline_text(s[pos:m.start()]))
-        tick = m.group(1)
-        out.append(f"{DIM}{tick}{RESET}{CYAN}{m.group(2)}{RESET}{DIM}{tick}{RESET}")
+        out.append(_emphasis(s[pos:m.start()]))
+        out.append(f"{SPAN_ON} {m.group(2).strip()} {SPAN_OFF}")
         pos = m.end()
-    out.append(_inline_text(s[pos:]))
+    out.append(_emphasis(s[pos:]))
     return "".join(out)
 
 
-def _table_row(line: str) -> str:
-    if re.match(r"^\s*\|?[\s:|-]+\|[\s:|-]*$", line) and "-" in line:
-        return f"{DIM}{line}{RESET}"  # fila separadora |---|---|
-    return re.sub(r"\|", f"{DIM}|{RESET}", inline(line))
+def _styled(style: str, off: str, text: str) -> str:
+    """Aplica `style` a todo el texto aunque adentro haya estilos anidados que lo apaguen."""
+    return style + text.replace(off, off + style) + off
 
 
-def render(text: str, color: bool = True) -> str:
+# ---------- código ----------
+
+def _highlight(line: str, lang: str) -> str:
+    comment: Optional[str] = "#" if lang in _HASH_COMMENT else "//" if lang in _SLASH_COMMENT else "--" if lang == "sql" else None
+    head, tail = line, ""
+    if comment:
+        # el comentario empieza en el primer marcador que no esté dentro de un string
+        pos, quote = 0, None
+        while pos < len(line):
+            ch = line[pos]
+            if quote:
+                if ch == "\\":
+                    pos += 1
+                elif ch == quote:
+                    quote = None
+            elif ch in "\"'":
+                quote = ch
+            elif line.startswith(comment, pos):
+                head, tail = line[:pos], line[pos:]
+                break
+            pos += 1
+
+    def paint(m):
+        kind = m.lastgroup
+        color = {"str": GREEN, "kw": MAGENTA, "num": YELLOW}[kind]
+        return f"{color}{m.group(0)}{FG_OFF}"
+    out = _CODE_TOKEN.sub(paint, head)
+    return out + (f"{GRAY}{tail}{FG_OFF}" if tail else "")
+
+
+def _code_block(lines: List[str], lang: str, width: int) -> List[str]:
+    lang = lang.lower()
+    body = [l.expandtabs(4) for l in lines]
+    w = min(max([len(l) for l in body] + [len(lang) + 1, 20]) + 2, max(width, 24))
+    out = [f"{CODE_BG}{GRAY}{(' ' + lang).ljust(w)}{FG_OFF}{CODE_BG_OFF}" if lang else f"{CODE_BG}{' ' * w}{CODE_BG_OFF}"]
+    for l in body:
+        out.append(f"{CODE_BG} {_highlight(l, lang)}{' ' * max(0, w - len(l) - 1)}{CODE_BG_OFF}")
+    out.append(f"{CODE_BG}{' ' * w}{CODE_BG_OFF}")
+    return out
+
+
+# ---------- tablas ----------
+
+def _cells(line: str) -> List[str]:
+    line = line.strip()
+    line = line[1:] if line.startswith("|") else line
+    line = line[:-1] if line.endswith("|") and not line.endswith("\\|") else line
+    return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", line)]
+
+
+def _table(rows: List[str]) -> List[str]:
+    has_header = len(rows) > 1 and _TABLE_SEP.match(rows[1]) is not None
+    aligns = [("r" if c.endswith(":") and not c.startswith(":") else "c" if c.startswith(":") and c.endswith(":") else "l")
+              for c in _cells(rows[1])] if has_header else []
+    data = [_cells(r) for i, r in enumerate(rows) if not (has_header and i == 1)]
+    n = max(len(r) for r in data)
+    data = [r + [""] * (n - len(r)) for r in data]
+    rendered = [[inline(c) for c in r] for r in data]
+    widths = [max(_vlen(r[i]) for r in rendered) for i in range(n)]
+
+    def pad(cell, i):
+        gap = widths[i] - _vlen(cell)
+        a = aligns[i] if i < len(aligns) else "l"
+        return " " * gap + cell if a == "r" else " " * (gap // 2) + cell + " " * (gap - gap // 2) if a == "c" else cell + " " * gap
+
+    bar = f"{GRAY}│{FG_OFF}"
+    line = lambda l, m, r: f"{GRAY}{l}{m.join('─' * (w + 2) for w in widths)}{r}{FG_OFF}"
+    out = [line("┌", "┬", "┐")]
+    for k, r in enumerate(rendered):
+        cells = [f" {BOLD}{pad(c, i)}{BOLD_OFF} " if has_header and k == 0 else f" {pad(c, i)} " for i, c in enumerate(r)]
+        out.append(bar + bar.join(cells) + bar)
+        if has_header and k == 0:
+            out.append(line("├", "┼", "┤"))
+    out.append(line("└", "┴", "┘"))
+    return out
+
+
+# ---------- documento ----------
+
+def render(text: str, color: bool = True, width: Optional[int] = None) -> str:
     if not color or not text:
         return text
-    out, fence = [], None
-    for line in text.split("\n"):
-        f = _FENCE.match(line)
-        if fence:
-            if f and f.group(2)[0] == fence[0] and len(f.group(2)) >= len(fence) and not f.group(3).strip():
-                fence = None
-                out.append(f"{DIM}{line}{RESET}")
-            else:
-                out.append(f"{CYAN}{line}{RESET}")
+    width = width or shutil.get_terminal_size((100, 24)).columns
+    lines, out, i = text.split("\n"), [], 0
+    while i < len(lines):
+        line = lines[i]
+        if f := _FENCE.match(line):
+            ch, n, lang = f.group(2)[0], len(f.group(2)), f.group(3)
+            code, i = [], i + 1
+            while i < len(lines) and not (lines[i].strip().startswith(ch * n) and not lines[i].strip().strip(ch)):
+                code.append(lines[i])
+                i += 1
+            out += _code_block(code, lang, width)  # un bloque sin cerrar se muestra igual (típico de una respuesta cortada)
+            i += 1
             continue
-        if f:
-            fence = f.group(2)
-            out.append(f"{DIM}{f.group(1)}{f.group(2)}{RESET}{YELLOW}{f.group(3)}{RESET}")
+        if _TABLE.match(line):
+            j = i
+            while j < len(lines) and _TABLE.match(lines[j]):
+                j += 1
+            out += _table(lines[i:j])
+            i = j
             continue
         if m := _HEADING.match(line):
-            out.append(f"{m.group(1)}{BOLD}{MAGENTA}{m.group(2)}{m.group(3)}{RESET}")
+            level, body = len(m.group(1)), inline(m.group(2)).replace(BOLD_OFF, "")
+            body = body.replace(SPAN_OFF, SPAN_OFF + (MAGENTA if level < 4 else CYAN)).replace(FG_OFF, FG_OFF + (MAGENTA if level < 4 else CYAN))
+            if level == 1:
+                out += [f"{BOLD}{MAGENTA}{UNDER}{body}{RESET}", f"{GRAY}{'═' * min(_vlen(body), width)}{FG_OFF}"]
+            elif level == 2:
+                out += [f"{BOLD}{MAGENTA}{body}{RESET}", f"{GRAY}{'─' * min(_vlen(body), width)}{FG_OFF}"]
+            else:
+                out.append(f"{BOLD}{MAGENTA if level == 3 else CYAN}{body}{RESET}")
         elif _HR.match(line):
-            out.append(f"{DIM}{line}{RESET}")
+            out.append(f"{GRAY}{'─' * min(width, 60)}{FG_OFF}")
         elif m := _QUOTE.match(line):
-            out.append(f"{DIM}{m.group(1)}{RESET}{ITALIC}{inline(m.group(2))}{RESET}")
+            depth = m.group(1).count(">")
+            out.append(f"{GRAY}{'▎ ' * depth}{FG_OFF}{_styled(ITALIC, ITALIC_OFF, inline(m.group(2).strip()))}")
         elif m := _BULLET.match(line):
-            out.append(f"{m.group(1)}{YELLOW}{m.group(2)}{RESET}{m.group(3)}{inline(m.group(4))}")
-        elif _TABLE.match(line):
-            out.append(_table_row(line))
+            indent, marker, body = m.group(1), m.group(2), m.group(3)
+            if marker[0].isdigit():
+                bullet = f"{YELLOW}{marker}{FG_OFF}"
+            else:
+                bullet = f"{YELLOW}{'•' if len(indent) < 2 else '◦' if len(indent) < 4 else '▪'}{FG_OFF}"
+            if t := _TASK.match(body):
+                bullet, body = (f"{GREEN}☑{FG_OFF}" if t.group(1) in "xX" else f"{GRAY}☐{FG_OFF}"), t.group(2)
+            out.append(f"{indent}{bullet} {inline(body)}")
         else:
             out.append(inline(line))
-    return "\n".join(out) + (RESET if fence else "")
+        i += 1
+    return "\n".join(out)

@@ -159,7 +159,7 @@ Siempre funcionan, aunque el lenguaje natural no los interprete como querés:
 | `/manager codex` | Cambiar el modelo barato que clasifica y mantiene el manifiesto. |
 | `/llm on\|off` | Clasificar las tareas con el manager (más preciso, un poco más lento) o solo con reglas. |
 | `/explain on\|off` | Mostrar la tabla completa de ruteo en cada mensaje. |
-| `/md on\|off` | Respuestas con estilos de markdown (títulos, negrita, código, listas, citas) conservando los signos `#` `**` `` ` ``; `off` = texto crudo. Sin terminal (pipe) o con `NO_COLOR` se muestra crudo. |
+| `/md on\|off` | Respuestas con el markdown interpretado, como un README en GitHub: títulos, negrita, listas con viñetas, citas, tablas alineadas y bloques de código con fondo y colores, sin ningún signo (`#`, `**`, `` ` ``). `off` = texto crudo. Sin terminal (pipe) o con `NO_COLOR` se muestra crudo. |
 | `/setup [preferencias]` | Rearmar el manifiesto desde cero. |
 | `/ask texto` · `/config texto` | Forzar la interpretación como tarea o como configuración. |
 | `/clear` | Olvidar la conversación. |
