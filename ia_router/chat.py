@@ -11,7 +11,7 @@ import re
 import sys
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import adapters, core, manifest, router, state
+from . import adapters, core, manifest, render, router, state
 
 HISTORY_TURNS = 6
 HISTORY_ANSWER_CHARS = 1500
@@ -24,6 +24,7 @@ Atajos:
   /stats             éxito y latencia por modelo /model X     fijar un modelo (X = claude|codex|... o auto)
   /manager X         cambiar el modelo barato    /llm on|off  clasificar tareas con el manager
   /explain on|off    mostrar la tabla de ruteo   /setup       rearmar el manifiesto desde cero
+  /md on|off         markdown con estilos o texto crudo
   /ask texto         forzar "es una tarea"       /config texto forzar "es configuración"
   /clear             olvidar la conversación     /help        esta ayuda      /exit  salir"""
 
@@ -86,6 +87,7 @@ class Chat:
         self.pinned = "auto"
         self.use_llm = False
         self.explain = False
+        self.markdown = True
 
     # --- utilidades ---
     def dim(self, s: str) -> str:
@@ -95,7 +97,10 @@ class Chat:
         self.write(s)
 
     def ask_yes(self, question: str, default: bool = True) -> bool:
-        ans = self.read(f"{question} [{'S/n' if default else 's/N'}]: ").strip().lower()
+        try:
+            ans = self.read(f"{question} [{'S/n' if default else 's/N'}]: ").strip().lower()
+        except EOFError:
+            return default
         return default if not ans else ans in ("s", "si", "sí", "y", "yes")
 
     # --- entrada principal ---
@@ -143,8 +148,8 @@ class Chat:
         why = ", ".join(f"{c}×{w:g}" for c, w in dec["weights"].items()) or "general"
         secs = sum(a["seconds"] for a in res["attempts"])
         fb = f" · fallback tras {', '.join(a['model'] for a in res['attempts'][:-1])}" if len(res["attempts"]) > 1 else ""
-        self.say(self.dim(f"── {used} · {why} · {secs:.1f}s{fb}"))
-        self.say(res["output"] + "\n")
+        self.say(self.dim(f"── {core.format_usage(res)} · {why} · {secs:.1f}s{fb}"))
+        self.say(render.render(res["output"], color=self.color and self.markdown) + "\n")
         self.history.append((text, used, res["output"]))
 
     def route_text(self, text: str) -> Optional[str]:
@@ -211,7 +216,7 @@ class Chat:
             self.models(cfg, probe=(arg == "probe"))
         elif cmd == "stats":
             st = state.stats()
-            self.say("\n".join([f"{n:<12} corridas={m['runs']} éxito={m['ok_rate']:.0%} medio={m['avg_seconds']}s rate_limits={m['rate_limits']}" for n, m in st.items()]) or "Sin historial todavía.")
+            self.say("\n".join([f"{n:<12} corridas={m['runs']} éxito={m['ok_rate']:.0%} medio={m['avg_seconds']}s rate_limits={m['rate_limits']} tokens in/out={m['tokens_in']}/{m['tokens_out']}" for n, m in st.items()]) or "Sin historial todavía.")
         elif cmd == "model":
             if arg in ("auto", *cfg["models"]):
                 self.pinned = arg
@@ -232,6 +237,9 @@ class Chat:
         elif cmd == "explain":
             self.explain = arg != "off"
             self.say(f"Tabla de ruteo: {'visible' if self.explain else 'oculta'}.")
+        elif cmd == "md":
+            self.markdown = arg != "off"
+            self.say(f"Markdown: {'con estilos (los signos # ** ` se conservan)' if self.markdown else 'texto crudo'}.")
         elif cmd == "setup":
             self.setup(notes=arg or (manifest.load() or {}).get("user_notes", ""))
         elif cmd == "clear":

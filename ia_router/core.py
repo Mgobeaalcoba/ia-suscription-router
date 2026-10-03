@@ -114,14 +114,14 @@ def ask(
         return result
 
     for name in order:
-        res = adapters.run_cli(name, models[name], prompt, timeout=timeout, cwd=cwd)
-        attempt = {k: res[k] for k in ("seconds", "returncode", "rate_limited", "auth_required", "error")}
+        res = adapters.run_cli(name, models[name], prompt, timeout=timeout, cwd=cwd, usage=True)
+        attempt = {k: res[k] for k in ("seconds", "returncode", "rate_limited", "auth_required", "error", "model_id", "tokens")}
         attempt["model"] = name
         result["attempts"].append(attempt)
-        state.log_event({"model": name, "ok": res["ok"], "seconds": res["seconds"], "error": res["error"],
-                         "task_chars": len(task), "weights": decision["weights"]})
+        state.log_event({"model": name, "model_id": res["model_id"], "tokens": res["tokens"], "ok": res["ok"], "seconds": res["seconds"],
+                         "error": res["error"], "task_chars": len(task), "weights": decision["weights"]})
         if res["ok"]:
-            result.update(ok=True, output=res["output"], model_used=name)
+            result.update(ok=True, output=res["output"], model_used=name, model_id=res["model_id"], tokens=res["tokens"])
             return result
         if res["rate_limited"]:
             state.set_cooldown(name, cfg.get("cooldown_minutes", 30))
@@ -129,6 +129,12 @@ def ask(
             state.set_cooldown(name, cfg.get("auth_cooldown_minutes", 60))
     result["error"] = "todos los intentos fallaron"
     return result
+
+
+def format_usage(res: Dict) -> str:
+    """'claude (claude-sonnet-5-5) · in 15.9k · out 5' del resultado de `ask`."""
+    who = res["model_used"] + (f" ({res['model_id']})" if res.get("model_id") else "")
+    return f"{who} · {adapters.fmt_tokens(res.get('tokens'))}"
 
 
 def format_ranking(decision: Dict) -> str:

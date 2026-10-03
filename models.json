@@ -33,7 +33,15 @@
         "--model",
         "haiku",
         "{prompt}"
-      ]
+      ],
+      "usage": {
+        "parser": "claude",
+        "args": [
+          "--output-format",
+          "json"
+        ],
+        "at": 1
+      }
     },
     "codex": {
       "label": "OpenAI Codex (CLI oficial: codex exec)",
@@ -62,6 +70,13 @@
         "quick": 6,
         "long_context": 6,
         "multimodal": 5
+      },
+      "usage": {
+        "parser": "codex",
+        "args": [
+          "--json"
+        ],
+        "at": 2
       }
     },
     "antigravity": {
@@ -91,6 +106,16 @@
         "quick": 8,
         "long_context": 10,
         "multimodal": 9
+      },
+      "usage": {
+        "parser": "agy",
+        "args": [
+          "--output-format",
+          "json",
+          "--log-file",
+          "{logfile}"
+        ],
+        "at": 1
       }
     }
   },

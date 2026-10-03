@@ -13,10 +13,23 @@ if mode == "ratelimit":
 if mode == "auth":
     sys.stderr.write("Please set an Auth method in settings.json\n")
     sys.exit(41)
-if os.environ.get(f"FAKE_{name}_OUT"):
-    print(os.environ[f"FAKE_{name}_OUT"])
-    sys.exit(0)
 if mode == "fail":
     sys.stderr.write("boom\n")
     sys.exit(2)
-print(f"[fake-{name.lower()}] recibi {len(body)} chars")
+text = os.environ.get(f"FAKE_{name}_OUT") or f"[fake-{name.lower()}] recibi {len(body)} chars"
+import json
+if name == "CLAUDE" and "--output-format" in args:  # igual que `claude -p --output-format json`
+    print(json.dumps({"type": "result", "is_error": False, "result": text,
+                      "usage": {"input_tokens": 2, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 50, "output_tokens": 7},
+                      "modelUsage": {"claude-fake-1": {"costUSD": 0.01, "outputTokens": 7}}}))
+elif name == "CODEX" and "--json" in args:  # igual que `codex exec --json`
+    print(json.dumps({"type": "thread.started", "thread_id": "t-fake"}))
+    print(json.dumps({"type": "item.completed", "item": {"id": "i0", "type": "agent_message", "text": text}}))
+    print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 1000, "cached_input_tokens": 600, "output_tokens": 12, "reasoning_output_tokens": 3}}))
+elif name == "AGY" and "--output-format" in args:  # igual que `agy -p --output-format json`
+    log = args[args.index("--log-file") + 1] if "--log-file" in args else None
+    if log:
+        open(log, "w").write('I1003 model_config_manager.go:327] Propagating selected model override to backend: label="Fake Flash (High)"\n')
+    print(json.dumps({"status": "SUCCESS", "response": text, "usage": {"input_tokens": 500, "output_tokens": 40, "thinking_tokens": 30, "cache_read_tokens": 0}}))
+else:
+    print(text)

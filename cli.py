@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from typing import Dict, Optional
 
-from ia_router import adapters, core, manifest, state
+from ia_router import adapters, core, manifest, render, state
 
 
 def _interactive() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _color() -> bool:
+    return sys.stdout.isatty() and "NO_COLOR" not in os.environ
 
 
 def _input(prompt: str) -> str:
@@ -64,7 +69,7 @@ def cmd_ask(cfg, args) -> int:
     for a in res["attempts"]:
         print(f"intento {a['model']}: {'OK' if not a['error'] else a['error'][:80]} ({a['seconds']}s)", file=sys.stderr)
     if res["ok"]:
-        print(f"\n[{res['model_used']}]\n{res['output']}")
+        print(f"\n[{core.format_usage(res)}]\n{render.render(res['output'], color=_color())}")
         return 0
     print(f"Falló: {res.get('error')}", file=sys.stderr)
     return 1
@@ -158,9 +163,9 @@ def cmd_stats(cfg, _args) -> int:
     if not st:
         print("Sin historial todavía (se arma con cada `ask`).")
         return 0
-    print(f"{'modelo':<8} {'corridas':>8} {'éxito':>6} {'seg. medio':>10} {'rate limits':>11} {'auth':>5}")
+    print(f"{'modelo':<12} {'corridas':>8} {'éxito':>6} {'seg. medio':>10} {'rate limits':>11} {'auth':>5} {'tokens in':>10} {'tokens out':>10}")
     for n, m in st.items():
-        print(f"{n:<8} {m['runs']:>8} {m['ok_rate']:>6.0%} {m['avg_seconds']:>10} {m['rate_limits']:>11} {m['auth_errors']:>5}")
+        print(f"{n:<12} {m['runs']:>8} {m['ok_rate']:>6.0%} {m['avg_seconds']:>10} {m['rate_limits']:>11} {m['auth_errors']:>5} {m['tokens_in']:>10} {m['tokens_out']:>10}")
     return 0
 
 

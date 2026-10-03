@@ -75,7 +75,7 @@ def stats() -> Dict[str, Dict]:
     for line in lines:
         try:
             ev = json.loads(line)
-            m = out.setdefault(ev["model"], {"runs": 0, "ok": 0, "rate_limits": 0, "auth_errors": 0, "_secs": 0.0})
+            m = out.setdefault(ev["model"], {"runs": 0, "ok": 0, "rate_limits": 0, "auth_errors": 0, "_secs": 0.0, "tokens_in": 0, "tokens_out": 0})
         except (ValueError, KeyError, TypeError):
             continue
         m["runs"] += 1
@@ -83,6 +83,9 @@ def stats() -> Dict[str, Dict]:
         m["rate_limits"] += 1 if ev.get("error") == "rate_limited" else 0
         m["auth_errors"] += 1 if ev.get("error") == "auth_required" else 0
         m["_secs"] += float(ev.get("seconds") or 0)
+        t = ev.get("tokens") or {}
+        m["tokens_in"] += t.get("input", 0)
+        m["tokens_out"] += t.get("output", 0)
     for m in out.values():
         m["ok_rate"] = round(m["ok"] / m["runs"], 2)
         m["avg_seconds"] = round(m.pop("_secs") / m["runs"], 1)

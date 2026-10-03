@@ -104,19 +104,19 @@ Cada mensaje cae en una de tres categorías, y el programa lo interpreta solo:
 ```
 ia> Escribí una función Python que invierta un string. Solo el código.
 … ruteando
-── codex · coding×2 · 7.6s
+── codex (gpt-6.1-sol) · in 15.7k (13.2k caché) · out 32 · coding×2 · 7.6s
 def invertir_string(texto: str) -> str:
     return texto[::-1]
 
 ia> Ahora hacela recursiva.
-── codex · coding×2 · 7.1s
+── codex (gpt-6.1-sol) · in 15.9k (13.2k caché) · out 28 · coding×2 · 7.1s
 def invertir_string(texto: str) -> str:
     if len(texto) <= 1:
         return texto
     return texto[-1] + invertir_string(texto[:-1])
 
 ia> Redactá un saludo de una frase para un cliente nuevo.
-── claude · writing×1 · 4.1s
+── claude (claude-sonnet-5-5) · in 16.5k (8.4k caché) · out 72 · writing×1 · 4.1s
 ...
 
 ia> Prefiero Claude para todo lo de código
@@ -127,7 +127,7 @@ Cambios propuestos:
 ¿Aplico? [S/n]: n
 ```
 
-(Los tiempos son típicos, de ejemplo.) La línea `── codex · coding×2 · 7.6s` dice **qué modelo respondió, por qué categoría y cuánto tardó**. Si hubo fallback lo indica (`· fallback tras codex`).
+(Los tiempos son típicos, de ejemplo.) La línea `── codex (gpt-6.1-sol) · in 15.7k (13.2k caché) · out 32 · coding×2 · 7.6s` dice **qué proveedor respondió y con qué modelo exacto, cuántos tokens de entrada (`in`, con lo que salió de caché entre paréntesis) y de salida (`out`) gastó, por qué categoría y cuánto tardó**. Los tokens y el modelo los informa cada CLI (Claude y Codex en JSON; Antigravity en JSON y su log); si alguno no los informa se muestra `tokens n/d`. `/stats` suma los tokens por proveedor. Si hubo fallback lo indica (`· fallback tras codex`).
 
 ### Cómo recuerda la conversación
 
@@ -159,6 +159,7 @@ Siempre funcionan, aunque el lenguaje natural no los interprete como querés:
 | `/manager codex` | Cambiar el modelo barato que clasifica y mantiene el manifiesto. |
 | `/llm on\|off` | Clasificar las tareas con el manager (más preciso, un poco más lento) o solo con reglas. |
 | `/explain on\|off` | Mostrar la tabla completa de ruteo en cada mensaje. |
+| `/md on\|off` | Respuestas con estilos de markdown (títulos, negrita, código, listas, citas) conservando los signos `#` `**` `` ` ``; `off` = texto crudo. Sin terminal (pipe) o con `NO_COLOR` se muestra crudo. |
 | `/setup [preferencias]` | Rearmar el manifiesto desde cero. |
 | `/ask texto` · `/config texto` | Forzar la interpretación como tarea o como configuración. |
 | `/clear` | Olvidar la conversación. |
