@@ -83,11 +83,21 @@ ia-router
 La primera vez, si no hay manifiesto, te ofrece armarlo ahí mismo. Después ves esto:
 
 ```
-ia-router · manager: claude · modelos: claude, codex, antigravity
-Hablame normal (tareas o preferencias). /help para ver los atajos, /exit para salir.
+ ●─╮     ╦╔═╗   ╦═╗╔═╗╦ ╦╔╦╗╔═╗╦═╗
+ ●─┼─◉   ║╠═╣ ─ ╠╦╝║ ║║ ║ ║ ║╣ ╠╦╝  v0.1.0
+ ●─╯     ╩╩ ╩   ╩╚═╚═╝╚═╝ ╩ ╚═╝╩╚═  tus suscripciones de IA, ruteadas
 
-ia>
+ ╭──────────────────────────────────────────────────────────────────────────╮
+ │ manager claude                                                           │
+ │ modelos ● claude   ● codex   ● antigravity                               │
+ │ carpeta ~/Documents/ia-suscription-router                                │
+ ╰──────────────────────────────────────────────────────────────────────────╯
+ Hablame normal: tareas o preferencias  ·  /help atajos  ·  /exit salir
+
+ia ❯
 ```
+
+En la terminal el logo lleva degradé (naranja → magenta → azul) y cada proveedor su color: `●` encendido si el CLI está instalado, `○` apagado si falta. Con menos de 60 columnas se muestra una versión compacta.
 
 ### Qué podés escribir
 

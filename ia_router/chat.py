@@ -7,11 +7,13 @@ se pregunta. Los comandos con "/" siempre funcionan como atajos.
 """
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import sys
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import adapters, core, manifest, render, router, state
+from . import __version__, adapters, banner, core, manifest, render, router, state
 
 HISTORY_TURNS = 6
 HISTORY_ANSWER_CHARS = 1500
@@ -264,10 +266,14 @@ class Chat:
     # --- bucle ---
     def banner(self) -> str:
         cfg = core.load_config()
-        m = manifest.load()
-        mgr = (m or {}).get("manager") or core.manager_name(cfg)
-        return (f"ia-router · manager: {mgr} · modelos: {', '.join(cfg['models'])}\n"
-                f"Hablame normal (tareas o preferencias). /help para ver los atajos, /exit para salir.\n")
+        mgr = (manifest.load() or {}).get("manager") or core.manager_name(cfg)
+        names = list(cfg["models"])
+        ok = {n: cfg["models"][n].get("enabled", True) and adapters.is_available(n, cfg["models"][n]) for n in names}
+        return banner.render(__version__, mgr, names, ok, os.getcwd(), color=self.color, width=shutil.get_terminal_size((80, 24)).columns, pinned=self.pinned)
+
+    def prompt(self) -> str:
+        # \001..\002 marcan los códigos de color como no imprimibles para que readline calcule bien el cursor
+        return f"\001\033[1;38;2;200;90;160m\002ia ❯\001\033[0m\002 " if self.color else "ia> "
 
     def loop(self) -> int:
         self.say(self.banner())
@@ -278,7 +284,7 @@ class Chat:
                 self.setup(notes=notes)
         while True:
             try:
-                line = self.read("ia> ")
+                line = self.read(self.prompt())
             except EOFError:
                 self.say()
                 return 0

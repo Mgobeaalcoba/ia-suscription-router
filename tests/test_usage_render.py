@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.environ["PATH"] = str(ROOT / "tests" / "fake_bin") + os.pathsep + os.environ["PATH"]
 
-from ia_router import adapters, chat, core, render, state  # noqa: E402
+from ia_router import adapters, banner, chat, core, render, state  # noqa: E402
 
 
 class UsageTests(unittest.TestCase):
@@ -174,6 +174,60 @@ class RenderTests(unittest.TestCase):
             self.assertNotIn(render.BOLD, "\n".join(out[1:]))
         finally:
             del os.environ["FAKE_CLAUDE_OUT"]
+
+
+class BannerTests(unittest.TestCase):
+    OK = {"claude": True, "codex": True, "antigravity": False}
+    NAMES = ["claude", "codex", "antigravity"]
+
+    def make(self, **kw):
+        args = dict(version="9.9.9", manager="claude", models=self.NAMES, installed=self.OK, cwd="/tmp/x", color=False, width=100)
+        args.update(kw)
+        return banner.render(**args)
+
+    def test_plain_banner_has_logo_and_status(self):
+        out = self.make()
+        for piece in ("╦═╗╔═╗╦ ╦╔╦╗╔═╗╦═╗", "v9.9.9", "manager claude", "● claude", "● codex", "○ antigravity", "/tmp/x", "/help", "/exit"):
+            self.assertIn(piece, out)
+        self.assertNotIn("\033", out)
+
+    def test_wordmark_rows_aligned_and_boxes_closed(self):
+        lines = self.make().splitlines()
+        box = [l for l in lines if l.lstrip().startswith(("╭", "│", "╰"))]
+        self.assertEqual(len(box), 5)
+        self.assertEqual(len({len(l) for l in box}), 1)
+
+    def test_color_banner_fits_width_and_uses_brand_colors(self):
+        out = banner.render("1", "claude", self.NAMES, self.OK, "/tmp/x", color=True, width=90)
+        self.assertIn("38;2;217;119;87", out)
+        for l in out.splitlines():
+            self.assertLessEqual(len(re.sub(r"\033\[[0-9;]*m", "", l)), 90)
+
+    def test_narrow_terminal_gets_compact_banner(self):
+        out = self.make(width=40)
+        self.assertNotIn("╦═╗", out)
+        self.assertIn("ia-router v9.9.9", out)
+
+    def test_long_path_is_shortened(self):
+        out = self.make(cwd="/a/" + "muy-largo/" * 20 + "fin")
+        self.assertIn("…", out)
+        self.assertIn("fin", out)
+
+    def test_pinned_model_shown(self):
+        self.assertIn("fijado: codex", self.make(pinned="codex"))
+        self.assertNotIn("fijado", self.make(pinned="auto"))
+
+    def test_chat_prompt_is_readline_safe_only_with_color(self):
+        self.assertEqual(chat.Chat(color=False).prompt(), "ia> ")
+        p = chat.Chat(color=True).prompt()
+        self.assertIn("\001", p)
+        self.assertTrue(p.endswith("\002 "))
+
+    def test_chat_banner_renders(self):
+        os.environ["ROUTER_HOME"] = tempfile.mkdtemp()
+        out = chat.Chat(color=False).banner()
+        self.assertIn("╦═╗╔═╗╦ ╦╔╦╗╔═╗╦═╗", out)
+        self.assertIn(f"v{__import__('ia_router').__version__}", out)
 
 
 if __name__ == "__main__":
