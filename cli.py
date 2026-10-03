@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI del router: setup | manifest | doctor | route | ask | stats | mcp | reset-cooldowns."""
+"""Router de suscripciones de IA. Sin argumentos abre el chat; también: setup | manifest | doctor | route | ask | stats | mcp | reset-cooldowns."""
 from __future__ import annotations
 
 import argparse
@@ -166,7 +166,8 @@ def cmd_stats(cfg, _args) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(prog="router", description=__doc__)
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd")
+    sub.add_parser("chat", help="modo conversacional (es lo que se abre sin argumentos)")
     dp = sub.add_parser("doctor", help="verifica qué CLIs están instalados")
     dp.add_argument("--probe", action="store_true", help="llamada mínima real a cada CLI: login, latencia, versión")
     for name in ("route", "ask"):
@@ -191,6 +192,9 @@ def main() -> int:
     sub.add_parser("reset-cooldowns", help="limpiar cooldowns (rate limit y auth)")
     args = p.parse_args()
 
+    if args.cmd in (None, "chat"):
+        from ia_router import chat
+        return chat.run()
     if args.cmd == "mcp":
         from ia_router import mcp_server
         mcp_server.main()

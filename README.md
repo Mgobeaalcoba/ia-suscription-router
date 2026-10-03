@@ -6,11 +6,21 @@ La idea central es el **manifiesto**: un modelo barato que elegís vos (el *mana
 
 - Sin dependencias externas: solo Python 3.9+ (stdlib).
 - **No toca tokens OAuth**: cada CLI usa su propio login y su propia suscripción.
-- Estado: MVP CLI. Verificado con los CLIs reales (claude 2.1.288, codex 0.160.0, agy 1.2.16) 20 tests con CLIs simulados, instalación desde cero, MCP (alta, baja y llamadas reales desde Claude) y `manifest refine` interactivo. Versión de escritorio: pendiente.
+- Estado: MVP CLI. Verificado con los CLIs reales (claude 2.1.288, codex 0.160.0, agy 1.2.16) 39 tests con CLIs simulados, instalación desde cero, MCP (alta, baja y llamadas reales desde Claude) y `manifest refine` interactivo. Versión de escritorio: pendiente.
 
 > **Guía de uso completa, con ejemplos y solución de problemas: [docs/USO.md](docs/USO.md).**
 
 ## Primer uso
+
+**Lo más simple: abrí el chat y hablá.**
+
+```bash
+ia-router      # (o: python3 cli.py)
+```
+
+Escribís tareas ("Arreglá este bug…") y se rutean solas; o preferencias ("Usá Codex para todo lo de código") y el manager barato actualiza tu manifiesto con tu confirmación. Los comandos de abajo hacen lo mismo para scripts.
+
+Con comandos:
 
 ```bash
 python3 cli.py setup        # elegís el manager, prueba cada CLI y arma el manifiesto
@@ -39,6 +49,7 @@ Vive en `~/.ia-router/manifest.json` (versión anterior en `manifest.prev.json`,
 
 | Comando | Qué hace |
 |---|---|
+| *(sin argumentos)* / `chat` | Abre el modo conversacional. |
 | `setup` | Primer uso: manager + sonda + manifiesto. |
 | `manifest show\|generate\|refine\|path` | Ver, regenerar o ajustar el manifiesto. |
 | `doctor [--probe]` | CLIs instalados; con `--probe`, login, latencia y versión reales. |
@@ -71,6 +82,7 @@ Herramientas: `route_task`, `ask_model`, `list_models`. Si una tarea tarda mucho
 | Archivo | Rol |
 |---|---|
 | `models.json` | Modelos: comandos, `cheap_cmd` (modo barato del manager), timeouts y `strengths` iniciales (hipótesis). |
+| `ia_router/chat.py` | Modo conversacional: intención, historial, atajos `/`. |
 | `ia_router/manifest.py` | Manifiesto: sonda, generación y refinado con el manager, aplicación al router. |
 | `ia_router/router.py` | Clasificación y ranking. |
 | `ia_router/adapters.py` | Ejecución de CLIs; detección de rate limit y de falta de login. |

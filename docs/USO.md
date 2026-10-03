@@ -68,7 +68,111 @@ python3 -m unittest discover -s tests    # opcional: debe terminar en OK
 
 ---
 
-## 3. Primer uso (recorrido completo)
+## 3. Modo chat (la forma recomendada de usarlo)
+
+Es la experiencia "como `claude`": abrís el programa y **hablás**. No tenés que recordar comandos.
+
+### Abrirlo
+
+```bash
+ia-router
+```
+
+(`ia-router` es un enlace a `cli.py`. Si no existe: `ln -sf ~/Documents/ia-suscription-router/cli.py ~/.local/bin/ia-router`, con `~/.local/bin` en tu `PATH`. También funciona `python3 cli.py` o `python3 cli.py chat`.)
+
+La primera vez, si no hay manifiesto, te ofrece armarlo ahí mismo. Después ves esto:
+
+```
+ia-router · manager: claude · modelos: claude, codex, antigravity
+Hablame normal (tareas o preferencias). /help para ver los atajos, /exit para salir.
+
+ia>
+```
+
+### Qué podés escribir
+
+Cada mensaje cae en una de tres categorías, y el programa lo interpreta solo:
+
+| Tipo | Ejemplos | Qué pasa |
+|---|---|---|
+| **Tarea** | *"Escribí una función Python que invierta un string"* · *"Redactá un saludo para un cliente"* | Se rutea al mejor modelo según tu manifiesto, se ejecuta y ves la respuesta. |
+| **Configuración** | *"Prefiero Claude para todo lo de código"* · *"Usá Codex para todo lo de debugging"* · *"Desactivá antigravity"* · *"Que el manager sea codex"* | El manager barato propone un cambio al manifiesto, te lo muestra y **vos confirmás**. |
+| **Consulta** | *"Mostrame el manifiesto"* · *"¿Cómo estoy configurado?"* · *"Qué modelos tengo"* · *"Mostrame las estadísticas"* | Muestra el estado, sin gastar cuota. |
+
+### Una sesión real
+
+```
+ia> Escribí una función Python que invierta un string. Solo el código.
+… ruteando
+── codex · coding×2 · 7.6s
+def invertir_string(texto: str) -> str:
+    return texto[::-1]
+
+ia> Ahora hacela recursiva.
+── codex · coding×2 · 7.1s
+def invertir_string(texto: str) -> str:
+    if len(texto) <= 1:
+        return texto
+    return texto[-1] + invertir_string(texto[:-1])
+
+ia> Redactá un saludo de una frase para un cliente nuevo.
+── claude · writing×1 · 4.1s
+...
+
+ia> Prefiero Claude para todo lo de código
+… consultando al manager (claude)
+Cambios propuestos:
+  coding: codex > claude > antigravity  →  claude > codex > antigravity
+  debugging: codex > claude > antigravity  →  claude > codex > antigravity
+¿Aplico? [S/n]: n
+```
+
+(Los tiempos son típicos, de ejemplo.) La línea `── codex · coding×2 · 7.6s` dice **qué modelo respondió, por qué categoría y cuánto tardó**. Si hubo fallback lo indica (`· fallback tras codex`).
+
+### Cómo recuerda la conversación
+
+Los CLIs no tienen memoria entre llamadas, así que el chat **antepone un resumen de los últimos 6 turnos** a cada tarea. Por eso *"Ahora hacela recursiva"* se entiende. Además, un mensaje corto sin tema propio **hereda el tema del anterior** para el ruteo: ese seguimiento fue a Codex (el mismo del turno anterior) y no a un modelo "rápido". En cambio, si cambiás de tema (*"Redactá un saludo…"*), se rutea de nuevo.
+
+`/clear` borra esa memoria. Se pierde al salir (no se guarda la conversación).
+
+### Cuando el mensaje es ambiguo
+
+Si no se puede saber si es una tarea o una instrucción, **te pregunta** en vez de adivinar:
+
+```
+ia> usá Codex para revisar este bug
+¿Es una instrucción de configuración (c) o una tarea para ejecutar (t)? [c/T]:
+```
+
+Enter = tarea. Los mensajes largos, con varias líneas o con bloques de código se tratan siempre como tarea.
+
+### Atajos con `/`
+
+Siempre funcionan, aunque el lenguaje natural no los interprete como querés:
+
+| Atajo | Qué hace |
+|---|---|
+| `/manifest` | Ver tus preferencias. |
+| `/models` · `/models probe` | Estado de los CLIs; con `probe`, llamada real para ver login y latencia (gasta cuota). |
+| `/stats` | Éxito y latencia por modelo. |
+| `/model codex` · `/model auto` | Fijar un modelo para todo lo que sigue, o volver al ruteo automático. |
+| `/manager codex` | Cambiar el modelo barato que clasifica y mantiene el manifiesto. |
+| `/llm on\|off` | Clasificar las tareas con el manager (más preciso, un poco más lento) o solo con reglas. |
+| `/explain on\|off` | Mostrar la tabla completa de ruteo en cada mensaje. |
+| `/setup [preferencias]` | Rearmar el manifiesto desde cero. |
+| `/ask texto` · `/config texto` | Forzar la interpretación como tarea o como configuración. |
+| `/clear` | Olvidar la conversación. |
+| `/help` · `/exit` | Ayuda · salir (también `salir`, Ctrl-D). |
+
+`Ctrl-C` durante una tarea la interrumpe sin cerrar el programa.
+
+### Comandos sueltos (sin abrir el chat)
+
+Todo lo del chat también existe como comandos para usar en scripts o en una sola línea (`ask`, `route`, `manifest`, `doctor`, `stats`…). Se describen en la sección 5.
+
+---
+
+## 4. Primer uso (recorrido completo con comandos)
 
 ### Paso 1 — Verificar el entorno
 
@@ -176,9 +280,9 @@ La tabla va por **stderr** y la respuesta por **stdout**. Así podés redirigir 
 
 ---
 
-## 4. Los comandos, con ejemplos
+## 5. Los comandos, con ejemplos
 
-### 4.1 `ask` — rutear y ejecutar
+### 5.1 `ask` — rutear y ejecutar
 
 ```bash
 python3 cli.py ask "TAREA" [-m MODELO] [-c ARCHIVO]... [--llm] [--dry-run]
@@ -232,7 +336,7 @@ codex      6.0  OK             analysis×1→6
 
 **Código de salida:** `0` si hubo respuesta, `1` si fallaron todos los intentos, `2` si pediste un modelo inexistente.
 
-### 4.2 `route` — solo decidir
+### 5.2 `route` — solo decidir
 
 Igual que `ask --dry-run`, pero más corto. Útil para entender por qué elige lo que elige.
 
@@ -251,7 +355,7 @@ antigravity 1.0 no disponible  ...
 
 Cómo leer la tabla: `debugging×3→10` significa *categoría debugging, peso 3, este modelo tiene puntaje 10 ahí*. El `score` es el promedio ponderado de todas las categorías detectadas.
 
-### 4.3 `manifest` — ver y ajustar tus preferencias
+### 5.3 `manifest` — ver y ajustar tus preferencias
 
 ```bash
 python3 cli.py manifest show                    # ver el manifiesto actual
@@ -314,14 +418,14 @@ También podés editar `~/.ia-router/manifest.json` a mano. Formato mínimo de u
 
 Para desactivar un modelo por completo, ponelo en la lista `"disabled"` del mismo archivo.
 
-### 4.4 `doctor` — diagnóstico
+### 5.4 `doctor` — diagnóstico
 
 ```bash
 python3 cli.py doctor            # rápido, gratis: ¿están instalados?
 python3 cli.py doctor --probe    # real: ¿están logueados? ¿qué latencia tienen?
 ```
 
-### 4.5 `stats` — qué pasó realmente
+### 5.5 `stats` — qué pasó realmente
 
 ```bash
 python3 cli.py stats
@@ -336,7 +440,7 @@ codex           1   100%        8.0           0     0
 
 Sale del log local (`~/.ia-router/log.jsonl`). El log **no guarda tus prompts**, solo modelo, éxito, duración y errores.
 
-### 4.6 `reset-cooldowns`
+### 5.6 `reset-cooldowns`
 
 Si un modelo quedó en cooldown y ya lo arreglaste (volviste a loguearte, o pasó el límite de cuota):
 
@@ -346,7 +450,7 @@ python3 cli.py reset-cooldowns
 
 ---
 
-## 5. Usarlo desde Claude Code (MCP)
+## 6. Usarlo desde Claude Code (MCP)
 
 Permite que Claude delegue subtareas a los otros modelos dentro de una conversación.
 
@@ -376,7 +480,7 @@ El servidor MCP **usa el mismo manifiesto** que el CLI. Si tardan mucho las tare
 
 ---
 
-## 6. Dónde se guarda todo
+## 7. Dónde se guarda todo
 
 | Qué | Dónde |
 |---|---|
@@ -390,9 +494,9 @@ Para empezar de cero: `rm -r ~/.ia-router` (borra manifiesto, cooldowns y log).
 
 ---
 
-## 7. Configuración avanzada
+## 8. Configuración avanzada
 
-### 7.1 Variables de entorno
+### 8.1 Variables de entorno
 
 | Variable | Efecto | Ejemplo |
 |---|---|---|
@@ -402,7 +506,7 @@ Para empezar de cero: `rm -r ~/.ia-router` (borra manifiesto, cooldowns y log).
 
 `ROUTER_HOME` es útil para probar sin tocar tu manifiesto real.
 
-### 7.2 `models.json`
+### 8.2 `models.json`
 
 Cada modelo se define así:
 
@@ -429,7 +533,7 @@ Ajustes globales: `cooldown_minutes` (rate limit, 30), `auth_cooldown_minutes` (
 
 **Agregar un modelo nuevo:** sumá una entrada en `"models"` con su `cmd`, corré `python3 cli.py doctor --probe` para confirmar que funciona y luego `python3 cli.py manifest generate` para que el manager lo incluya.
 
-### 7.3 Categorías de tareas
+### 8.3 Categorías de tareas
 
 El router distingue estos tipos de tarea. Son los que aparecen en el manifiesto:
 
@@ -439,7 +543,7 @@ Una tarea puede tener varias a la vez (por ejemplo `debugging×3, coding×2`). `
 
 ---
 
-## 8. Problemas comunes
+## 9. Problemas comunes
 
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
@@ -452,11 +556,12 @@ Una tarea puede tener varias a la vez (por ejemplo `debugging×3, coding×2`). `
 | `manifest refine` dice que no devolvió un manifiesto válido | El manager respondió algo no parseable. | Reformulá la instrucción; no se cambió nada. |
 | `Error: modelo desconocido` | Pasaste un `-m` que no existe en `models.json`. | Usá `auto` o uno de los modelos listados en el mensaje. |
 | Un comando falla con *timeout* | La tarea tardó más que el `timeout` del modelo. | Subí `timeout` en `models.json`. |
+| Una tarea tardó minutos y respondió bien | La Mac se durmió a mitad de la llamada. | Corré el chat con `caffeinate -is ia-router`: no se duerme sola mientras esté abierto, pero podés suspenderla a mano (botón de bloqueo o menú ). |
 | Falla el flag de un CLI tras actualizarlo | Los CLIs cambian seguido sus opciones. | Revisá `<cli> --help` y ajustá `cmd` en `models.json`, o usá `ROUTER_CMD_<MODELO>`. |
 
 ---
 
-## 9. Límites que conviene conocer
+## 10. Límites que conviene conocer
 
 - **Es para uso personal.** Corre con tus suscripciones, a ritmo humano. Si algún día lo distribuís a terceros, revisá los términos de cada proveedor (Anthropic, por ejemplo, exige API key para productos de terceros).
 - **Cada `ask` y cada `setup` gastan cuota real** de tus suscripciones. `route` y `--dry-run` no gastan.

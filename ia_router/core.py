@@ -89,9 +89,14 @@ def ask(
     use_llm: bool = False,
     timeout: Optional[float] = None,
     cwd: Optional[str] = None,
+    preamble: str = "",
+    route_text: Optional[str] = None,
 ) -> Dict:
+    """`preamble` (p. ej. el historial del chat) se antepone al prompt pero no influye en el ruteo.
+    `route_text` permite clasificar con otro texto que el enviado (p. ej. un seguimiento corto hereda el tema anterior)."""
     prompt, ctx_len, warnings = build_prompt(task, context_files)
-    decision = route(task, cfg, ctx_len, use_llm=use_llm)
+    prompt = preamble + prompt
+    decision = route(route_text or task, cfg, ctx_len, use_llm=use_llm)
     models = cfg["models"]
     if model != "auto":
         if model not in models:
