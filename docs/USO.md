@@ -91,13 +91,13 @@ La primera vez, si no hay manifiesto, te ofrece armarlo ahí mismo. Después ves
  │ manager claude                                                           │
  │ modelos ● claude   ● codex   ● antigravity                               │
  │ carpeta ~/Documents/ia-suscription-router                                │
- ╰──────────────────────────────────────────────────────────────────────────╯
+ ╰──────────────────────────────────────────── by Mgobeaalcoba · mgatc.com ─╯
  Hablame normal: tareas o preferencias  ·  /help atajos  ·  /exit salir
 
 ia ❯
 ```
 
-En la terminal el logo lleva degradé (naranja → magenta → azul) y cada proveedor su color: `●` encendido si el CLI está instalado, `○` apagado si falta. Con menos de 60 columnas se muestra una versión compacta.
+En la terminal el logo lleva degradé (naranja → magenta → azul) y cada proveedor su color: `●` encendido si el CLI está instalado, `○` apagado si falta. `mgatc.com` es un link clickeable en las terminales que lo soportan (iTerm2, Terminal de macOS reciente, Ghostty, etc.). Con menos de 60 columnas se muestra una versión compacta.
 
 ### Qué podés escribir
 

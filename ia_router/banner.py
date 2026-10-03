@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from typing import Dict, List, Optional
 
-from .render import BOLD, DIM, GRAY, RESET, _vlen
+from .render import BOLD, DIM, GRAY, RESET, UNDER, _vlen
 
 # Wordmark "ia-router" (fuente Calvin S): tres filas por letra.
 _GLYPHS = {
@@ -20,6 +20,7 @@ _WORD = "ia-router"
 _BRAND = [(217, 119, 87), (99, 168, 248), (52, 168, 83)]
 _STOPS = [(217, 119, 87), (200, 90, 160), (66, 133, 244)]
 _TAGLINE = "tus suscripciones de IA, ruteadas"
+_AUTHOR, _SITE, _URL = "Mgobeaalcoba", "mgatc.com", "https://mgatc.com"
 
 
 def _rgb(c, bold: bool = False) -> str:
@@ -61,13 +62,25 @@ def _short_path(path: str, room: int) -> str:
     return path if len(path) <= room else "…" + path[-(room - 1):]
 
 
-def _box(lines: List[str], width: int, color: bool) -> List[str]:
+def _credit(color: bool) -> str:
+    """'by Mgobeaalcoba · mgatc.com' con el sitio como link clickeable (OSC 8) en terminales que lo soportan."""
+    if not color:
+        return f"by {_AUTHOR} · {_SITE}"
+    link = f"\033]8;;{_URL}\033\\{UNDER}{_rgb((66, 133, 244))}{_SITE}{RESET}\033]8;;\033\\"
+    return f"{DIM}by{RESET} {_rgb(_STOPS[1], True)}{_AUTHOR}{RESET} {GRAY}·{RESET} {link}"
+
+
+def _box(lines: List[str], width: int, color: bool, footer: str = "") -> List[str]:
     inner = width - 4
     b = (lambda s: f"{GRAY}{s}{RESET}") if color else (lambda s: s)
     out = [b("╭" + "─" * (width - 2) + "╮")]
     for l in lines:
         out.append(b("│") + " " + l + " " * max(0, inner - _vlen(l)) + " " + b("│"))
-    out.append(b("╰" + "─" * (width - 2) + "╯"))
+    if footer:  # firma alineada a la derecha sobre el borde inferior
+        seg = f" {footer} "
+        out.append(b("╰" + "─" * max(1, width - 3 - _vlen(seg))) + seg + b("─╯"))
+    else:
+        out.append(b("╰" + "─" * (width - 2) + "╯"))
     return out
 
 
@@ -84,7 +97,7 @@ def render(version: str, manager: str, models: List[str], installed: Dict[str, b
 
     if width < 60:  # versión compacta
         title = f"{BOLD}ia-router{RESET} {dim('v' + version)}" if color else f"ia-router v{version}"
-        return "\n".join([title, f"{label('manager')}{manager}", label("modelos") + "  ".join(chips), hints, ""])
+        return "\n".join([title, f"{label('manager')}{manager}", label("modelos") + "  ".join(chips), hints, dim(_credit(False)), ""])
 
     mark, word = _mark(models, installed, color), _wordmark(color)
     ver = dim(f"v{version}")
@@ -94,4 +107,4 @@ def render(version: str, manager: str, models: List[str], installed: Dict[str, b
     info = [f"{label('manager')}{manager}" + (f"   {dim('fijado:')} {pinned}" if pinned and pinned != "auto" else ""),
             f"{label('modelos')}" + "   ".join(chips),
             f"{label('carpeta')}{_short_path(cwd, room)}"]
-    return "\n".join([""] + [" " + h for h in head] + [""] + [" " + l for l in _box(info, w, color)] + [" " + hints, ""])
+    return "\n".join([""] + [" " + h for h in head] + [""] + [" " + l for l in _box(info, w, color, _credit(color))] + [" " + hints, ""])

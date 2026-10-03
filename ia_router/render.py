@@ -21,7 +21,7 @@ CYAN, YELLOW, BLUE, MAGENTA, GREEN, GRAY = "\033[36m", "\033[33m", "\033[34m", "
 CODE_BG, CODE_BG_OFF = "\033[48;5;236m", "\033[49m"      # bloque de código
 SPAN_ON, SPAN_OFF = "\033[38;5;216m\033[48;5;238m", "\033[39m\033[49m"  # `código en línea`
 
-_ANSI = re.compile(r"\033\[[0-9;]*m")
+_ANSI = re.compile(r"\033\[[0-9;]*m|\033\][^\033\007]*(?:\033\\|\007)")  # CSI de estilo y links OSC 8
 _FENCE = re.compile(r"^(\s*)(`{3,}|~{3,})\s*([\w+#.-]*)\s*$")
 _HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
 _BULLET = re.compile(r"^(\s*)([-*+]|\d+[.)])\s+(.*)$")

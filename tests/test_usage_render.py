@@ -201,7 +201,7 @@ class BannerTests(unittest.TestCase):
         out = banner.render("1", "claude", self.NAMES, self.OK, "/tmp/x", color=True, width=90)
         self.assertIn("38;2;217;119;87", out)
         for l in out.splitlines():
-            self.assertLessEqual(len(re.sub(r"\033\[[0-9;]*m", "", l)), 90)
+            self.assertLessEqual(render._vlen(l), 90)
 
     def test_narrow_terminal_gets_compact_banner(self):
         out = self.make(width=40)
@@ -212,6 +212,17 @@ class BannerTests(unittest.TestCase):
         out = self.make(cwd="/a/" + "muy-largo/" * 20 + "fin")
         self.assertIn("…", out)
         self.assertIn("fin", out)
+
+    def test_credit_in_box_footer_with_link(self):
+        plain = self.make()
+        self.assertIn("by Mgobeaalcoba · mgatc.com", [l for l in plain.splitlines() if l.lstrip().startswith("╰")][0])
+        colored = banner.render("1", "claude", self.NAMES, self.OK, "/tmp/x", color=True, width=90)
+        self.assertIn("\033]8;;https://mgatc.com\033\\", colored)
+        foot = [l for l in colored.splitlines() if "╰" in l][0]
+        self.assertEqual(render._vlen(foot), len([l for l in colored.splitlines() if "╭" in l][0]) and render._vlen([l for l in colored.splitlines() if "╭" in l][0]))
+
+    def test_credit_in_compact_banner(self):
+        self.assertIn("by Mgobeaalcoba · mgatc.com", self.make(width=40))
 
     def test_pinned_model_shown(self):
         self.assertIn("fijado: codex", self.make(pinned="codex"))
