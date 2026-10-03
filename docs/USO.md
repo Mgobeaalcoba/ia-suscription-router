@@ -99,6 +99,31 @@ ia ❯
 
 En la terminal el logo lleva degradé (naranja → magenta → azul) y cada proveedor su color: `●` encendido si el CLI está instalado, `○` apagado si falta. `mgatc.com` es un link clickeable en las terminales que lo soportan (iTerm2, Terminal de macOS reciente, Ghostty, etc.). Con menos de 60 columnas se muestra una versión compacta.
 
+### La caja de entrada y los archivos
+
+Lo que escribís va en una caja con borde en degradé (como las de Claude Code, Codex y Antigravity), con un texto de ayuda cuando está vacía y, debajo, los atajos y el manager activo. Arriba a la derecha del borde ves el modelo: `auto` o el que fijaste con `/model`.
+
+```
+╭──────────────────────────────────────────────────────────────────── auto ─╮
+│ ❯ "/Users/vos/Fotos/captura de pantalla.png" ¿qué error muestra?          │
+╰────────────────────────────────────────────────────────────────────────────╯
+  ⎘ captura de pantalla.png · imagen · 212.3 KB
+  ⏎ enviar · ⌥⏎ o \⏎ nueva línea · / comandos · ⌃D salir        manager claude
+```
+
+**Archivos: arrastralos a la terminal.** La terminal pega la ruta y el router la deja limpia (absoluta, entre comillas si tiene espacios) y la resalta si el archivo existe; debajo aparece cada adjunto con su tipo y tamaño. También funciona escribir o pegar una ruta (`/ruta/archivo`, `~/archivo`, `./archivo`, `file://…`). Al enviar:
+
+| Tipo | Qué pasa |
+|---|---|
+| Texto y código (`.txt`, `.md`, `.py`, `.csv`, `.json`… o cualquier archivo en UTF-8 de hasta 200 KB) | Su contenido se anexa a la tarea como contexto; sirve para cualquier modelo. |
+| Imágenes, PDF, binarios y carpetas | Se pasa la ruta y el modelo la abre (Claude recibe acceso a esa carpeta con `--add-dir`; Codex la lee desde su sandbox de solo lectura). La tarea suma la categoría `multimodal` si hay imagen o PDF. |
+
+**Antigravity no puede abrir archivos en modo no interactivo** (pide un permiso que no puede pedir), así que con adjuntos que no son texto el router lo descarta del ruteo (`models.json`: `"reads_files": false`). Si lo fijaste con `/model antigravity`, te avisa en lugar de fallar.
+
+**Edición.** Flechas, `Inicio`/`Fin` (o `Ctrl-A`/`Ctrl-E`), `Alt-←/→` para saltar palabras, `Ctrl-W` borra la palabra, `Ctrl-U` hasta el inicio de la línea, `Ctrl-K` hasta el final. **Varias líneas:** `Alt-Enter`, `Ctrl-J` o `\` + Enter; un texto pegado con saltos de línea se respeta. **Historial:** `↑`/`↓` (se guarda entre sesiones en `~/.ia-router/history.jsonl`). **Comandos:** al escribir `/` aparece la lista filtrada; `Tab` o Enter completan, `↑`/`↓` eligen. **Salir:** `Ctrl-D` con la caja vacía, `Ctrl-C` dos veces, o `/exit`. `Ctrl-C` con texto lo borra.
+
+Si no hay terminal (pipe, `TERM=dumb`) o tiene menos de 40 columnas, se usa el prompt simple `ia> ` y todo lo demás funciona igual.
+
 ### Qué podés escribir
 
 Cada mensaje cae en una de tres categorías, y el programa lo interpreta solo:

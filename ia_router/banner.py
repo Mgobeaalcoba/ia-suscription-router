@@ -21,6 +21,7 @@ _BRAND = [(217, 119, 87), (99, 168, 248), (52, 168, 83)]
 _STOPS = [(217, 119, 87), (200, 90, 160), (66, 133, 244)]
 _TAGLINE = "tus suscripciones de IA, ruteadas"
 _AUTHOR, _SITE, _URL = "Mgobeaalcoba", "mgatc.com", "https://mgatc.com"
+_GITHUB = "https://github.com/Mgobeaalcoba"
 
 
 def _rgb(c, bold: bool = False) -> str:
@@ -66,8 +67,10 @@ def _credit(color: bool) -> str:
     """'by Mgobeaalcoba · mgatc.com' con el sitio como link clickeable (OSC 8) en terminales que lo soportan."""
     if not color:
         return f"by {_AUTHOR} · {_SITE}"
-    link = f"\033]8;;{_URL}\033\\{UNDER}{_rgb((66, 133, 244))}{_SITE}{RESET}\033]8;;\033\\"
-    return f"{DIM}by{RESET} {_rgb(_STOPS[1], True)}{_AUTHOR}{RESET} {GRAY}·{RESET} {link}"
+    osc = lambda url, text: f"\033]8;;{url}\033\\{text}\033]8;;\033\\"
+    author = osc(_GITHUB, f"{_rgb(_STOPS[1], True)}{UNDER}{_AUTHOR}{RESET}")
+    site = osc(_URL, f"{UNDER}{_rgb((66, 133, 244))}{_SITE}{RESET}")
+    return f"{DIM}by{RESET} {author} {GRAY}·{RESET} {site}"
 
 
 def _box(lines: List[str], width: int, color: bool, footer: str = "") -> List[str]:

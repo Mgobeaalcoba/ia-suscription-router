@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from . import adapters, manifest as manifest_mod, router, state
+from . import adapters, attachments as att_mod, manifest as manifest_mod, router, state
 
 MAX_CONTEXT_CHARS = 400_000
 
@@ -59,8 +59,12 @@ def manager_runner(cfg: Dict, name: Optional[str] = None, timeout: float = 120):
     return run
 
 
-def route(task: str, cfg: Dict, context_len: int = 0, prefer: Optional[str] = None, use_llm: bool = False) -> Dict:
+def route(task: str, cfg: Dict, context_len: int = 0, prefer: Optional[str] = None, use_llm: bool = False,
+          boost: Optional[Dict[str, float]] = None, needs_files: bool = False) -> Dict:
+    """`boost` suma categorías (p. ej. multimodal por una imagen adjunta); `needs_files` descarta los CLIs que no abren archivos."""
     weights = router.detect(task, context_len)
+    for cat, w in (boost or {}).items():
+        weights[cat] = max(weights.get(cat, 0), w)
     source = "reglas"
     if use_llm:
         llm_weights = router.classify_with_llm(task, manager_runner(cfg, timeout=60))
@@ -74,6 +78,11 @@ def route(task: str, cfg: Dict, context_len: int = 0, prefer: Optional[str] = No
         cooldown=state.cooldown_remaining,
         prefer=prefer,
     )
+    if needs_files:
+        for r in ranking:
+            if not models[r["name"]].get("reads_files", True):
+                r.update(usable=False, blocked=True, why=r["why"] + " (no abre archivos)")
+        ranking.sort(key=lambda r: (not r["usable"], -r["score"]))
     chosen = next((r["name"] for r in ranking if r["usable"]), None)
     return {"weights": weights, "classifier": source, "ranking": ranking, "chosen": chosen,
             "manifest": bool(cfg.get("_manifest"))}
@@ -91,20 +100,28 @@ def ask(
     cwd: Optional[str] = None,
     preamble: str = "",
     route_text: Optional[str] = None,
+    attachments: Optional[List[att_mod.Attachment]] = None,
 ) -> Dict:
     """`preamble` (p. ej. el historial del chat) se antepone al prompt pero no influye en el ruteo.
-    `route_text` permite clasificar con otro texto que el enviado (p. ej. un seguimiento corto hereda el tema anterior)."""
-    prompt, ctx_len, warnings = build_prompt(task, context_files)
-    prompt = preamble + prompt
-    decision = route(route_text or task, cfg, ctx_len, use_llm=use_llm)
+    `route_text` permite clasificar con otro texto que el enviado (p. ej. un seguimiento corto hereda el tema anterior).
+    `attachments`: los de texto se anexan como contexto; imágenes/PDF/binarios/carpetas se referencian por ruta y
+    obligan a usar un modelo que pueda abrir archivos."""
+    inline, referenced = att_mod.split_for_prompt(attachments or [])
+    prompt, ctx_len, warnings = build_prompt(task, list(context_files or []) + inline)
+    prompt = preamble + prompt + att_mod.reference_block(referenced)
+    boost = {"multimodal": 2.0} if any(a.kind in ("image", "pdf") for a in referenced) else None
+    decision = route(route_text or task, cfg, ctx_len, use_llm=use_llm, boost=boost, needs_files=bool(referenced))
     models = cfg["models"]
     if model != "auto":
         if model not in models:
             raise ValueError(f"modelo desconocido: {model} (opciones: auto, {', '.join(models)})")
+        if referenced and not models[model].get("reads_files", True):
+            raise ValueError(f"{model} no puede abrir archivos adjuntos (imágenes, PDF, binarios) en modo no interactivo; usá /model auto u otro modelo")
         order = [model]
     else:
         order = [r["name"] for r in decision["ranking"] if r["usable"]][:max_attempts]
 
+    att_dirs = sorted({str(a.path if a.kind == "dir" else a.path.parent) for a in referenced})
     result: Dict = {"decision": decision, "order": order, "warnings": warnings, "attempts": [], "ok": False, "output": ""}
     if dry_run:
         result["dry_run"] = True
@@ -114,7 +131,7 @@ def ask(
         return result
 
     for name in order:
-        res = adapters.run_cli(name, models[name], prompt, timeout=timeout, cwd=cwd, usage=True)
+        res = adapters.run_cli(name, models[name], prompt, timeout=timeout, cwd=cwd, usage=True, extra_dirs=att_dirs)
         attempt = {k: res[k] for k in ("seconds", "returncode", "rate_limited", "auth_required", "error", "model_id", "tokens")}
         attempt["model"] = name
         result["attempts"].append(attempt)
@@ -141,7 +158,7 @@ def format_ranking(decision: Dict) -> str:
     lines = [f"Clasificación ({decision['classifier']}, manifiesto: {'sí' if decision.get('manifest') else 'no'}): " + (", ".join(f"{c}×{w:g}" for c, w in decision["weights"].items()) or "general")]
     lines.append(f"{'modelo':<8} {'score':>5}  estado")
     for r in decision["ranking"]:
-        status = "OK" if r["usable"] else ("no disponible" if not r["available"] else f"cooldown {r['cooldown_s']}s")
+        status = "OK" if r["usable"] else ("no disponible" if not r["available"] else "sin archivos" if r.get("blocked") else f"cooldown {r['cooldown_s']}s")
         lines.append(f"{r['name']:<8} {r['score']:>5}  {status:<14} {r['why']}")
     lines.append(f"→ elegido: {decision['chosen'] or 'ninguno'}")
     return "\n".join(lines)

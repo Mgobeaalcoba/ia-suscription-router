@@ -13,7 +13,7 @@ import shutil
 import sys
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import __version__, adapters, banner, core, manifest, render, router, state
+from . import __version__, adapters, attachments, banner, core, editor as editor_mod, manifest, render, router, state
 
 HISTORY_TURNS = 6
 HISTORY_ANSWER_CHARS = 1500
@@ -29,6 +29,16 @@ Atajos:
   /md on|off         markdown interpretado o texto crudo
   /ask texto         forzar "es una tarea"       /config texto forzar "es configuración"
   /clear             olvidar la conversación     /help        esta ayuda      /exit  salir"""
+
+COMMANDS = [
+    editor_mod.Command("/help", "ver los atajos"), editor_mod.Command("/manifest", "ver tus preferencias"),
+    editor_mod.Command("/models", "estado de los CLIs (/models probe = llamada real)"), editor_mod.Command("/model", "fijar un modelo o auto"),
+    editor_mod.Command("/stats", "éxito, latencia y tokens por modelo"), editor_mod.Command("/manager", "cambiar el modelo barato"),
+    editor_mod.Command("/llm", "clasificar tareas con el manager (on|off)"), editor_mod.Command("/explain", "mostrar la tabla de ruteo (on|off)"),
+    editor_mod.Command("/md", "markdown interpretado o crudo (on|off)"), editor_mod.Command("/setup", "rearmar el manifiesto desde cero"),
+    editor_mod.Command("/ask", "forzar: es una tarea"), editor_mod.Command("/config", "forzar: es configuración"),
+    editor_mod.Command("/clear", "olvidar la conversación"), editor_mod.Command("/exit", "salir"),
+]
 
 # ---------- interpretación de mensajes ----------
 
@@ -83,8 +93,9 @@ def build_preamble(history: List[Tuple[str, str, str]]) -> str:
 # ---------- sesión ----------
 
 class Chat:
-    def __init__(self, read: Callable[[str], str] = input, write: Callable[[str], None] = print, color: bool = False):
-        self.read, self.write, self.color = read, write, color
+    def __init__(self, read: Callable[[str], str] = input, write: Callable[[str], None] = print, color: bool = False,
+                 editor: Optional[editor_mod.LineEditor] = None):
+        self.read, self.write, self.color, self.editor = read, write, color, editor
         self.history: List[Tuple[str, str, str]] = []
         self.pinned = "auto"
         self.use_llm = False
@@ -111,7 +122,8 @@ class Chat:
         text = text.strip()
         if not text:
             return True
-        if text.startswith("/"):
+        first = attachments.tokens(text)[0][2]
+        if text.startswith("/") and not attachments.resolve(first):  # "/Users/x/foto.png" es un archivo, no un comando
             return self.command(text)
         if text.lower() in ("exit", "salir", "quit", "chau"):
             return False
@@ -130,9 +142,13 @@ class Chat:
     # --- tarea ---
     def run_task(self, text: str, files: Optional[List[str]] = None) -> None:
         cfg = core.load_config()
+        atts = attachments.find(text)
+        if atts and self.editor is None:  # con el editor, los adjuntos ya se mostraron al enviar
+            for a in atts:
+                self.say(self.dim(f"⎘ {a.label()}"))
         self.say(self.dim("… ruteando"))
         try:
-            res = core.ask(text, cfg, model=self.pinned, context_files=files, use_llm=self.use_llm,
+            res = core.ask(text, cfg, model=self.pinned, context_files=files, use_llm=self.use_llm, attachments=atts,
                            preamble=build_preamble(self.history), route_text=self.route_text(text))
         except ValueError as exc:
             self.say(f"Error: {exc}")
@@ -269,7 +285,11 @@ class Chat:
         mgr = (manifest.load() or {}).get("manager") or core.manager_name(cfg)
         names = list(cfg["models"])
         ok = {n: cfg["models"][n].get("enabled", True) and adapters.is_available(n, cfg["models"][n]) for n in names}
-        return banner.render(__version__, mgr, names, ok, os.getcwd(), color=self.color, width=shutil.get_terminal_size((80, 24)).columns, pinned=self.pinned)
+        return banner.render(__version__, mgr, names, ok, attachments.safe_cwd(), color=self.color, width=shutil.get_terminal_size((80, 24)).columns, pinned=self.pinned)
+
+    def status_line(self) -> str:
+        cfg = core.load_config()
+        return f"manager {(manifest.load() or {}).get('manager') or core.manager_name(cfg)}"
 
     def prompt(self) -> str:
         # \001..\002 marcan los códigos de color como no imprimibles para que readline calcule bien el cursor
@@ -284,7 +304,7 @@ class Chat:
                 self.setup(notes=notes)
         while True:
             try:
-                line = self.read(self.prompt())
+                line = self.editor.read() if self.editor else self.read(self.prompt())
             except EOFError:
                 self.say()
                 return 0
@@ -307,4 +327,10 @@ def run() -> int:
         import readline  # noqa: F401  (edición de línea e historial con flechas)
     except ImportError:
         pass
-    return Chat(color=sys.stdout.isatty()).loop()
+    color = sys.stdout.isatty() and "NO_COLOR" not in os.environ
+    chat = Chat(color=color)
+    if editor_mod.supported():
+        chat.editor = editor_mod.LineEditor(
+            COMMANDS, model=lambda: chat.pinned, status=lambda: chat.status_line(),
+            history_path=state.home() / "history.jsonl", color=color)
+    return chat.loop()

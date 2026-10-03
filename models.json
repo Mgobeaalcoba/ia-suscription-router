@@ -1,5 +1,5 @@
 {
-  "_comment": "Las 'strengths' (0-10) son HIPÓTESIS iniciales; el manifiesto (python3 cli.py setup) las reemplaza con las preferencias del usuario. Los comandos son plantillas: verificalos con `python3 cli.py doctor --probe`. 'cheap_cmd' es el modo barato usado cuando el modelo actúa como manager. 'antigravity' reemplaza a Gemini CLI (Google lo dio de baja el 18/06/2026). agy no lee el prompt por stdin en modo headless: sin 'cmd_stdin'.",
+  "_comment": "Las 'strengths' (0-10) son HIPÓTESIS iniciales; el manifiesto (python3 cli.py setup) las reemplaza con las preferencias del usuario. Los comandos son plantillas: verificalos con `python3 cli.py doctor --probe`. 'cheap_cmd' es el modo barato usado cuando el modelo actúa como manager. 'antigravity' reemplaza a Gemini CLI (Google lo dio de baja el 18/06/2026). agy no lee el prompt por stdin en modo headless: sin 'cmd_stdin'. 'reads_files': false = el CLI no puede abrir archivos por ruta en modo no interactivo (agy pide un permiso que no puede pedir): el router no lo usa para imágenes/PDF/binarios adjuntos.",
   "cooldown_minutes": 30,
   "models": {
     "claude": {
@@ -39,6 +39,13 @@
         "args": [
           "--output-format",
           "json"
+        ],
+        "at": 1
+      },
+      "add_dir": {
+        "args": [
+          "--add-dir",
+          "{dir}"
         ],
         "at": 1
       }
@@ -116,7 +123,8 @@
           "{logfile}"
         ],
         "at": 1
-      }
+      },
+      "reads_files": false
     }
   },
   "default_manager": "claude",

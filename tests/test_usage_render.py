@@ -218,6 +218,7 @@ class BannerTests(unittest.TestCase):
         self.assertIn("by Mgobeaalcoba · mgatc.com", [l for l in plain.splitlines() if l.lstrip().startswith("╰")][0])
         colored = banner.render("1", "claude", self.NAMES, self.OK, "/tmp/x", color=True, width=90)
         self.assertIn("\033]8;;https://mgatc.com\033\\", colored)
+        self.assertIn("\033]8;;https://github.com/Mgobeaalcoba\033\\", colored)
         foot = [l for l in colored.splitlines() if "╰" in l][0]
         self.assertEqual(render._vlen(foot), len([l for l in colored.splitlines() if "╭" in l][0]) and render._vlen([l for l in colored.splitlines() if "╭" in l][0]))
 

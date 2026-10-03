@@ -168,12 +168,32 @@ def _table(rows: List[str]) -> List[str]:
     return out
 
 
+# ---------- ajuste de líneas ----------
+
+def wrap(s: str, width: int, first: str = "", rest: str = "") -> List[str]:
+    """Ajusta por palabras a `width` columnas visibles (los códigos ANSI no cuentan). `first`/`rest` son los prefijos
+    de la primera línea y de las siguientes (sangría francesa en listas y citas)."""
+    words = s.split(" ")
+    lines, cur, cur_len = [], first, _vlen(first)
+    fresh = True
+    for w in words:
+        wl = _vlen(w)
+        if not fresh and cur_len + 1 + wl > width:
+            lines.append(cur)
+            cur, cur_len, fresh = rest, _vlen(rest), True
+        if not fresh:
+            cur, cur_len = cur + " ", cur_len + 1
+        cur, cur_len, fresh = cur + w, cur_len + wl, False
+    lines.append(cur)
+    return lines
+
+
 # ---------- documento ----------
 
 def render(text: str, color: bool = True, width: Optional[int] = None) -> str:
     if not color or not text:
         return text
-    width = width or shutil.get_terminal_size((100, 24)).columns
+    width = (width or shutil.get_terminal_size((100, 24)).columns) - 1  # un margen para no depender del auto-wrap de la terminal
     lines, out, i = text.split("\n"), [], 0
     while i < len(lines):
         line = lines[i]
@@ -206,7 +226,8 @@ def render(text: str, color: bool = True, width: Optional[int] = None) -> str:
             out.append(f"{GRAY}{'─' * min(width, 60)}{FG_OFF}")
         elif m := _QUOTE.match(line):
             depth = m.group(1).count(">")
-            out.append(f"{GRAY}{'▎ ' * depth}{FG_OFF}{_styled(ITALIC, ITALIC_OFF, inline(m.group(2).strip()))}")
+            bar = f"{GRAY}{'▎ ' * depth}{FG_OFF}"
+            out += wrap(_styled(ITALIC, ITALIC_OFF, inline(m.group(2).strip())), width, bar, bar)
         elif m := _BULLET.match(line):
             indent, marker, body = m.group(1), m.group(2), m.group(3)
             if marker[0].isdigit():
@@ -215,8 +236,8 @@ def render(text: str, color: bool = True, width: Optional[int] = None) -> str:
                 bullet = f"{YELLOW}{'•' if len(indent) < 2 else '◦' if len(indent) < 4 else '▪'}{FG_OFF}"
             if t := _TASK.match(body):
                 bullet, body = (f"{GREEN}☑{FG_OFF}" if t.group(1) in "xX" else f"{GRAY}☐{FG_OFF}"), t.group(2)
-            out.append(f"{indent}{bullet} {inline(body)}")
+            out += wrap(inline(body), width, f"{indent}{bullet} ", indent + " " * (_vlen(bullet) + 1))
         else:
-            out.append(inline(line))
+            out += wrap(inline(line), width)
         i += 1
     return "\n".join(out)

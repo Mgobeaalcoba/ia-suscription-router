@@ -54,6 +54,16 @@ def _with_usage_args(name: str, spec: dict, template: List[str], logfile: str) -
     return template[:at] + extra + template[at:]
 
 
+def _with_dirs(name: str, spec: dict, template: List[str], dirs: List[str]) -> List[str]:
+    """Da acceso de lectura a las carpetas de los adjuntos (claude: --add-dir), que si no quedan fuera de su carpeta de trabajo."""
+    a = spec.get("add_dir") or {}
+    if os.environ.get(f"ROUTER_CMD_{name.upper()}") or not a.get("args") or not dirs:
+        return template
+    extra = [x.replace("{dir}", d) for d in dirs for x in a["args"]]
+    at = a.get("at", 1)
+    return template[:at] + extra + template[at:]
+
+
 def run_cli(
     name: str,
     spec: dict,
@@ -61,6 +71,7 @@ def run_cli(
     timeout: Optional[float] = None,
     cwd: Optional[str] = None,
     usage: bool = False,
+    extra_dirs: Optional[List[str]] = None,
 ) -> Dict:
     """Ejecuta el CLI del modelo y devuelve un dict normalizado.
 
@@ -74,6 +85,7 @@ def run_cli(
         os.close(fd)
     if usage:
         template = _with_usage_args(name, spec, template, logfile)
+    template = _with_dirs(name, spec, template, list(extra_dirs or []))
     argv = [a.replace("{prompt}", prompt) for a in template]
     t0 = time.time()
     try:
