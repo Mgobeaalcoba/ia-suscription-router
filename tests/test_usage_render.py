@@ -74,7 +74,7 @@ class UsageTests(unittest.TestCase):
         self.assertEqual(res["model_id"], "claude-fake-1")
         self.assertEqual(core.format_usage(res), "claude (claude-fake-1) · in 152 (50 caché) · out 7")
         st = state.stats()["claude"]
-        self.assertEqual((st["tokens_in"], st["tokens_out"]), (152, 7))
+        self.assertEqual((st["tokens_in"], st["tokens_out"], st["token_runs"]), (152, 7, 1))
 
     def test_fmt_tokens(self):
         self.assertEqual(adapters.fmt_tokens(None), "tokens n/d")

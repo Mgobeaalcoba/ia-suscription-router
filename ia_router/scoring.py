@@ -77,10 +77,10 @@ def raw_metrics(names: List[str], metrics: Dict, stats: Dict) -> Dict[str, Dict]
     for n in names:
         e = (metrics.get("models") or {}).get(n, {})
         s = stats.get(n, {})
-        runs = s.get("runs", 0)
+        runs, tok_runs = s.get("runs", 0), s.get("token_runs", 0)
         out[n] = {
             "seconds": _calibration_speed(e),
-            "tokens_per_run": (s.get("tokens_in", 0) + s.get("tokens_out", 0)) / runs if runs >= MIN_RUNS and (s.get("tokens_in", 0) + s.get("tokens_out", 0)) else None,
+            "tokens_per_run": (s.get("tokens_in", 0) + s.get("tokens_out", 0)) / tok_runs if tok_runs >= MIN_RUNS else None,
             "ok_rate": s.get("ok_rate") if runs >= MIN_RUNS else _calibration_reliability(e),
             "categories": e.get("categories", {}),
             "model_id": e.get("model_id"), "calibrated_at": e.get("calibrated_at"),
@@ -89,9 +89,9 @@ def raw_metrics(names: List[str], metrics: Dict, stats: Dict) -> Dict[str, Dict]
 
 
 def _relative_best(values: Dict[str, Optional[float]]) -> Dict[str, Optional[float]]:
-    """10 × (mejor / este); el menor valor (más rápido, menos tokens) obtiene 10."""
+    """10 × (mejor / este); el menor valor (más rápido, menos tokens) obtiene 10. Hace falta el dato de al menos dos modelos."""
     known = [v for v in values.values() if v]
-    best = min(known) if known else None
+    best = min(known) if len(known) >= 2 else None  # con un solo dato no hay con qué comparar: queda como desconocido
     return {n: (10 * best / v if v and best else None) for n, v in values.items()}
 
 

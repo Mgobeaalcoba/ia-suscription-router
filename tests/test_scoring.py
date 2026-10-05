@@ -382,12 +382,29 @@ class ScoringTests(Home):
         self.assertTrue(t["codex"]["coding"]["known"]["speed"])
         self.assertFalse(t["antigravity"]["coding"]["known"]["speed"])
 
+    def test_a_single_data_point_is_not_a_comparison(self):
+        m = metrics({"claude": ({}, 4)})
+        t = scoring.compute(self.cfg, m, {}, {}, self.prior())
+        self.assertFalse(t["claude"]["coding"]["known"]["speed"])
+        self.assertEqual(t["claude"]["coding"]["values"]["speed"], t["claude"]["coding"]["values"]["quality"])
+
     def test_telemetry_feeds_quota_and_reliability(self):
-        stats = {"claude": {"runs": 5, "ok_rate": 0.4, "tokens_in": 5000, "tokens_out": 0}, "codex": {"runs": 5, "ok_rate": 1.0, "tokens_in": 500, "tokens_out": 0}}
+        stats = {"claude": {"runs": 5, "token_runs": 5, "ok_rate": 0.4, "tokens_in": 5000, "tokens_out": 0},
+                 "codex": {"runs": 5, "token_runs": 5, "ok_rate": 1.0, "tokens_in": 500, "tokens_out": 0}}
         t = scoring.compute(self.cfg, {"models": {}}, stats, {}, self.prior())
         self.assertEqual(t["codex"]["coding"]["values"]["quota"], 10.0)
         self.assertEqual(t["claude"]["coding"]["values"]["quota"], 1.0)
         self.assertEqual(t["claude"]["coding"]["values"]["reliability"], 4.0)
+
+    def test_runs_without_token_data_do_not_distort_quota(self):
+        # 10 corridas viejas sin tokens + 3 con tokens: el promedio es sobre las 3, no sobre las 13
+        stats = {"claude": {"runs": 13, "token_runs": 3, "ok_rate": 1.0, "tokens_in": 3000, "tokens_out": 0},
+                 "codex": {"runs": 13, "token_runs": 3, "ok_rate": 1.0, "tokens_in": 6000, "tokens_out": 0}}
+        t = scoring.compute(self.cfg, {"models": {}}, stats, {}, self.prior())
+        self.assertEqual(t["claude"]["coding"]["values"]["quota"], 10.0)
+        self.assertEqual(t["codex"]["coding"]["values"]["quota"], 5.0)
+        few = {"claude": {"runs": 13, "token_runs": 2, "ok_rate": 1.0, "tokens_in": 100, "tokens_out": 0}}
+        self.assertFalse(scoring.compute(self.cfg, {"models": {}}, few, {}, self.prior())["claude"]["coding"]["known"]["quota"])
 
     def test_few_runs_are_ignored(self):
         stats = {"claude": {"runs": 2, "ok_rate": 0.0, "tokens_in": 9, "tokens_out": 9}}
