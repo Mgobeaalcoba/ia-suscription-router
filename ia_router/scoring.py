@@ -1,36 +1,48 @@
-"""Puntaje objetivo de cada modelo por categoría, con el perfil de criterios del usuario.
+"""Puntaje de cada modelo por tipo de tarea, calculado con métricas objetivas y tus prioridades.
 
-    puntaje(modelo, categoría) = Σ peso_d × valor_d     con d en {calidad, velocidad, cuota, confiabilidad}
+    puntaje(modelo, categoría) = Σ peso × valor      (valores de 0 a 10, relativos a TUS modelos)
 
-  calidad       acierto medido por `calibrate` en esa categoría (0-10), mezclado con la estimación inicial de models.json:
-                (aciertos + K × estimado) / (preguntas + K), con K = 2: la estimación vale como 2 preguntas más, y con pocas muestras pesa más
-  velocidad     10 × (más rápido / este modelo), con los segundos medios de las llamadas de calibración
-  cuota         10 × (el que menos tokens gasta / este modelo), con tokens por corrida reales (log)
-  confiabilidad 10 × tasa de éxito real (log) o, si no hay, la de las llamadas de calibración
+  precisión   Elo de Arena en la categoría (preferencia humana, con margen de error) y, si hay clave, los benchmarks con respuesta
+              correcta de Artificial Analysis. Si no hay dato, la estimación de `models.json` (marcada como estimada).
+  velocidad   tokens/s publicados por Artificial Analysis. Solo existe con su clave.
+  costo       precio de lista por millón de tokens (Arena o Artificial Analysis). Proxy del consumo de cuota.
+              Velocidad y costo van en escala logarítmica: 2 puntos menos por cada duplicación frente al mejor de tus modelos.
 
-Si falta un dato objetivo (p. ej. nunca calibraste) esa dimensión vale lo mismo que la calidad de la categoría, de modo que
-sin datos el puntaje es exactamente la estimación inicial: nada se mueve sin evidencia.
-Los pesos salen del perfil (`criteria`) y la precedencia final es: manifiesto (preferencias explícitas) > perfil > medido > estimado.
+Una dimensión sin datos para TODOS tus modelos no pesa (los pesos se reparten entre las que sí tienen). Los pesos por tipo de
+tarea salen de tus respuestas en `priorities`; sin respuestas hay unos por defecto. Este puntaje alimenta al router (`strengths`).
 """
 from __future__ import annotations
 
 import json
 import os
-import re
 import time
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
-from . import calibrate, external, state
+from . import metrics, router, state
 
-PRIOR_K = 2
-DIMS = ("quality", "speed", "quota", "reliability")
-DEFAULT_WEIGHTS = {"quality": 0.70, "speed": 0.15, "quota": 0.05, "reliability": 0.10}
-QUICK_WEIGHTS = {"quality": 0.40, "speed": 0.40, "quota": 0.10, "reliability": 0.10}
-MIN_RUNS = 3  # corridas reales mínimas para confiar en el log
-TIEBREAK_GAP = 0.5
+DIMS = ("precision", "speed", "cost")
+LABELS = {"precision": "precisión", "speed": "velocidad", "cost": "costo"}
+DEFAULT_WEIGHTS = {"precision": 0.70, "speed": 0.15, "cost": 0.15}
+QUICK_WEIGHTS = {"precision": 0.40, "speed": 0.50, "cost": 0.10}
+PRESETS: Dict[str, Dict[str, float]] = {
+    "precision": {"precision": 0.80, "speed": 0.10, "cost": 0.10},
+    "balanced": {"precision": 0.50, "speed": 0.25, "cost": 0.25},
+    "speed": {"precision": 0.40, "speed": 0.50, "cost": 0.10},
+    "cost": {"precision": 0.40, "speed": 0.10, "cost": 0.50},
+}
+PRESET_LABELS = {"precision": "Precisión", "balanced": "Equilibrado", "speed": "Velocidad", "cost": "Costo"}
+# grupos de tareas sobre los que se pregunta: (clave, título, categorías del router)
+GROUPS: List[Tuple[str, str, List[str]]] = [
+    ("coding", "Código y debugging", ["coding", "debugging"]),
+    ("writing", "Escritura y redacción", ["writing"]),
+    ("analysis", "Análisis, datos e investigación", ["analysis", "data", "research"]),
+    ("math", "Matemática", ["math"]),
+    ("quick", "Tareas rápidas", ["quick"]),
+]
+CATEGORIES: List[str] = list(router.PATTERNS) + ["quick", "general"]
 
 
-# ---------- perfil ----------
+# ---------- perfil: tus prioridades ----------
 
 def profile_path():
     return state.home() / "profile.json"
@@ -52,190 +64,171 @@ def save_profile(profile: Dict) -> None:
     os.replace(tmp, profile_path())
 
 
+def group_of(cat: str) -> Optional[str]:
+    return next((k for k, _, cats in GROUPS if cat in cats), None)
+
+
 def weights_for(profile: Dict, cat: str) -> Dict[str, float]:
-    w = (profile.get("category_weights") or {}).get(cat) or (QUICK_WEIGHTS if cat == "quick" and "weights" not in profile else None) \
-        or profile.get("weights") or DEFAULT_WEIGHTS
-    total = sum(max(0.0, w.get(d, 0.0)) for d in DIMS) or 1.0
-    return {d: max(0.0, w.get(d, 0.0)) / total for d in DIMS}
+    choice = (profile.get("priorities") or {}).get(group_of(cat) or "")
+    if choice in PRESETS:
+        return PRESETS[choice]
+    return QUICK_WEIGHTS if cat == "quick" else DEFAULT_WEIGHTS
 
 
-# ---------- métricas por modelo ----------
+# ---------- cálculo ----------
 
-def _calibration_speed(entry: Dict) -> Optional[float]:
-    secs = [c["seconds"] for c in entry.get("calls", []) if c.get("ok") and c["key"] != "ping" and c.get("seconds")]
-    return sum(secs) / len(secs) if secs else None
-
-
-def _calibration_reliability(entry: Dict) -> Optional[float]:
-    calls = entry.get("calls", [])
-    return sum(1 for c in calls if c.get("ok")) / len(calls) if len(calls) >= MIN_RUNS else None
+def enabled_models(cfg: Dict) -> List[str]:
+    return [n for n, s in cfg["models"].items() if s.get("enabled", True)]
 
 
-def raw_metrics(names: List[str], metrics: Dict, stats: Dict) -> Dict[str, Dict]:
-    """Valores objetivos sin normalizar por modelo: segundos, tokens por corrida, tasa de éxito."""
-    out = {}
+def build(cfg: Dict, data: Optional[Dict] = None, profile: Optional[Dict] = None, ids: Optional[Dict[str, Optional[str]]] = None) -> Dict:
+    """{"table": {modelo: {categoría: desglose}}, "available": {dim: bool}, "arena": …, "aa": …, "missing_ids": [modelos]}.
+    El desglose: score, values {dim: 0-10 | None}, srcs {dim: texto}, weights {dim: peso usado}, basis ('métricas' | 'estimado')."""
+    data = data if data is not None else metrics.active()
+    profile = profile if profile is not None else load_profile()
+    names = enabled_models(cfg)
+    ids = ids if ids is not None else metrics.known_model_ids(names)
+    overrides = {n: cfg["models"][n].get("external") or {} for n in names}
+    arena, aa = metrics.matches(names, ids, overrides, data)
+    prec = metrics.precision_values(names, arena, aa)
+    speed, cost = metrics.speed_values(names, aa), metrics.cost_values(names, arena, aa)
+    table: Dict[str, Dict[str, Dict]] = {n: {} for n in names}
     for n in names:
-        e = (metrics.get("models") or {}).get(n, {})
-        s = stats.get(n, {})
-        runs, tok_runs = s.get("runs", 0), s.get("token_runs", 0)
-        out[n] = {
-            "seconds": _calibration_speed(e),
-            "tokens_per_run": (s.get("tokens_in", 0) + s.get("tokens_out", 0)) / tok_runs if tok_runs >= MIN_RUNS else None,
-            "ok_rate": s.get("ok_rate") if runs >= MIN_RUNS else _calibration_reliability(e),
-            "categories": e.get("categories", {}),
-            "model_id": e.get("model_id"), "calibrated_at": e.get("calibrated_at"),
-        }
-    return out
-
-
-def _relative_best(values: Dict[str, Optional[float]]) -> Dict[str, Optional[float]]:
-    """10 × (mejor / este); el menor valor (más rápido, menos tokens) obtiene 10. Hace falta el dato de al menos dos modelos."""
-    known = [v for v in values.values() if v]
-    best = min(known) if len(known) >= 2 else None  # con un solo dato no hay con qué comparar: queda como desconocido
-    return {n: (10 * best / v if v and best else None) for n, v in values.items()}
-
-
-def compute(cfg: Dict, metrics: Dict, stats: Dict, profile: Dict, priors: Optional[Dict[str, Dict]] = None,
-            ext_priors: Optional[Dict[str, Dict[str, Dict]]] = None) -> Dict[str, Dict[str, Dict]]:
-    """{modelo: {categoría: desglose}}. `priors` = estimaciones iniciales (models.json) por modelo; `ext_priors` = priors de
-    Arena / Artificial Analysis (`external.derive_priors`), que cuando existen reemplazan a esas estimaciones."""
-    ext_priors = ext_priors or {}
-    names = list(cfg["models"])
-    raw = raw_metrics(names, metrics, stats)
-    speed = _relative_best({n: raw[n]["seconds"] for n in names})
-    quota = _relative_best({n: raw[n]["tokens_per_run"] for n in names})
-    cats = sorted({c for n in names for c in (priors or {}).get(n, cfg["models"][n].get("strengths", {}))} | {"quick"})
-    spare = profile.get("spare") or {}
-    out: Dict[str, Dict[str, Dict]] = {n: {} for n in names}
-    for n in names:
-        prior_s = (priors or {}).get(n) or cfg["models"][n].get("strengths", {})
-        meas = raw[n]["categories"]
-        measured_vals = [10 * c["passed"] / c["total"] for c in meas.values() if c.get("total")]
-        for cat in cats:
-            ext = (ext_priors.get(n) or {}).get(cat)
-            prior = ext["prior"] if ext else prior_s.get(cat, prior_s.get("general", 5))
-            m = meas.get(cat)
-            if m and m.get("total"):
-                n_q = m["total"]
-                quality = (10 * m["passed"] + PRIOR_K * prior) / (n_q + PRIOR_K)
-                src = f"medido {m['passed']}/{n_q}" + (f" ({m['blocked']} sin respuesta por permisos)" if m.get("blocked") else "") + (f" + prior externo" if ext else "")
-            elif cat == "general" and measured_vals:
-                quality = (sum(measured_vals) + PRIOR_K * prior) / (len(measured_vals) + PRIOR_K)
-                src = f"promedio de {len(measured_vals)} medidas"
-            else:
-                quality, src = float(prior), (f"externo: {ext['src']}" if ext else "estimado")
-            vals = {"quality": quality,
-                    "speed": speed[n] if speed[n] is not None else quality,
-                    "quota": quota[n] if quota[n] is not None else quality,
-                    "reliability": 10 * raw[n]["ok_rate"] if raw[n]["ok_rate"] is not None else quality}
-            w = weights_for(profile, cat)
-            score = sum(w[d] * vals[d] for d in DIMS) - float(spare.get(n, 0))
-            out[n][cat] = {"score": round(max(0.0, min(10.0, score)), 2), "values": {d: round(v, 2) for d, v in vals.items()},
-                           "weights": {d: round(x, 2) for d, x in w.items()}, "quality_src": src,
-                           "known": {"speed": speed[n] is not None, "quota": quota[n] is not None, "reliability": raw[n]["ok_rate"] is not None},
-                           "spare": float(spare.get(n, 0))}
-    return out
-
-
-def has_evidence(metrics: Dict, profile: Dict, ext: Optional[Dict] = None) -> bool:
-    return bool((metrics.get("models") or {}) or profile or (ext and (ext.get("arena") or ext.get("aa"))))
+        est = cfg["models"][n].get("_prior_strengths") or cfg["models"][n].get("strengths", {})
+        for cat in CATEGORIES:
+            p = prec.get(cat, {}).get(n)
+            vals: Dict[str, Optional[float]] = {"precision": p[0] if p else float(est.get(cat, est.get("general", 5))),
+                                                "speed": speed[n][0] if n in speed else None, "cost": cost[n][0] if n in cost else None}
+            srcs = {"precision": p[1] if p else "estimada a mano (models.json)"}
+            if n in speed:
+                srcs["speed"] = speed[n][1]
+            if n in cost:
+                srcs["cost"] = cost[n][1]
+            w = {d: x for d, x in weights_for(profile, cat).items() if vals[d] is not None}
+            total = sum(w.values()) or 1.0
+            w = {d: x / total for d, x in w.items()}
+            table[n][cat] = {"score": round(sum(w[d] * vals[d] for d in w), 2), "values": {d: (round(v, 2) if v is not None else None) for d, v in vals.items()},
+                             "srcs": srcs, "weights": {d: round(x, 2) for d, x in w.items()}, "basis": "métricas" if p else "estimado"}
+    return {"table": table, "available": {"speed": bool(speed), "cost": bool(cost)}, "arena": arena, "aa": aa,
+            "missing_ids": [n for n in names if not ids.get(n)]}
 
 
 def apply_to_config(cfg: Dict) -> Dict:
-    """Reemplaza `strengths` por el puntaje objetivo (si hay métricas o perfil). Guarda el desglose en spec['_scoring']."""
-    metrics, profile, ext = calibrate.load(), load_profile(), external.load()
-    if not has_evidence(metrics, profile, ext):
+    """Reemplaza `strengths` por el puntaje (si hay métricas que cubran a tus modelos). Guarda el desglose en spec['_scoring']."""
+    if len(enabled_models(cfg)) < 2:
         return cfg
-    priors = {n: dict(spec.get("strengths", {})) for n, spec in cfg["models"].items()}
-    enabled = [n for n, spec in cfg["models"].items() if spec.get("enabled", True)]
-    ext_priors = external.derive_priors(enabled, ext) if len(enabled) >= 2 else {}
-    table = compute(cfg, metrics, state.stats(), profile, priors, ext_priors)
+    b = build(cfg)
+    if not any(d["basis"] == "métricas" for n in b["table"] for d in b["table"][n].values()):
+        return cfg  # sin ids de modelos o sin cobertura: rige la estimación de models.json
     for n, spec in cfg["models"].items():
-        spec["_prior_strengths"] = priors[n]
-        spec["_scoring"] = table[n]
-        spec["strengths"] = {cat: d["score"] for cat, d in table[n].items()}
-    cfg["_scored"] = True
-    cfg["_tiebreak"] = profile.get("tiebreak")
+        if n not in b["table"]:
+            continue
+        spec["_prior_strengths"] = dict(spec.get("strengths", {}))
+        spec["_scoring"] = b["table"][n]
+        spec["strengths"] = {cat: d["score"] for cat, d in b["table"][n].items()}
+    cfg["_scored"], cfg["_available"] = True, b["available"]
     return cfg
-
-
-def tiebreak(ranking: List[Dict], cfg: Dict, weights: Dict[str, float], mode: Optional[str]) -> List[Dict]:
-    """Entre los usables a menos de TIEBREAK_GAP del primero, desempata por calidad, velocidad o cuota (según el perfil)."""
-    dim = {"quality": "quality", "speed": "speed", "quota": "quota"}.get(mode or "")
-    usable = [r for r in ranking if r["usable"]]
-    if not dim or len(usable) < 2:
-        return ranking
-    top = usable[0]["score"]
-    tied = [r for r in usable if top - r["score"] <= TIEBREAK_GAP]
-    if len(tied) < 2:
-        return ranking
-
-    def key(r):
-        sc = cfg["models"][r["name"]].get("_scoring") or {}
-        cats = weights or {"general": 1.0}
-        tot = sum(cats.values()) or 1.0
-        return -sum(w * (sc.get(c) or sc.get("general") or {}).get("values", {}).get(dim, 0) for c, w in cats.items()) / tot
-
-    tied.sort(key=key)
-    rest = [r for r in ranking if r not in tied]
-    return tied + rest
 
 
 # ---------- presentación ----------
 
 def render_table(cfg: Dict, cats: Optional[List[str]] = None) -> str:
-    names = list(cfg["models"])
     if not cfg.get("_scored"):
-        return "Todavía no hay métricas ni criterios: se usan las estimaciones iniciales de models.json. Corré /calibrate."
+        return ("Todavía no hay métricas que cubran a tus modelos: rige la estimación de models.json.\n"
+                "Necesito saber qué modelo usa cada CLI: corré `doctor --probe` (o dejá que lo detecte al iniciar el chat).")
+    names = enabled_models(cfg)
     table = {n: cfg["models"][n]["_scoring"] for n in names}
-    cats = cats or [c for c in table[names[0]] if c != "general"]
+    cats = cats or [c for c in CATEGORIES if c != "general"]
     head = f"{'categoría':<14}" + "".join(f"{n:>14}" for n in names)
     lines = [head, "─" * len(head)]
     for cat in cats:
-        row = f"{cat:<14}"
         best = max(table[n][cat]["score"] for n in names)
+        row = f"{cat:<14}"
         for n in names:
             d = table[n][cat]
-            mark = "*" if d["score"] == best else " "
-            tag = "m" if d["quality_src"].startswith("medido") else "x" if d["quality_src"].startswith("externo") else "e"
-            row += f"{d['score']:>11.1f}{mark}{tag} "
+            row += f"{d['score']:>12.1f}{'*' if d['score'] == best else ' '}{'e' if d['basis'] == 'estimado' else ' '} "
         lines.append(row)
-    lines += ["", "* = mejor de la fila · m = calidad medida (con tus tests) · x = prior de Arena / Artificial Analysis · e = estimada a mano"]
-    flat = ties(cfg)
-    if flat:
-        lines.append(f"Sin diferencias medidas (todos acertaron todo): {', '.join(flat)}. Ahí decide la velocidad y la estimación; `calibrate --full` suma preguntas distintas.")
-    ext = external.load()
-    used = [external.ATTRIBUTION[k] for k in ("arena", "aa") if ext.get(k)]
-    if used:
-        lines.append("Fuentes externas: " + " · ".join(used))
+    lines += ["", "* = el que elige el router · e = precisión estimada a mano (Arena no cubre esa categoría para todos tus modelos)"]
+    a = cfg.get("_available", {})
+    lines.append("Dimensiones con datos: precisión" + (", velocidad" if a.get("speed") else "") + (", costo" if a.get("cost") else "")
+                 + ("" if a.get("speed") else "  ·  velocidad: falta tu clave de Artificial Analysis (.env)"))
+    d = metrics.active()
+    lines.append("Datos: " + metrics.status_line(d) + "  ·  Atribución: " + " · ".join(metrics.ATTRIBUTION[k] for k in (("arena", "aa") if d.get("aa") else ("arena",))))
     return "\n".join(lines)
-
-
-def ties(cfg: Dict) -> List[str]:
-    """Categorías medidas en las que todos los modelos medidos sacaron el máximo: la medición no los distingue."""
-    out = []
-    names = [n for n in cfg["models"] if cfg["models"][n].get("_scoring")]
-    for cat in (cfg["models"][names[0]]["_scoring"] if names else {}):
-        got = []
-        for n in names:
-            m = re.match(r"medido (\d+)/(\d+)", cfg["models"][n]["_scoring"][cat]["quality_src"])
-            if m:
-                got.append(m.group(1) == m.group(2))
-        if len(got) >= 2 and all(got):
-            out.append(cat)
-    return out
 
 
 def explain(cfg: Dict, cat: str) -> str:
-    names = list(cfg["models"])
+    names = enabled_models(cfg)
     if not cfg.get("_scored") or cat not in cfg["models"][names[0]].get("_scoring", {}):
         return f"Sin desglose para '{cat}'."
-    lines = [f"Puntaje de «{cat}» = Σ peso × valor (0-10)", f"{'':<13}{'calidad':>9}{'velocidad':>11}{'cuota':>8}{'confiab.':>10}{'':>3}{'total':>7}"]
+    lines = [f"Puntaje de «{cat}» = Σ peso × valor (0-10)"]
     for n in names:
         d = cfg["models"][n]["_scoring"][cat]
-        v, w, k = d["values"], d["weights"], d["known"]
-        cell = lambda dim, known=True: f"{v[dim]:>5.1f}×{w[dim]:.2f}" + ("" if known else "~")
-        lines.append(f"{n:<13}{cell('quality'):>9}{cell('speed', k['speed']):>12}{cell('quota', k['quota']):>9}{cell('reliability', k['reliability']):>11}  = {d['score']:>5.2f}"
-                     + (f"  (−{d['spare']:g} cuota cuidada)" if d["spare"] else "") + f"   calidad: {d['quality_src']}")
-    lines.append("~ sin dato objetivo todavía: vale igual que la calidad, no mueve el puntaje.")
+        parts = [f"{LABELS[k]} {d['values'][k]:.1f}×{w:.2f}" for k, w in d["weights"].items()]
+        lines.append(f"{n:<13}= {d['score']:>5.2f}   " + "  ".join(parts))
+        lines.append(f"{'':<13}  " + " · ".join(f"{LABELS[k]}: {v}" for k, v in d["srcs"].items()))
     return "\n".join(lines)
+
+
+def describe_sources(cfg: Dict) -> str:
+    """Qué entrada de cada portal se emparejó con cada uno de tus modelos, y de dónde salen los datos."""
+    names = enabled_models(cfg)
+    b = build(cfg)
+    d = metrics.active()
+    lines = [f"Métricas: {metrics.status_line(d)}  ·  Arena {d.get('arena_origin', '')}", ""]
+    for n in names:
+        mid = metrics.known_model_ids([n])[n]
+        a, x = b["arena"].get(n), b["aa"].get(n)
+        lines.append(f"{n:<12} modelo del CLI: {mid or 'desconocido (corré /models probe)'}")
+        if a:
+            warn = "" if a["exact"] else "  ⚠ Arena no publica el mismo nivel de esfuerzo que usa tu CLI: dato aproximado (" + ", ".join(
+                f"{sub}: {v['effort'] or 'sin nivel'}" for sub, v in a["variants"].items() if not v["exact"]) + ")"
+            lines.append(f"{'':<12} Arena → {a['name']}{warn}")
+        elif mid:
+            lines.append(f"{'':<12} Arena → sin coincidencia para ese modelo")
+        if x:
+            lines.append(f"{'':<12} Artificial Analysis → {x['name']} · {x['tps']:.0f} tok/s" if x.get("tps") else f"{'':<12} Artificial Analysis → {x['name']}")
+    if not d.get("aa"):
+        lines += ["", "Artificial Analysis no está activo: sin su clave no hay velocidad ni, en general, costo. Ver .env.example."]
+    lines.append("Fuentes: " + " · ".join(metrics.ATTRIBUTION[k] for k in (("arena", "aa") if d.get("aa") else ("arena",))))
+    return "\n".join(lines)
+
+
+def diff_tables(old: Optional[Dict], new: Dict, threshold: float = 0.3) -> List[str]:
+    """Qué cambió entre dos cálculos: el modelo elegido por categoría y los puntajes que se movieron al menos `threshold`."""
+    if not old:
+        return []
+    out = []
+    for cat in CATEGORIES:
+        if cat == "general":
+            continue
+        o = {n: old[n][cat]["score"] for n in old if cat in old[n]}
+        w = {n: new[n][cat]["score"] for n in new if cat in new[n]}
+        if not o or not w:
+            continue
+        bo, bw = max(o, key=o.get), max(w, key=w.get)
+        moved = [f"{n} {o[n]:.1f}→{w[n]:.1f}" for n in w if n in o and abs(w[n] - o[n]) >= threshold]
+        if bo != bw:
+            out.append(f"{cat}: ahora elige {bw} (antes {bo})" + (f"  [{', '.join(moved)}]" if moved else ""))
+        elif moved:
+            out.append(f"{cat}: {', '.join(moved)}")
+    return out
+
+
+def refresh_and_report(cfg: Dict, say: Callable[[str], None] = print, force: bool = False, get=metrics.http_get, sleep=time.sleep) -> bool:
+    """Actualiza las métricas mostrando cada paso y, al final, qué cambió en el ruteo. True si se actualizó."""
+    first = build(cfg)
+    before, ids_known = first["table"], not first["missing_ids"]
+    try:
+        metrics.refresh(cfg, say=say, get=get, force=force, sleep=sleep)
+    except (OSError, ValueError) as exc:
+        say(f"No pude actualizar las métricas: {exc}. Sigo con las que tenías ({metrics.status_line()}).")
+        return False
+    after = build(cfg)["table"]
+    changes = diff_tables(before, after) if ids_known else []
+    say("Métricas al día: " + metrics.status_line())
+    if changes:
+        say("Qué cambió en el ruteo:\n" + "\n".join("  · " + c for c in changes))
+    elif ids_known:
+        say("El ruteo no cambia con estos datos.")
+    return True

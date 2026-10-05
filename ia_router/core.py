@@ -6,16 +6,15 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from . import adapters, attachments as att_mod, manifest as manifest_mod, router, scoring, state
+from . import adapters, attachments as att_mod, router, scoring, state
 
 MAX_CONTEXT_CHARS = 400_000
 
 
-def load_config(path: Optional[str] = None, apply_manifest: bool = True) -> Dict:
+def load_config(path: Optional[str] = None, apply_scoring: bool = True) -> Dict:
     p = Path(path or os.environ.get("ROUTER_MODELS") or Path(__file__).resolve().parent.parent / "models.json")
     cfg = json.loads(p.read_text(encoding="utf-8"))
-    cfg = scoring.apply_to_config(cfg)  # puntaje objetivo (métricas + criterios) bajo el manifiesto, que manda
-    return manifest_mod.apply_to_config(cfg, manifest_mod.load()) if apply_manifest else cfg
+    return scoring.apply_to_config(cfg) if apply_scoring else cfg  # el puntaje sale de las métricas y de tus prioridades
 
 
 def build_prompt(task: str, context_files: Optional[List[str]] = None) -> Tuple[str, int, List[str]]:
@@ -38,39 +37,12 @@ def build_prompt(task: str, context_files: Optional[List[str]] = None) -> Tuple[
     return "".join(parts), used, warnings
 
 
-def manager_name(cfg: Dict) -> str:
-    """Modelo barato que clasifica tareas y mantiene el manifiesto (lo elige el usuario)."""
-    m = (manifest_mod.load() or {}).get("manager") or cfg.get("default_manager", "claude")
-    return m if m in cfg["models"] else next(iter(cfg["models"]))
-
-
-def manager_runner(cfg: Dict, name: Optional[str] = None, timeout: float = 120):
-    """Devuelve run(prompt)->texto|None usando el modo barato (`cheap_cmd`) del manager si lo define."""
-    name = name or manager_name(cfg)
-    spec = dict(cfg["models"][name])
-    if spec.get("cheap_cmd"):
-        spec["cmd"] = spec["cheap_cmd"]
-        spec.pop("cmd_stdin", None)
-    spec["timeout"] = timeout
-
-    def run(prompt: str) -> Optional[str]:
-        res = adapters.run_cli(name, spec, prompt)
-        return res["output"] if res["ok"] else None
-
-    return run
-
-
-def route(task: str, cfg: Dict, context_len: int = 0, prefer: Optional[str] = None, use_llm: bool = False,
+def route(task: str, cfg: Dict, context_len: int = 0, prefer: Optional[str] = None,
           boost: Optional[Dict[str, float]] = None, needs_files: bool = False) -> Dict:
     """`boost` suma categorías (p. ej. multimodal por una imagen adjunta); `needs_files` descarta los CLIs que no abren archivos."""
     weights = router.detect(task, context_len)
     for cat, w in (boost or {}).items():
         weights[cat] = max(weights.get(cat, 0), w)
-    source = "reglas"
-    if use_llm:
-        llm_weights = router.classify_with_llm(task, manager_runner(cfg, timeout=60))
-        if llm_weights:
-            weights, source = llm_weights, f"manager {manager_name(cfg)}"
     models = cfg["models"]
     ranking = router.rank(
         weights,
@@ -84,10 +56,8 @@ def route(task: str, cfg: Dict, context_len: int = 0, prefer: Optional[str] = No
             if not models[r["name"]].get("reads_files", True):
                 r.update(usable=False, blocked=True, why=r["why"] + " (no abre archivos)")
         ranking.sort(key=lambda r: (not r["usable"], -r["score"]))
-    ranking = scoring.tiebreak(ranking, cfg, weights, cfg.get("_tiebreak"))
     chosen = next((r["name"] for r in ranking if r["usable"]), None)
-    return {"weights": weights, "classifier": source, "ranking": ranking, "chosen": chosen,
-            "manifest": bool(cfg.get("_manifest"))}
+    return {"weights": weights, "classifier": "reglas", "ranking": ranking, "chosen": chosen, "metrics": bool(cfg.get("_scored"))}
 
 
 def ask(
@@ -97,7 +67,6 @@ def ask(
     context_files: Optional[List[str]] = None,
     max_attempts: int = 3,
     dry_run: bool = False,
-    use_llm: bool = False,
     timeout: Optional[float] = None,
     cwd: Optional[str] = None,
     preamble: str = "",
@@ -112,7 +81,7 @@ def ask(
     prompt, ctx_len, warnings = build_prompt(task, list(context_files or []) + inline)
     prompt = preamble + prompt + att_mod.reference_block(referenced)
     boost = {"multimodal": 2.0} if any(a.kind in ("image", "pdf") for a in referenced) else None
-    decision = route(route_text or task, cfg, ctx_len, use_llm=use_llm, boost=boost, needs_files=bool(referenced))
+    decision = route(route_text or task, cfg, ctx_len, boost=boost, needs_files=bool(referenced))
     models = cfg["models"]
     if model != "auto":
         if model not in models:
@@ -137,6 +106,7 @@ def ask(
         attempt = {k: res[k] for k in ("seconds", "returncode", "rate_limited", "auth_required", "error", "model_id", "tokens")}
         attempt["model"] = name
         result["attempts"].append(attempt)
+        state.remember_model_id(name, res["model_id"])  # así aprendemos qué modelo usa cada CLI sin gastar una consulta aparte
         state.log_event({"model": name, "model_id": res["model_id"], "tokens": res["tokens"], "ok": res["ok"], "seconds": res["seconds"],
                          "error": res["error"], "task_chars": len(task), "weights": decision["weights"]})
         if res["ok"]:
@@ -157,7 +127,7 @@ def format_usage(res: Dict) -> str:
 
 
 def format_ranking(decision: Dict) -> str:
-    lines = [f"Clasificación ({decision['classifier']}, manifiesto: {'sí' if decision.get('manifest') else 'no'}): " + (", ".join(f"{c}×{w:g}" for c, w in decision["weights"].items()) or "general")]
+    lines = [f"Clasificación ({decision['classifier']}, métricas: {'sí' if decision.get('metrics') else 'no, estimación de models.json'}): " + (", ".join(f"{c}×{w:g}" for c, w in decision["weights"].items()) or "general")]
     lines.append(f"{'modelo':<8} {'score':>5}  estado")
     for r in decision["ranking"]:
         status = "OK" if r["usable"] else ("no disponible" if not r["available"] else "sin archivos" if r.get("blocked") else f"cooldown {r['cooldown_s']}s")

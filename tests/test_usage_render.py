@@ -16,7 +16,7 @@ class UsageTests(unittest.TestCase):
         for k in list(os.environ):
             if k.startswith("FAKE_") or k.startswith("ROUTER_CMD_"):
                 del os.environ[k]
-        self.cfg = core.load_config(apply_manifest=False)
+        self.cfg = core.load_config(apply_scoring=False)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -183,13 +183,13 @@ class BannerTests(unittest.TestCase):
     NAMES = ["claude", "codex", "antigravity"]
 
     def make(self, **kw):
-        args = dict(version="9.9.9", manager="claude", models=self.NAMES, installed=self.OK, cwd="/tmp/x", color=False, width=100)
+        args = dict(version="9.9.9", metrics_line="Arena 2026-10-05 (incluida)", models=self.NAMES, installed=self.OK, cwd="/tmp/x", color=False, width=100)
         args.update(kw)
         return banner.render(**args)
 
     def test_plain_banner_has_logo_and_status(self):
         out = self.make()
-        for piece in ("╦═╗╔═╗╦ ╦╔╦╗╔═╗╦═╗", "v9.9.9", "manager claude", "● claude", "● codex", "○ antigravity", "/tmp/x", "/help", "/exit"):
+        for piece in ("╦═╗╔═╗╦ ╦╔╦╗╔═╗╦═╗", "v9.9.9", "métricas Arena 2026-10-05 (incluida)", "● claude", "● codex", "○ antigravity", "/tmp/x", "/help", "/exit"):
             self.assertIn(piece, out)
         self.assertNotIn("\033", out)
 

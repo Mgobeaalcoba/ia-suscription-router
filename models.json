@@ -1,5 +1,5 @@
 {
-  "_comment": "Las 'strengths' (0-10) son HIPÓTESIS iniciales; el manifiesto (python3 cli.py setup) las reemplaza con las preferencias del usuario. Los comandos son plantillas: verificalos con `python3 cli.py doctor --probe`. 'cheap_cmd' es el modo barato usado cuando el modelo actúa como manager. 'antigravity' reemplaza a Gemini CLI (Google lo dio de baja el 18/06/2026). agy no lee el prompt por stdin en modo headless: sin 'cmd_stdin'. 'reads_files': false = el CLI no puede abrir archivos por ruta en modo no interactivo (agy pide un permiso que no puede pedir): el router no lo usa para imágenes/PDF/binarios adjuntos.",
+  "_comment": "Los comandos son plantillas: verificalos con `python3 cli.py doctor --probe`. 'strengths' (0-10) son ESTIMACIONES de último recurso: el ruteo real sale de las métricas (metrics.py). 'usage' = flags que hacen al CLI devolver JSON con modelo y tokens. 'add_dir' = acceso a la carpeta de un adjunto. 'reads_files': false = el CLI no abre archivos por ruta en modo no interactivo (agy): se descarta para imágenes/PDF/binarios adjuntos. 'external' = {\"arena\": nombre-exacto, \"aa\": slug} fuerza con qué entrada de los portales se empareja el modelo. 'antigravity' reemplaza a Gemini CLI (Google lo dio de baja el 18/06/2026).",
   "cooldown_minutes": 30,
   "models": {
     "claude": {
@@ -27,13 +27,6 @@
         "long_context": 7,
         "multimodal": 7
       },
-      "cheap_cmd": [
-        "claude",
-        "-p",
-        "--model",
-        "haiku",
-        "{prompt}"
-      ],
       "usage": {
         "parser": "claude",
         "args": [
@@ -48,23 +41,6 @@
           "{dir}"
         ],
         "at": 1
-      },
-      "lean": {
-        "args": [
-          "--tools",
-          "",
-          "--system-prompt",
-          "Respondé exactamente lo pedido, sin explicaciones.",
-          "--setting-sources",
-          "",
-          "--disable-slash-commands",
-          "--strict-mcp-config"
-        ],
-        "at": 1
-      },
-      "calibration": {
-        "overhead_in": 450,
-        "files_extra_in": 16000
       }
     },
     "codex": {
@@ -101,22 +77,12 @@
           "--json"
         ],
         "at": 2
-      },
-      "calibration": {
-        "overhead_in": 13500
       }
     },
     "antigravity": {
       "label": "Google Antigravity (CLI oficial: agy -p)",
       "cmd": [
         "agy",
-        "-p",
-        "{prompt}"
-      ],
-      "cheap_cmd": [
-        "agy",
-        "--model",
-        "gemini-3.8-flash-low",
         "-p",
         "{prompt}"
       ],
@@ -144,12 +110,8 @@
         ],
         "at": 1
       },
-      "reads_files": false,
-      "calibration": {
-        "overhead_in": 11800
-      }
+      "reads_files": false
     }
   },
-  "default_manager": "claude",
   "auth_cooldown_minutes": 60
 }

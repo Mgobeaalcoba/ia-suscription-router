@@ -346,7 +346,7 @@ class CoreAttachmentTests(unittest.TestCase):
         for k in list(os.environ):
             if k.startswith(("FAKE_", "ROUTER_CMD_")):
                 del os.environ[k]
-        self.cfg = core.load_config(apply_manifest=False)
+        self.cfg = core.load_config(apply_scoring=False)
         self.png = Path(self.tmp.name) / "x.png"
         self.png.write_bytes(b"\x89PNG")
         self.txt = Path(self.tmp.name) / "x.txt"

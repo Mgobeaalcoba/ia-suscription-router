@@ -54,15 +54,6 @@ def _with_usage_args(name: str, spec: dict, template: List[str], logfile: str) -
     return template[:at] + extra + template[at:]
 
 
-def _with_lean(name: str, spec: dict, template: List[str]) -> List[str]:
-    """Modo liviano para calibrar: sin herramientas ni prompt de sistema del arnés (claude), sin guardar sesión (codex)."""
-    l = spec.get("lean") or {}
-    if os.environ.get(f"ROUTER_CMD_{name.upper()}") or not l.get("args"):
-        return template
-    at = l.get("at", 1)
-    return template[:at] + list(l["args"]) + template[at:]
-
-
 def _with_dirs(name: str, spec: dict, template: List[str], dirs: List[str]) -> List[str]:
     """Da acceso de lectura a las carpetas de los adjuntos (claude: --add-dir), que si no quedan fuera de su carpeta de trabajo."""
     a = spec.get("add_dir") or {}
@@ -81,7 +72,6 @@ def run_cli(
     cwd: Optional[str] = None,
     usage: bool = False,
     extra_dirs: Optional[List[str]] = None,
-    lean: bool = False,
 ) -> Dict:
     """Ejecuta el CLI del modelo y devuelve un dict normalizado.
 
@@ -96,8 +86,6 @@ def run_cli(
     if usage:
         template = _with_usage_args(name, spec, template, logfile)
     template = _with_dirs(name, spec, template, list(extra_dirs or []))
-    if lean:
-        template = _with_lean(name, spec, template)
     argv = [a.replace("{prompt}", prompt) for a in template]
     t0 = time.time()
     try:

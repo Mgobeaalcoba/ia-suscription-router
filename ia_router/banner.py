@@ -87,10 +87,10 @@ def _box(lines: List[str], width: int, color: bool, footer: str = "") -> List[st
     return out
 
 
-def render(version: str, manager: str, models: List[str], installed: Dict[str, bool], cwd: str,
+def render(version: str, metrics_line: str, models: List[str], installed: Dict[str, bool], cwd: str,
            color: bool = True, width: int = 80, pinned: Optional[str] = None) -> str:
     dim = (lambda s: f"{DIM}{s}{RESET}") if color else (lambda s: s)
-    label = lambda s: dim(f"{s:<8}")
+    label = lambda s: dim(f"{s:<9}")
     chips = []
     for i, n in enumerate(models):
         on = installed.get(n, False)
@@ -100,14 +100,14 @@ def render(version: str, manager: str, models: List[str], installed: Dict[str, b
 
     if width < 60:  # versión compacta
         title = f"{BOLD}ia-router{RESET} {dim('v' + version)}" if color else f"ia-router v{version}"
-        return "\n".join([title, f"{label('manager')}{manager}", label("modelos") + "  ".join(chips), hints, dim(_credit(False)), ""])
+        return "\n".join([title, f"{label('métricas')}{metrics_line}", label("modelos") + "  ".join(chips), hints, dim(_credit(False)), ""])
 
     mark, word = _mark(models, installed, color), _wordmark(color)
     ver = dim(f"v{version}")
     head = [f"{mark[0]}   {word[0]}", f"{mark[1]}   {word[1]}  {ver}", f"{mark[2]}   {word[2]}  {dim(_TAGLINE)}"]
     w = min(width - 2, 76)
     room = w - 4 - 8
-    info = [f"{label('manager')}{manager}" + (f"   {dim('fijado:')} {pinned}" if pinned and pinned != "auto" else ""),
+    info = [f"{label('métricas')}{metrics_line}" + (f"   {dim('fijado:')} {pinned}" if pinned and pinned != "auto" else ""),
             f"{label('modelos')}" + "   ".join(chips),
             f"{label('carpeta')}{_short_path(cwd, room)}"]
     return "\n".join([""] + [" " + h for h in head] + [""] + [" " + l for l in _box(info, w, color, _credit(color))] + [" " + hints, ""])

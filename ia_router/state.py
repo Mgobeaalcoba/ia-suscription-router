@@ -8,7 +8,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 
 def home() -> Path:
@@ -52,6 +52,52 @@ def reset_cooldowns() -> None:
     state = load_state()
     state["cooldowns"] = {}
     save_state(state)
+
+
+def flags() -> Dict:
+    """Banderas de la sesión de inicio (cuándo se ofreció actualizar, si ya se ofrecieron las preguntas)."""
+    try:
+        d = json.loads((home() / "startup.json").read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def set_flag(key: str, value) -> None:
+    f = flags()
+    f[key] = value
+    try:
+        home().mkdir(parents=True, exist_ok=True)
+        (home() / "startup.json").write_text(json.dumps(f, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _seen_path() -> Path:
+    return home() / "models_seen.json"
+
+
+def seen_ids() -> Dict[str, str]:
+    """Id real del modelo que respondió por cada CLI, la última vez que lo vimos."""
+    try:
+        d = json.loads(_seen_path().read_text(encoding="utf-8"))
+        return {k: v for k, v in d.items() if isinstance(v, str)} if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def remember_model_id(model: str, model_id: Optional[str]) -> None:
+    if not model_id:
+        return
+    seen = seen_ids()
+    if seen.get(model) == model_id:
+        return
+    seen[model] = model_id
+    try:
+        home().mkdir(parents=True, exist_ok=True)
+        _seen_path().write_text(json.dumps(seen, indent=2, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def log_event(event: Dict) -> None:

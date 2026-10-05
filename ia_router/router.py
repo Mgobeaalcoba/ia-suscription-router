@@ -1,4 +1,4 @@
-"""Clasificación de tareas (reglas + clasificador LLM opcional) y ranking de modelos.
+"""Clasificación de tareas (por reglas) y ranking de modelos.
 
 Idea: cada tarea se descompone en categorías con peso (coding, writing, long_context...).
 Cada modelo tiene una puntuación por categoría en models.json. El score de un modelo es
@@ -69,32 +69,6 @@ def detect(task: str, context_len: int = 0) -> Dict[str, float]:
     if re.search(QUICK_PATTERN, task, re.I) or (total < 160 and not weights):
         weights["quick"] = max(weights.get("quick", 0), 2.0)
     return weights
-
-
-def classify_with_llm(task: str, run: Callable[[str], Optional[str]]) -> Optional[Dict[str, float]]:
-    """Clasificador opcional con un modelo barato. `run(prompt)` devuelve texto o None.
-
-    Si algo falla, devuelve None y el llamador usa las reglas.
-    """
-    cats = ", ".join(list(PATTERNS) + ["quick"])
-    prompt = (
-        "Clasificá la siguiente tarea. Respondé SOLO un JSON con la forma "
-        '{"categories": {"<categoria>": <peso 1-3>}} usando únicamente estas categorías: '
-        f"{cats}. Incluí entre 1 y 3 categorías.\n\nTAREA:\n{task[:4000]}"
-    )
-    try:
-        text = run(prompt)
-        if not text:
-            return None
-        match = re.search(r"\{.*\}", text, re.S)
-        data = json.loads(match.group(0)) if match else None
-        cats_out = data.get("categories") if isinstance(data, dict) else None
-        if not isinstance(cats_out, dict):
-            return None
-        valid = {k: float(v) for k, v in cats_out.items() if k in PATTERNS or k == "quick"}
-        return valid or None
-    except (ValueError, TypeError, AttributeError):
-        return None
 
 
 def rank(
