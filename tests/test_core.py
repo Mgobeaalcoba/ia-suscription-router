@@ -1,4 +1,4 @@
-import os, sys, tempfile, unittest
+import json, os, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -63,6 +63,19 @@ class CoreTests(unittest.TestCase):
         res = core.ask("hola", self.cfg, dry_run=True)
         self.assertTrue(res["dry_run"])
         self.assertEqual(res["attempts"], [])
+
+    def test_models_json_lookup_order(self):
+        packaged = core.models_path()
+        self.assertEqual(packaged, core.PACKAGED_MODELS)
+        mine = Path(self.tmp.name) / "models.json"
+        mine.write_text(json.dumps({"models": {"x": {"cmd": ["x"], "strengths": {}}}}))
+        self.assertEqual(core.models_path(), mine)                      # tu copia en ~/.ia-router gana al incluido
+        os.environ["ROUTER_MODELS"] = "/tmp/otro.json"
+        try:
+            self.assertEqual(core.models_path(), Path("/tmp/otro.json"))   # ROUTER_MODELS gana a tu copia
+            self.assertEqual(core.models_path("/tmp/pedido.json"), Path("/tmp/pedido.json"))
+        finally:
+            del os.environ["ROUTER_MODELS"]
 
     def test_unknown_model_raises(self):
         with self.assertRaises(ValueError):

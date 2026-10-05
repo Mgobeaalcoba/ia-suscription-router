@@ -1,3 +1,3 @@
-"""ia_router: PoC de un router multi-modelo que maneja los CLIs oficiales."""
+"""ia_router: router de suscripciones de IA con ruteo por métricas objetivas."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

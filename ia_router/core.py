@@ -11,8 +11,17 @@ from . import adapters, attachments as att_mod, router, scoring, state
 MAX_CONTEXT_CHARS = 400_000
 
 
+PACKAGED_MODELS = Path(__file__).resolve().parent / "data" / "models.json"
+
+
+def models_path(path: Optional[str] = None) -> Path:
+    """Qué models.json rige: el pedido > ROUTER_MODELS > ~/.ia-router/models.json (tu copia, sobrevive a las actualizaciones) > el incluido."""
+    mine = state.home() / "models.json"
+    return Path(path or os.environ.get("ROUTER_MODELS") or (mine if mine.exists() else PACKAGED_MODELS))
+
+
 def load_config(path: Optional[str] = None, apply_scoring: bool = True) -> Dict:
-    p = Path(path or os.environ.get("ROUTER_MODELS") or Path(__file__).resolve().parent.parent / "models.json")
+    p = models_path(path)
     cfg = json.loads(p.read_text(encoding="utf-8"))
     return scoring.apply_to_config(cfg) if apply_scoring else cfg  # el puntaje sale de las métricas y de tus prioridades
 

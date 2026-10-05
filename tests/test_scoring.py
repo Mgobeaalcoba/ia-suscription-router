@@ -83,7 +83,7 @@ class BuildTests(Home):
         M._memo.clear()
         cfg = core.load_config()
         self.assertFalse(cfg.get("_scored"))
-        self.assertEqual(cfg["models"], json.loads((ROOT / "models.json").read_text())["models"])
+        self.assertEqual(cfg["models"], json.loads((ROOT / "ia_router" / "data" / "models.json").read_text())["models"])
         self.assertEqual(S.build(cfg)["missing_ids"], NAMES)
         self.assertIn("Todavía no hay métricas", S.render_table(cfg))
 
