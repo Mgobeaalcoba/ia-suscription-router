@@ -361,7 +361,7 @@ Además de lo que medís vos, el router puede usar dos portales respetados como 
 
 | Fuente | Qué mide | Acceso |
 |---|---|---|
-| **[Arena](https://arena.ai/leaderboard)** | Preferencia humana en comparaciones a ciegas (Elo con intervalo de confianza y cantidad de votos), por categoría: `coding`, `hard_prompts`, `expert`, `math`, `creative_writing`, `instruction_following`, `longer_query`, y los arenas de visión, búsqueda y webdev. | Dataset público oficial en Hugging Face (`lmarena-ai/leaderboard-dataset`, licencia CC BY 4.0). Sin clave. |
+| **[Arena](https://arena.ai/leaderboard)** | Preferencia humana en comparaciones a ciegas (Elo con intervalo de confianza y cantidad de votos), por categoría: `coding`, `hard_prompts`, `expert`, `math`, `creative_writing`, `instruction_following`, `longer_query`, y los arenas de visión, búsqueda y webdev. | Páginas públicas de `arena.ai/leaderboard` (su `robots.txt` las permite), con la tabla de cada categoría ya con control de estilo. Es el mismo dato del dataset oficial `lmarena-ai/leaderboard-dataset` (CC BY 4.0), que no uso porque el servicio de Hugging Face limita los pedidos y obligaría a ~125 páginas. Sin clave. |
 | **[Artificial Analysis](https://artificialanalysis.ai/)** | Benchmarks con respuesta correcta: índices de inteligencia, coding y math (GPQA, HLE, LiveCodeBench, SciCode, AIME…), velocidad y precio. | API con **clave gratuita** (1.000 pedidos por día; pide atribución). Es opcional: sin clave se omite. |
 
 ```
@@ -372,7 +372,7 @@ python3 cli.py benchmarks               # ver qué entradas se encontraron para 
 Para activar Artificial Analysis, creá una clave gratis en su sitio y guardala en la variable `ARTIFICIAL_ANALYSIS_API_KEY` o en el archivo `~/.ia-router/artificialanalysis.key` (una línea; conviene `chmod 600`). La clave viaja por la entrada estándar de `curl`, nunca por la línea de comandos.
 
 **Cómo se usan, y por qué es conservador**
-- **Nunca se consultan solas:** `refresh` es una acción tuya. El resultado se cachea (si tiene menos de 12 horas no vuelve a pedir; `--force` para insistir). Arena es un servicio público: se descargan unas 125 páginas de a una, con pausa y reintentos ante límite de pedidos, y puede tardar un par de minutos.
+- **Nunca se consultan solas:** `refresh` es una acción tuya. El resultado se cachea (si tiene menos de 12 horas no vuelve a pedir; `--force` para insistir). Se leen unas 11 páginas de arena.ai (una por categoría, 2-3 MB cada una), de a una, con pausa y reintentos ante límite de pedidos: **alrededor de un minuto**. Si el sitio cambia el formato de sus páginas, lo avisa con un error claro y todo sigue con las estimaciones.
 - **El id real del modelo** que usa cada CLI (el que registra `calibrate` o el log de uso) se empareja con el leaderboard. Si no hay coincidencia, `benchmarks` lo dice; podés forzarla en `models.json` con `"external": {"arena": "nombre-exacto", "aa": "slug"}`.
 - **Nivel de esfuerzo:** Arena publica variantes (`-high`, `-xhigh`, `-max`). Se elige la que coincide con tu CLI y, si no existe, la más cercana, marcada con ⚠ **aproximada**: tu CLI puede correr con otro esfuerzo que el del leaderboard.
 - **Una fuente solo cuenta para una categoría si cubre a TODOS tus modelos.** Si falta alguno, esa categoría sigue con las estimaciones: no se mezclan escalas.
@@ -395,7 +395,7 @@ Para activar Artificial Analysis, creá una clave gratis en su sitio y guardala 
 
 Si una categoría tiene datos de las dos fuentes, se promedian. En `scores` las celdas marcadas con `x` usan un prior externo; `m` = además medido con tus tests; `e` = estimado a mano.
 
-**Qué NO es.** Arena mide **preferencia humana**, no si la respuesta es correcta, y los datos son de modelos genéricos, no de tu CLI con sus herramientas. Por eso se usa como punto de partida y se corrige con las pruebas verificables de `calibrate`, no como verdad.
+**Qué NO es.** La fecha que se muestra es la de la consulta (las páginas no publican la del snapshot). Arena mide **preferencia humana**, no si la respuesta es correcta, y los datos son de modelos genéricos, no de tu CLI con sus herramientas. Por eso se usa como punto de partida y se corrige con las pruebas verificables de `calibrate`, no como verdad.
 
 ### Cómo se calcula el puntaje: `scores`
 

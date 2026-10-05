@@ -262,51 +262,97 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(X.get_with_retry(get, "u", sleep=lambda s: None), "ok")
 
 
-def fake_server(rows_by_cfg, page=100, fail=None):
-    """get() falso de datasets-server /rows: pagina de a `page` filas. `fail` = {nro_de_llamada: estado HTTP}."""
+def page_html(rows):
+    """HTML de una página de arena.ai con la tabla embebida como datos de Next.js (mismo formato que el sitio real)."""
+    entries = [{"rank": i + 1, "rankUpper": 1, "rankLower": 3, "modelKey": "k", "modelDisplayName": r["model_name"], "rating": r["rating"],
+                "ratingUpper": r["rating_upper"], "ratingLower": r["rating_lower"], "votes": r["vote_count"], "license": "Proprietary"} for i, r in enumerate(rows)]
+    payload = ('{"a":1,"leaderboard":{"arenaSlug":"text","leaderboardSlug":"x","params":{"category":"x","styleControl":true},"category":"$44:0:1",'
+               '"id":"i","entries":%s},"b":2}' % json.dumps(entries))
+    return "<html><head></head><body><script>self.__next_f.push([1," + json.dumps(payload) + "])</script></body></html>"
+
+
+def fake_server(rows_by_sub, fail=None):
+    """get() falso de arena.ai: sirve la página de cada categoría con las filas de `rows_by_sub`.
+    `fail` = {fragmento_de_url: estado HTTP} o {nro_de_llamada: estado}."""
     calls = []
 
-    def get(url, headers=None):
+    def get(url, headers=None, timeout=None):
         calls.append(url)
-        if fail and len(calls) in fail:
-            raise X.HttpError(fail[len(calls)], url)
-        import urllib.parse as up
-        q = dict(up.parse_qsl(up.urlparse(url).query))
-        rows = rows_by_cfg.get(q["config"], [])
-        off = int(q["offset"])
-        return json.dumps({"num_rows_total": len(rows), "rows": [{"row": r} for r in rows[off:off + page]]})
+        for key, status in (fail or {}).items():
+            if (isinstance(key, int) and len(calls) == key) or (isinstance(key, str) and key in url):
+                raise X.HttpError(status, url)
+        path = url.split("/leaderboard", 1)[1]
+        if path.startswith("/text"):
+            sub, cat = "text", (path[len("/text/"):].replace("-", "_") if path != "/text" else "overall")
+        elif path.startswith("/code/webdev"):
+            sub, cat = "webdev", "overall"
+        else:
+            sub, cat = path.strip("/"), "overall"
+        return page_html([r for r in rows_by_sub.get(sub, []) if r["category"] == cat])
     return get, calls
 
 
 class FetchTests(unittest.TestCase):
-    def test_pages_sequentially_with_a_pause_between_requests(self):
-        rows = {"text": [row(f"m-{i}", "overall", 1000 + i) for i in range(250)], "vision": [], "search": [], "webdev": []}
-        get, calls = fake_server(rows)
-        waits, msgs = [], []
-        out = X.fetch_arena(get=get, say=msgs.append, sleep=waits.append)
-        self.assertEqual(len(out["text"]), 250)
-        self.assertEqual([c.split("offset=")[1].split("&")[0] for c in calls if "config=text" in c], ["0", "100", "200"])
-        self.assertEqual(waits.count(0.3), 2)
-        self.assertTrue(any("3 páginas" in m for m in msgs))
-
-    def test_survives_a_rate_limit_in_the_middle(self):
-        rows = {"text": [row(f"m-{i}", "overall", 1000 + i) for i in range(250)]}
-        get, calls = fake_server(rows, fail={2: 429})
+    def test_reads_each_category_page_once_with_a_pause_between_requests(self):
+        get, calls = fake_server(sample_rows())
         waits = []
-        out = X.fetch_arena(subsets=("text",), get=get, sleep=waits.append)
-        self.assertEqual(len(out["text"]), 250)
-        self.assertIn(8, waits)                                      # esperó tras el 429 y reintentó
+        out = X.fetch_arena(get=get, say=lambda s: None, sleep=waits.append)
+        self.assertEqual(len(calls), len(X.arena_pages()))
+        self.assertEqual(waits.count(1.0), len(calls) - 1)
+        self.assertEqual({r["category"] for r in out["text"]}, {"overall", "coding", "hard_prompts", "expert", "creative_writing", "instruction_following", "longer_query", "math"})
 
-    def test_gives_up_with_a_clear_error_when_limited_for_good(self):
-        get, _ = fake_server({"text": [row("m", "overall", 1)]}, fail={n: 429 for n in range(1, 20)})
-        with self.assertRaises(X.HttpError):
-            X.fetch_arena(subsets=("text",), get=get, sleep=lambda s: None)
+    def test_rows_use_the_dataset_schema(self):
+        out = X.fetch_arena(get=fake_server(sample_rows())[0], sleep=lambda s: None)
+        r = next(r for r in out["text"] if r["model_name"] == "claude-sonnet-5.5-xhigh" and r["category"] == "coding")
+        self.assertEqual((r["rating"], r["vote_count"]), (1520, 1000))
+        self.assertIn("rating_lower", r)
+        self.assertRegex(r["leaderboard_publish_date"], r"^\d{4}-\d{2}-\d{2}$")
 
-    def test_progress_for_long_downloads(self):
-        rows = {"text": [row(f"m-{i}", "overall", 1) for i in range(3000)]}
+    def test_a_failing_page_is_reported_and_the_rest_continue(self):
         msgs = []
-        X.fetch_arena(subsets=("text",), get=fake_server(rows)[0], say=msgs.append, sleep=lambda s: None)
-        self.assertTrue(any("25/30" in m for m in msgs))
+        out = X.fetch_arena(get=fake_server(sample_rows(), fail={"/text/coding": 404})[0], say=msgs.append, sleep=lambda s: None)
+        self.assertTrue(any("text/coding" in m and "⚠" in m for m in msgs))
+        self.assertNotIn("coding", {r["category"] for r in out["text"]})
+        self.assertIn("math", {r["category"] for r in out["text"]})
+
+    def test_empty_page_is_a_warning_not_a_crash(self):
+        msgs = []
+        out = X.fetch_arena(get=fake_server(sample_rows())[0], say=msgs.append, sleep=lambda s: None)   # search está vacío en el fixture
+        self.assertTrue(any("search" in m and "⚠" in m for m in msgs))
+        self.assertNotIn("search", out)
+
+    def test_all_pages_failing_raises(self):
+        get, _ = fake_server(sample_rows(), fail={"arena.ai": 500})
+        with self.assertRaises(OSError):
+            X.fetch_arena(get=get, sleep=lambda s: None)
+
+    def test_rate_limit_is_retried_with_a_wait(self):
+        waits = []
+        out = X.fetch_arena(get=fake_server(sample_rows(), fail={1: 429})[0], sleep=waits.append)
+        self.assertIn(8, waits)
+        self.assertTrue(out)
+
+    def test_unexpected_page_format_gives_a_clear_error(self):
+        for html in ("<html>nada</html>", "<script>self.__next_f.push([1,\"{}\"])</script>", page_html([])):
+            with self.assertRaises(ValueError) as cm:
+                X.parse_leaderboard(html)
+            self.assertTrue("formato" in str(cm.exception))
+
+    def test_pages_cover_the_whole_category_map(self):
+        pages = {(s, c): u for s, c, u in X.arena_pages()}
+        for pairs in X.ARENA_MAP.values():
+            for pair in pairs:
+                self.assertIn(pair, pages)
+        self.assertEqual(pages[("text", "overall")], "https://arena.ai/leaderboard/text")
+        self.assertEqual(pages[("text", "hard_prompts")], "https://arena.ai/leaderboard/text/hard-prompts")
+        self.assertEqual(pages[("webdev", "overall")], "https://arena.ai/leaderboard/code/webdev")
+        self.assertEqual(len(pages), len(X.arena_pages()))
+
+    def test_parses_a_real_shaped_page_with_escapes_and_unicode(self):
+        entries = [{"rank": 1, "modelDisplayName": "modelo-ñ \"x\"", "rating": 1500.5, "ratingUpper": 1510, "ratingLower": 1490, "votes": 10}]
+        payload = '{"leaderboard":{"arenaSlug":"text","leaderboardSlug":"x","params":{"category":"x"},"entries":%s}}' % json.dumps(entries)
+        html = "<script>self.__next_f.push([1," + json.dumps(payload) + "])</script>"
+        self.assertEqual(X.parse_leaderboard(html)[0]["modelDisplayName"], 'modelo-ñ "x"')
 
 
 class RefreshTests(Home):
@@ -322,33 +368,34 @@ class RefreshTests(Home):
     def test_refresh_saves_and_caches(self):
         get, calls = fake_server(sample_rows())
         out = []
-        data = X.refresh(self.cfg, out.append, get)
+        data = X.refresh(self.cfg, out.append, get, sleep=lambda s: None)
         self.assertEqual(set(data["arena"]), {"claude", "codex", "antigravity"})
+        self.assertTrue(any("arena.ai" in m for m in out))
         self.assertEqual(X.load()["arena"]["claude"]["name"], "claude-sonnet-5.5-xhigh")
         n = len(calls)
-        again = X.refresh(self.cfg, out.append, get)           # menos de 12 h: no vuelve a pedir
+        again = X.refresh(self.cfg, out.append, get, sleep=lambda s: None)           # menos de 12 h: no vuelve a pedir
         self.assertEqual(len(calls), n)
         self.assertIn("no vuelvo a consultar", out[-1])
         self.assertEqual(again["fetched_at"], data["fetched_at"])
-        X.refresh(self.cfg, out.append, get, force=True)
+        X.refresh(self.cfg, out.append, get, force=True, sleep=lambda s: None)
         self.assertGreater(len(calls), n)
 
     def test_without_aa_key_it_says_so_and_still_works(self):
         out = []
-        X.refresh(self.cfg, out.append, fake_server(sample_rows())[0])
+        X.refresh(self.cfg, out.append, fake_server(sample_rows())[0], sleep=lambda s: None)
         self.assertTrue(any("sin clave" in m for m in out))
         self.assertNotIn("aa", X.load())
 
     def test_with_aa_key_from_env_and_file(self):
         aa_payload = json.dumps({"status": 200, "data": DeriveTests.AA})
-        def get(url, headers=None):
+        def get(url, headers=None, timeout=None):
             if "artificialanalysis" in url:
                 assert headers == {"x-api-key": "K123"}, headers
                 return aa_payload
             return fake_server(sample_rows())[0](url, headers)
         os.environ["ARTIFICIAL_ANALYSIS_API_KEY"] = "K123"
         out = []
-        X.refresh(self.cfg, out.append, get)
+        X.refresh(self.cfg, out.append, get, sleep=lambda s: None)
         self.assertEqual(set(X.load()["aa"]), {"claude", "codex", "antigravity"})
         del os.environ["ARTIFICIAL_ANALYSIS_API_KEY"]
         self.assertIsNone(X.aa_key())
@@ -356,24 +403,24 @@ class RefreshTests(Home):
         self.assertEqual(X.aa_key(), "K123")
 
     def test_aa_failure_does_not_break_arena(self):
-        def get(url, headers=None):
+        def get(url, headers=None, timeout=None):
             if "artificialanalysis" in url:
                 raise X.HttpError(401, url)
             return fake_server(sample_rows())[0](url, headers)
         out = []
-        X.refresh(self.cfg, out.append, get, key="MALA")
+        X.refresh(self.cfg, out.append, get, key="MALA", sleep=lambda s: None)
         self.assertTrue(any("no se pudo consultar" in m for m in out))
         self.assertIn("arena", X.load())
 
     def test_unknown_model_id_is_reported(self):
         C.save({"models": {}})
         out = []
-        X.refresh(self.cfg, out.append, fake_server(sample_rows())[0])
+        X.refresh(self.cfg, out.append, fake_server(sample_rows())[0], sleep=lambda s: None)
         self.assertTrue(any("Sin id de modelo" in m for m in out))
 
     def test_render_warns_about_approximate_effort_and_cites_sources(self):
         get = fake_server(sample_rows())[0]
-        X.refresh(self.cfg, lambda s: None, get)
+        X.refresh(self.cfg, lambda s: None, get, sleep=lambda s: None)
         text = X.render(self.cfg, X.load())
         self.assertIn("aproximado", text)
         self.assertIn("claude-sonnet-5.5-xhigh", text)

@@ -3,8 +3,9 @@
 Se usan como PRIOR de calidad (reemplazan las estimaciones a mano de models.json) y después las mediciones locales
 (`calibrate`) las corrigen. Nunca se consultan solas: `benchmarks refresh` es una acción explícita del usuario.
 
-  Arena                dataset público (CC BY 4.0) en Hugging Face: preferencia humana en comparaciones a ciegas (Elo con
-                       intervalo de confianza) por categoría: coding, hard_prompts, math, creative_writing, longer_query…
+  Arena                páginas públicas de arena.ai/leaderboard (su robots.txt las permite; mismo dato que el dataset CC BY 4.0
+                       lmarena-ai/leaderboard-dataset): preferencia humana en comparaciones a ciegas (Elo con intervalo de
+                       confianza, con control de estilo) por categoría: coding, hard_prompts, math, creative_writing…
                        No es una prueba con respuesta correcta: mide qué prefieren las personas.
   Artificial Analysis  API con clave GRATUITA (variable ARTIFICIAL_ANALYSIS_API_KEY o ~/.ia-router/artificialanalysis.key):
                        benchmarks con respuesta correcta (índices de inteligencia/coding/math, GPQA, HLE, LiveCodeBench,
@@ -32,8 +33,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from . import calibrate, state
 
 ARENA_DATASET = "lmarena-ai/leaderboard-dataset"
-ARENA_ROWS = "https://datasets-server.huggingface.co/rows"
-ARENA_PAGE = "https://arena.ai/leaderboard"
+ARENA_PAGE = "https://arena.ai/leaderboard"  # las páginas por categoría son /leaderboard/text/<categoría>
 AA_URL = "https://artificialanalysis.ai/api/v2/data/llms/models"
 AA_SITE = "https://artificialanalysis.ai/"
 EFFORTS = ("minimal", "none", "low", "medium", "high", "xhigh", "max")
@@ -99,10 +99,13 @@ def http_get(url: str, headers: Optional[Dict[str, str]] = None, timeout: float 
     return body
 
 
-def get_with_retry(get: Callable[..., str], url: str, headers: Optional[Dict[str, str]] = None, tries: int = 4, sleep: Callable[[float], None] = time.sleep) -> str:
+def get_with_retry(get: Callable[..., str], url: str, headers: Optional[Dict[str, str]] = None, tries: int = 4, sleep: Callable[[float], None] = time.sleep,
+                   timeout: Optional[float] = None) -> str:
     """Reintenta con espera creciente ante 429 (límite de pedidos), 5xx y cortes de conexión; los demás errores 4xx no se reintentan."""
     for attempt in range(tries):
         try:
+            if timeout:
+                return get(url, headers, timeout) if headers else get(url, None, timeout)
             return get(url, headers) if headers else get(url)
         except HttpError as e:
             if e.status not in (429, 500, 502, 503, 504) or attempt == tries - 1:
@@ -166,27 +169,62 @@ def known_model_ids(names: List[str]) -> Dict[str, Optional[str]]:
 
 # ---------- Arena ----------
 
-def _arena_url(cfg: str, off: int) -> str:
-    return f"{ARENA_ROWS}?dataset={ARENA_DATASET}&config={cfg}&split=latest&offset={off}&length=100"
+def arena_pages() -> List[Tuple[str, str, str]]:
+    """(subconjunto, categoría, URL) de las páginas de arena.ai que alimentan ARENA_MAP, sin repetir."""
+    pages, seen = [], set()
+    for pairs in ARENA_MAP.values():
+        for sub, cat in pairs:
+            if (sub, cat) in seen:
+                continue
+            seen.add((sub, cat))
+            if sub == "text":
+                url = f"{ARENA_PAGE}/text" + ("" if cat == "overall" else "/" + cat.replace("_", "-"))
+            else:
+                url = f"{ARENA_PAGE}/" + {"webdev": "code/webdev"}.get(sub, sub)
+            pages.append((sub, cat, url))
+    return sorted(pages)
 
 
-def fetch_arena(subsets=ARENA_SUBSETS, get: Callable[..., str] = http_get, say: Callable[[str], None] = lambda s: None,
+def parse_leaderboard(html: str) -> List[Dict]:
+    """Entradas del leaderboard que arena.ai embebe en el HTML (datos de Next.js): [{modelDisplayName, rating, ratingUpper, …}]."""
+    chunks = re.findall(r'self\.__next_f\.push\(\[1,"(.*?)"\]\)</script>', html, re.S)
+    try:
+        txt = "".join(json.loads('"' + c + '"') for c in chunks)
+        m = re.search(r'"leaderboard":\{"arenaSlug":"[^"]+","leaderboardSlug":"[^"]+","params":\{[^}]*\},', txt)
+        i = txt.index('"entries":[', m.start()) + len('"entries":')
+        entries, _ = json.JSONDecoder().raw_decode(txt[i:])
+    except (ValueError, AttributeError) as exc:
+        raise ValueError("arena.ai cambió el formato de la página: no encuentro la tabla del leaderboard") from exc
+    if not isinstance(entries, list) or not entries or "rating" not in entries[0]:
+        raise ValueError("la tabla del leaderboard de arena.ai no tiene el formato esperado")
+    return entries
+
+
+def fetch_arena(pages: Optional[List[Tuple[str, str, str]]] = None, get: Callable[..., str] = http_get, say: Callable[[str], None] = lambda s: None,
                 sleep: Callable[[float], None] = time.sleep) -> Dict[str, List[Dict]]:
-    """Filas del último leaderboard de cada subconjunto, {subconjunto: [fila, …]}.
-    Es un servicio público y gratuito: se pide de a una página (100 filas) por vez, con una pausa entre pedidos y
-    reintentos con espera si responde 429. El subconjunto de texto son ~110 páginas; por eso el resultado se cachea."""
+    """Filas {subconjunto: [fila, …]} con el esquema del dataset oficial (model_name, rating, rating_lower/upper, vote_count, rank, category).
+    Se leen las páginas públicas de arena.ai (su robots.txt permite /leaderboard), una por categoría: ~11 pedidos en total, de a uno y
+    con pausa. Cada una trae la tabla ya con control de estilo. El mismo dato está en el dataset de Hugging Face, pero ese servicio
+    limita los pedidos y obligaría a ~125 páginas. Si una página falla se avisa y se sigue con las demás."""
     out: Dict[str, List[Dict]] = {}
-    for cfg in subsets:
-        first = json.loads(get_with_retry(get, _arena_url(cfg, 0), sleep=sleep))
-        rows, total = [r["row"] for r in first["rows"]], first.get("num_rows_total", 0)
-        pages = max(1, -(-total // 100))
-        say(f"Arena · {cfg}: {total} filas en {pages} páginas")
-        for k, off in enumerate(range(100, total, 100), 2):
-            sleep(0.3)
-            rows += [r["row"] for r in json.loads(get_with_retry(get, _arena_url(cfg, off), sleep=sleep))["rows"]]
-            if pages > 20 and k % 25 == 0:
-                say(f"  … {k}/{pages}")
-        out[cfg] = rows
+    today = time.strftime("%Y-%m-%d")
+    failed = 0
+    pages = pages if pages is not None else arena_pages()
+    for k, (sub, cat, url) in enumerate(pages):
+        if k:
+            sleep(1.0)
+        try:
+            entries = parse_leaderboard(get_with_retry(get, url, sleep=sleep, timeout=90))
+        except (OSError, ValueError) as exc:
+            failed += 1
+            say(f"  ⚠ Arena {sub}/{cat}: {str(exc)[:110]}")
+            continue
+        out.setdefault(sub, []).extend(
+            {"model_name": e["modelDisplayName"], "rating": e["rating"], "rating_lower": e.get("ratingLower"), "rating_upper": e.get("ratingUpper"),
+             "vote_count": e.get("votes"), "rank": e.get("rank"), "category": cat, "leaderboard_publish_date": today} for e in entries if "modelDisplayName" in e)
+        say(f"Arena · {sub}/{cat}: {len(entries)} modelos")
+    if failed == len(pages):
+        raise OSError("no pude leer ninguna página de arena.ai")
     return out
 
 
@@ -243,8 +281,8 @@ def aa_key() -> Optional[str]:
         return None
 
 
-def fetch_aa(key: str, get: Callable[..., str] = http_get) -> List[Dict]:
-    d = json.loads(get_with_retry(get, AA_URL, {"x-api-key": key}, tries=2))
+def fetch_aa(key: str, get: Callable[..., str] = http_get, sleep: Callable[[float], None] = time.sleep) -> List[Dict]:
+    d = json.loads(get_with_retry(get, AA_URL, {"x-api-key": key}, tries=2, sleep=sleep))
     if not isinstance(d, dict) or not isinstance(d.get("data"), list):
         raise ValueError("respuesta inesperada de Artificial Analysis")
     return d["data"]
@@ -305,7 +343,8 @@ def age_hours(data: Dict) -> Optional[float]:
         return None
 
 
-def refresh(cfg: Dict, say: Callable[[str], None] = print, get: Callable[..., str] = http_get, key: Optional[str] = None, force: bool = False) -> Dict:
+def refresh(cfg: Dict, say: Callable[[str], None] = print, get: Callable[..., str] = http_get, key: Optional[str] = None, force: bool = False,
+            sleep: Callable[[float], None] = time.sleep) -> Dict:
     """Descarga y guarda las fuentes. Solo para los modelos cuyo id real se conoce. No repite el pedido si los datos
     tienen menos de 12 horas (los leaderboards se publican de a días), salvo force."""
     cached = load()
@@ -321,13 +360,14 @@ def refresh(cfg: Dict, say: Callable[[str], None] = print, get: Callable[..., st
         say(f"Sin id de modelo para: {', '.join(unknown)} (corré /calibrate o una tarea con ese modelo, o definí \"external\" en models.json).")
     data = load()
     data["fetched_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-    rows = fetch_arena(get=get, say=say)
+    say("Leyendo los leaderboards de arena.ai (una página por categoría, ~11 pedidos de 2-3 MB)…")
+    rows = fetch_arena(get=get, say=say, sleep=sleep)
     data["arena"] = match_arena(rows, ids, {n: over[n].get("arena") for n in names if over[n].get("arena")})
     say(f"Arena: {len(data['arena'])}/{len(names)} modelos encontrados")
     key = key or aa_key()
     if key:
         try:
-            data["aa"] = match_aa(fetch_aa(key, get), ids, {n: over[n].get("aa") for n in names if over[n].get("aa")})
+            data["aa"] = match_aa(fetch_aa(key, get, sleep), ids, {n: over[n].get("aa") for n in names if over[n].get("aa")})
             say(f"Artificial Analysis: {len(data['aa'])}/{len(names)} modelos encontrados")
         except Exception as exc:  # clave inválida, cuota diaria, red caída: no rompe lo demás
             say(f"Artificial Analysis: no se pudo consultar ({str(exc)[:120]})")
@@ -396,7 +436,7 @@ def render(cfg: Dict, data: Dict) -> str:
         a, x = (data.get("arena") or {}).get(n), (data.get("aa") or {}).get(n)
         if a:
             warn = "" if a["exact"] else "  ⚠ Arena no publica el mismo nivel de esfuerzo que usa tu CLI: el dato es aproximado (" + ", ".join(f"{sub}: {v['effort'] or 'sin nivel'}" for sub, v in a["variants"].items() if not v["exact"]) + ")"
-            lines.append(f"{n:<12} Arena: {a['name']} (leaderboard {a.get('published', '?')}){warn}")
+            lines.append(f"{n:<12} Arena: {a['name']} (consultado el {a.get('published', '?')}){warn}")
             for sub, cats in a["ratings"].items():
                 for c, v in sorted(cats.items()):
                     if (sub, c) in {p for ps in ARENA_MAP.values() for p in ps}:
