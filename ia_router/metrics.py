@@ -37,7 +37,7 @@ SNAPSHOT = Path(__file__).resolve().parent / "data" / "arena.json"
 STALE_DAYS = 7
 EFFORTS = ("minimal", "none", "low", "medium", "high", "xhigh", "max")
 EFFORT_PREFERENCE = ("medium", "high", "xhigh", "max", "low", "minimal", "none")  # si no sabemos el esfuerzo del CLI
-NOISE = {"thinking", "reasoning", "non", "adaptive", "effort", "preview", "default"}
+NOISE = {"thinking", "reasoning", "non", "adaptive", "effort", "preview", "default", "fallback"}   # palabras de relleno en los nombres de los portales
 ATTRIBUTION = {"arena": "Arena (arena.ai), dataset leaderboard-dataset, CC BY 4.0", "aa": "Artificial Analysis (artificialanalysis.ai)"}
 
 # categoría del router -> [(subconjunto de Arena, categoría de Arena)]; se promedian las que cubren a todos los modelos
@@ -54,15 +54,18 @@ ARENA_MAP: Dict[str, List[Tuple[str, str]]] = {
     "long_context": [("text", "longer_query")],
     "multimodal": [("vision", "overall")],
 }
-# categoría del router -> campo de evaluación de Artificial Analysis (benchmarks con respuesta correcta)
+# categoría del router -> campos de evaluación de Artificial Analysis (benchmarks con respuesta correcta). Un campo solo cuenta si TODOS tus
+# modelos lo tienen: la API real no publica todos los índices para todos los modelos (probado con tus tres), por eso hay varios candidatos.
 AA_MAP: Dict[str, List[str]] = {
     "general": ["artificial_analysis_intelligence_index"],
-    "analysis": ["artificial_analysis_intelligence_index"],
+    "analysis": ["artificial_analysis_intelligence_index", "hle"],            # hle = Humanity's Last Exam
     "research": ["artificial_analysis_intelligence_index"],
-    "coding": ["artificial_analysis_coding_index"],
-    "debugging": ["artificial_analysis_coding_index"],
+    "coding": ["artificial_analysis_coding_index", "scicode", "terminalbench_v4_0"],
+    "debugging": ["artificial_analysis_coding_index", "terminalbench_v4_0"],  # terminalbench = tareas de terminal con agente
     "data": ["artificial_analysis_coding_index", "artificial_analysis_math_index"],
-    "math": ["artificial_analysis_math_index"],
+    "math": ["artificial_analysis_math_index", "aime_25"],
+    "writing": ["ifbench"],                                                    # seguimiento de instrucciones
+    "long_context": ["lcr"],                                                   # razonamiento sobre contexto largo
 }
 
 
@@ -427,7 +430,7 @@ def precision_values(models: List[str], arena: Dict[str, Dict], aa: Dict[str, Di
                 if all(isinstance(v, (int, float)) for v in have.values()) and max(have.values()) > 0:
                     top = max(have.values())
                     for m in models:
-                        scores[m].append((round(10 * have[m] / top, 2), f"AA {field.replace('artificial_analysis_', '')} {have[m]:g}"))
+                        scores[m].append((round(10 * have[m] / top, 2), f"AA {field.replace('artificial_analysis_', '')} {have[m]:.3g}"))
         if all(scores[m] for m in models):
             out[cat] = {m: (round(sum(s for s, _ in scores[m]) / len(scores[m]), 2), "; ".join(t for _, t in scores[m])) for m in models}
     return out

@@ -187,7 +187,8 @@ def describe_sources(cfg: Dict) -> str:
         elif mid:
             lines.append(f"{'':<12} Arena → sin coincidencia para ese modelo")
         if x:
-            lines.append(f"{'':<12} Artificial Analysis → {x['name']} · {x['tps']:.0f} tok/s" if x.get("tps") else f"{'':<12} Artificial Analysis → {x['name']}")
+            warn = "" if x["exact"] else "  ⚠ aproximado: tu CLI no informa su nivel de esfuerzo"
+            lines.append(f"{'':<12} Artificial Analysis → {x['name']}" + (f" · {x['tps']:.0f} tok/s" if x.get("tps") else "") + warn)
     if not d.get("aa"):
         lines += ["", "Artificial Analysis no está activo: sin su clave no hay velocidad ni, en general, costo. Ver .env.example."]
     lines.append("Fuentes: " + " · ".join(metrics.ATTRIBUTION[k] for k in (("arena", "aa") if d.get("aa") else ("arena",))))

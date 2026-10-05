@@ -8,7 +8,7 @@ Todos los ejemplos asumen que estás en la carpeta del repo:
 cd ~/Documents/ia-suscription-router
 ```
 
-Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16, y las métricas de Arena del 2026-10-05). Los 245 tests pasan con Python 3.9 y 3.14.
+Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16, y las métricas de Arena del 2026-10-05). Los 248 tests pasan con Python 3.9 y 3.14.
 
 ---
 
@@ -232,19 +232,21 @@ Qué cambió en el ruteo:
 
 ### 4.6 Qué mira cada categoría
 
-| Categoría del router | Arena | Artificial Analysis |
+| Categoría del router | Arena | Artificial Analysis (benchmarks con respuesta correcta) |
 |---|---|---|
 | `general` | text/overall | índice de inteligencia |
-| `coding` | text/coding + webdev | índice de coding |
-| `debugging` | text/coding + hard_prompts | índice de coding |
-| `writing` | creative_writing + instruction_following | — |
-| `analysis` | hard_prompts + expert | índice de inteligencia |
+| `coding` | text/coding + webdev | índice de coding, `scicode`, `terminalbench_v4_0` |
+| `debugging` | text/coding + hard_prompts | índice de coding, `terminalbench_v4_0` |
+| `writing` | creative_writing + instruction_following | `ifbench` |
+| `analysis` | hard_prompts + expert | índice de inteligencia, `hle` |
 | `data` | math + coding | índices de coding y math |
-| `math` | text/math | índice de math |
+| `math` | text/math | índice de math, `aime_25` |
 | `research` | search arena | índice de inteligencia |
-| `long_context` | longer_query | — |
+| `long_context` | longer_query | `lcr` (razonamiento sobre contexto largo) |
 | `multimodal` | vision arena | — |
 | `quick` | text/overall | — (pesa la velocidad) |
+
+**Un benchmark solo cuenta si todos tus modelos lo tienen.** La API real de Artificial Analysis no publica todos los índices para todos los modelos (por ejemplo, para `claude-sonnet-5-5`, `gpt-6.1-sol` y `Gemini 3.8 Flash` no están los índices de coding ni de math), por eso cada categoría tiene varios candidatos y se usan los que cubren a todos. Los benchmarks se comparan contra el mejor de tus modelos (`10 × valor / mejor`).
 
 Si una categoría tiene datos de las dos fuentes, se promedian.
 
@@ -277,6 +279,43 @@ quick                  9.5            9.8           10.0*
 * = el que elige el router · e = precisión estimada a mano (Arena no cubre esa categoría para todos tus modelos)
 Dimensiones con datos: precisión  ·  velocidad: falta tu clave de Artificial Analysis (.env)
 Datos: Arena 2026-10-05 (incluida)  ·  Atribución: Arena (arena.ai), dataset leaderboard-dataset, CC BY 4.0
+```
+
+**Con Artificial Analysis activo** (velocidad y costo suman al puntaje), salida real con tus tres modelos:
+
+```
+categoría             claude         codex   antigravity
+────────────────────────────────────────────────────────
+coding                 8.2            8.8*           8.2   
+debugging              8.2            8.9*           8.6   
+writing                8.9            8.8           10.0*  
+analysis               8.5            8.9            9.6*  
+data                   9.2            8.9           10.0*  
+research               8.1            8.9            9.0*  
+math                   7.0 e          7.5 e          8.6*e 
+multimodal             8.9            8.9           10.0*  
+long_context           8.8            8.9            9.9*  
+quick                  8.1            7.4           10.0*  
+
+* = el que elige el router · e = precisión estimada a mano (Arena no cubre esa categoría para todos tus modelos)
+Dimensiones con datos: precisión, velocidad, costo
+Datos: Arena 2026-10-05 (actualizada) · Artificial Analysis 2026-10-05  ·  Atribución: Arena (arena.ai), dataset leaderboard-dataset, CC BY 4.0 · Artificial Analysis (artificialanalysis.ai)
+```
+
+Y el desglose de una categoría, con las fuentes de cada dimensión:
+
+```
+* = el que elige el router · e = precisión estimada a mano (Arena no cubre esa categoría para todos tus modelos)
+Dimensiones con datos: precisión, velocidad, costo
+Datos: Arena 2026-10-05 (actualizada) · Artificial Analysis 2026-10-05  ·  Atribución: Arena (arena.ai), dataset leaderboard-dataset, CC BY 4.0 · Artificial Analysis (artificialanalysis.ai)
+
+Puntaje de «coding» = Σ peso × valor (0-10)
+claude       =  8.21   precisión 8.7×0.70  velocidad 7.2×0.15  costo 7.2×0.15
+               precisión: Arena text/coding 1536; Arena webdev/overall 1715; AA scicode 0.529; AA terminalbench_v4_0 0.298 · velocidad: AA 89 tok/s · costo: AA $4.00/M tokens
+codex        =  8.79   precisión 9.8×0.70  velocidad 5.5×0.15  costo 7.2×0.15
+               precisión: Arena text/coding 1542; Arena webdev/overall 1758; AA scicode 0.532; AA terminalbench_v4_0 0.48 · velocidad: AA 49 tok/s · costo: AA $4.00/M tokens
+antigravity  =  8.19   precisión 7.4×0.70  velocidad 10.0×0.15  costo 10.0×0.15
+               precisión: Arena text/coding 1530; Arena webdev/overall 1583; AA scicode 0.566; AA terminalbench_v4_0 0.197 · velocidad: AA 238 tok/s · costo: AA $1.50/M tokens
 ```
 
 Con una categoría (`scores coding`) agrega el desglose: cada modelo con sus valores, pesos y fuentes (`precisión: Arena text/coding 1536; Arena webdev/overall 1715`).
@@ -523,7 +562,7 @@ Una tarea puede tener varias a la vez (por ejemplo `debugging×3, coding×2`). `
 - **Cada `ask` y cada `doctor --probe` gastan cuota real.** `route`, `scores`, `metrics` y `--dry-run` no gastan. Actualizar las métricas solo lee sitios públicos (y la API de Artificial Analysis con tu clave).
 - **Las métricas miden modelos, no tu CLI.** Arena mide preferencia humana, no respuestas correctas, y publica variantes por nivel de esfuerzo que pueden no coincidir con el de tu CLI (se marca como aproximado). Con modelos de frontera las diferencias suelen caer dentro del margen de error: el desempate lo dan velocidad y costo, si los activás.
 - **El costo es un proxy**: precio de lista por token, no tu cuota real de suscripción.
-- **Artificial Analysis está implementado con el formato de su documentación y tests con datos de ejemplo; no se verificó contra la API real.** Con tu clave, `metrics refresh` lo verifica.
+- **Artificial Analysis se verificó contra su API real** (690 modelos). Sus campos reales difieren de los documentados: no publica todos los índices para todos los modelos, así que el router usa los benchmarks que cubren a los tuyos (ver 4.6). Para un modelo sin nivel de esfuerzo conocido elige el habitual (`Medium`) y lo marca con ⚠ aproximado.
 - **`agy` no lee el prompt por stdin ni abre archivos por ruta** en modo no interactivo, y falla si el modelo pide una herramienta que no puede autorizar.
 - **Seguridad:** los CLIs corren en modo no interactivo con sus permisos por defecto. El router **no** activa flags de "permitir todo".
 - **Todavía no hay** sesiones persistentes (el chat recuerda los últimos turnos pero no se guarda al salir), streaming de salida ni versión de escritorio.

@@ -208,9 +208,13 @@ class PresentationTests(Home):
         self.assertIn("⚠", text)                                   # variante de esfuerzo aproximada
         self.assertIn("gemini-3.8-flash-high", text)
         self.assertIn("Artificial Analysis no está activo", text)
+        self.assertNotIn("⚠ aproximado: tu CLI", text)
         self.assertIn("CC BY 4.0", text)
         self.with_aa()
-        self.assertNotIn("no está activo", S.describe_sources(core.load_config()))
+        active = S.describe_sources(core.load_config())
+        self.assertNotIn("no está activo", active)
+        self.assertIn("Artificial Analysis → Claude Sonnet 5.5", active)
+        self.assertIn("⚠ aproximado: tu CLI no informa su nivel de esfuerzo", active)    # claude y codex no informan esfuerzo; gemini sí
 
     def test_describe_sources_reports_unknown_models(self):
         os.remove(Path(self.tmp.name) / "models_seen.json")

@@ -11,7 +11,7 @@ Un router en Python que reparte tareas entre los **CLIs oficiales** de IA que el
 ## Comandos
 
 ```bash
-python3 -m unittest discover -s tests       # toda la suite (~245 tests, ~15 s); debe terminar en OK
+python3 -m unittest discover -s tests       # toda la suite (~248 tests, ~15 s); debe terminar en OK
 python3 -m unittest tests.test_scoring      # un archivo
 /usr/bin/python3 -m unittest discover -s tests   # en macOS: Python 3.9 del sistema (el mínimo soportado)
 python3 cli.py doctor                        # CLIs instalados y qué modelo usa cada uno (no gasta cuota)
@@ -79,7 +79,7 @@ Invariantes:
 - **El Python de python.org en macOS no trae certificados SSL:** por eso las descargas usan `curl` y caen a `urllib` solo si no existe.
 - **El dataset de Arena en Hugging Face** (`datasets-server`) devuelve 429 tras ~30 páginas: no uses ese camino; se leen las páginas por categoría de `arena.ai/leaderboard/...` (ver `metrics.arena_pages`). Si el formato de esas páginas cambia, `parse_leaderboard` falla con un error claro.
 - **Arena no publica el precio de todos los modelos** (p. ej. `gpt-6.1-sol`): el costo suele depender de Artificial Analysis.
-- **Artificial Analysis no se verificó contra la API real** (requiere clave): está hecho con el formato de su documentación. Si lo tocás, mantené los tests con `tests/fixtures.py`.
+- **Artificial Analysis: los campos reales difieren de la documentación.** Se verificó contra la API real (690 modelos): no publica todos los índices (`artificial_analysis_coding_index`, `math_index`) para todos los modelos, pero sí otros benchmarks (`lcr`, `hle`, `scicode`, `terminalbench_v4_0`…). `metrics.AA_MAP` lista varios candidatos por categoría y solo cuentan los que cubren a todos los modelos. Los nombres traen relleno (`Claude Sonnet 5.5 (Max, Default Fallback)`): `metrics.NOISE` lo descarta; si aparece una palabra nueva, agregala ahí con un test.
 - **Promediar tokens** solo sobre corridas que tienen tokens registrados (`token_runs`).
 - **Tests con pty** (`PtySmokeTests`, `test_select`) comparan antes/después y no el estado absoluto del sistema de archivos.
 - `pyte` (emulador de terminal) se usó **a mano** para ver pantallas reales; no es dependencia ni se importa en tests.

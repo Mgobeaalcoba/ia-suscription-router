@@ -94,7 +94,7 @@ También: caja de entrada propia con historial y varias líneas, **archivos arra
 | `ia_router/attachments.py` · `render.py` · `banner.py` | Archivos arrastrados, markdown interpretado y encabezado. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | Lector de `.env`, estado y log, servidor MCP. |
 | `tools/update_snapshot.py` | Para quien mantiene el repo: regenera la foto de Arena antes de publicar. |
-| `tests/` | 245 tests y CLIs falsos (`tests/fake_bin`). |
+| `tests/` | 248 tests y CLIs falsos (`tests/fake_bin`). |
 
 ## Usarlo desde Claude Code (MCP)
 
@@ -110,7 +110,7 @@ Herramientas: `route_task`, `ask_model`, `list_models`.
 |---|---|
 | Arena | Mide preferencia humana, no respuestas correctas, y publica variantes por nivel de esfuerzo que pueden no coincidir con el de tu CLI (se marca como aproximado). Lee páginas públicas de arena.ai: si cambian de formato, lo avisa y sigue con lo que tenía. |
 | Modelos de frontera | Las diferencias de precisión suelen caer dentro del margen de error; ahí desempatan velocidad y costo, que requieren la clave de Artificial Analysis. |
-| Artificial Analysis | Implementado con el formato de su documentación y tests con datos de ejemplo; **no verificado contra la API real**. |
+| Artificial Analysis | Verificado contra su API real. No publica todos los índices para todos los modelos: el router usa los benchmarks que cubren a los tuyos. Si tu CLI no informa su nivel de esfuerzo, elige el habitual y lo marca como aproximado. |
 | Costo | Es el precio de lista por token: un proxy del consumo de cuota, no tu cuota real. |
 | Antigravity | `agy -p` no lee el prompt por stdin ni abre archivos por ruta en modo no interactivo, y falla si pide una herramienta que no puede autorizar. |
 | Términos de uso | Pensado para uso personal a ritmo humano. Si lo distribuís a terceros, revisá los términos de cada proveedor (Anthropic exige API key para productos de terceros). |

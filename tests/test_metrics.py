@@ -36,6 +36,23 @@ class NameTests(unittest.TestCase):
         for name, exp in cases.items():
             self.assertEqual(M.split_effort(name), exp, name)
 
+    def test_real_artificial_analysis_names(self):
+        # nombres tal como los publica la API real de Artificial Analysis
+        cases = {"Claude Sonnet 5.5 (Max, Default Fallback)": ("claude-sonnet-5-5", "max"), "Claude Sonnet 5.5 (Medium, Default Fallback)": ("claude-sonnet-5-5", "medium"),
+                 "GPT-6.1 Sol (Medium)": ("gpt-6-1-sol", "medium"), "GPT-6.1 Sol (Xhigh)": ("gpt-6-1-sol", "xhigh"), "Gemini 3.8 Flash (High)": ("gemini-3-8-flash", "high"),
+                 "Claude Sonnet 5 (Max)": ("claude-sonnet-5", "max")}
+        for name, exp in cases.items():
+            self.assertEqual(M.split_effort(name), exp, name)
+        self.assertEqual(M.split_effort("claude-sonnet-5-5")[0], M.split_effort("Claude Sonnet 5.5 (Max, Default Fallback)")[0])
+
+    def test_aa_variants_are_chosen_like_arena_ones(self):
+        aa = [{"name": f"Claude Sonnet 5.5 ({e}, Default Fallback)", "slug": f"claude-sonnet-5-5-{e.lower()}", "tps": 100.0 + i, "evals": {}} for i, e in enumerate(["Max", "Xhigh", "High", "Medium", "Low"])]
+        aa.append({"name": "Claude Sonnet 5 (Max)", "slug": "claude-sonnet-5", "tps": 0, "evals": {}})
+        m = M.match_aa(aa, {"claude": "claude-sonnet-5-5"})
+        self.assertEqual(m["claude"]["slug"], "claude-sonnet-5-5-medium")        # sin esfuerzo conocido: el habitual
+        self.assertFalse(m["claude"]["exact"])                                     # y se marca aproximado
+        self.assertEqual(M.match_aa(aa, {"claude": "claude-sonnet-5.5-high"})["claude"]["slug"], "claude-sonnet-5-5-high")
+
     def test_versions_do_not_collide(self):
         self.assertNotEqual(M.split_effort("claude-sonnet-5-high")[0], M.split_effort("claude-sonnet-5.5-high")[0])
 
@@ -272,6 +289,24 @@ class DimensionTests(unittest.TestCase):
         both = M.precision_values(self.NAMES, self.arena(), aa)
         self.assertIn("Arena", both["coding"]["claude"][1])
         self.assertIn("AA coding_index", both["coding"]["claude"][1])
+
+    REAL = [  # forma de los datos reales de la API para estos modelos: faltan los índices de coding y math; hay otros benchmarks
+        {"name": "Claude Sonnet 5.5 (Medium, Default Fallback)", "slug": "c", "tps": 89.0, "evals": {"artificial_analysis_intelligence_index": 40.8, "hle": 0.398, "scicode": 0.529, "lcr": 0.763, "terminalbench_v4_0": 0.298}},
+        {"name": "GPT-6.1 Sol (Medium)", "slug": "g", "tps": 49.0, "evals": {"artificial_analysis_intelligence_index": 47.8, "hle": 0.499, "scicode": 0.532, "lcr": 0.833, "terminalbench_v4_0": 0.48}},
+        {"name": "Gemini 3.8 Flash (High)", "slug": "f", "tps": 238.0, "evals": {"artificial_analysis_intelligence_index": 40.9, "artificial_analysis_coding_index": 76.3, "hle": 0.478, "scicode": 0.566, "lcr": 0.813, "terminalbench_v4_0": 0.197}},
+    ]
+
+    def test_uses_the_benchmarks_that_cover_every_model_even_when_the_indexes_are_missing(self):
+        pv = M.precision_values(self.NAMES, {}, M.match_aa(self.REAL, F.IDS))
+        self.assertIn("long_context", pv)                                     # lcr
+        self.assertEqual(pv["long_context"]["codex"][0], 10.0)
+        self.assertIn("lcr", pv["long_context"]["claude"][1])
+        self.assertIn("hle", pv["analysis"]["claude"][1])
+        self.assertIn("scicode", pv["coding"]["claude"][1])
+        self.assertIn("terminalbench_v4_0", pv["debugging"]["antigravity"][1])
+        self.assertNotIn("coding_index", pv["coding"]["claude"][1])           # solo gemini lo tiene: no cubre a todos
+        self.assertNotIn("math", pv)                                          # ningún benchmark de math cubre a los tres
+        self.assertLess(pv["debugging"]["antigravity"][0], pv["debugging"]["codex"][0] - 3)   # 0,197 vs 0,48 en terminal-bench
 
     def test_speed_relative_to_the_fastest_needs_everyone(self):
         aa = M.match_aa(F.aa_models(), F.IDS)
