@@ -49,15 +49,27 @@ El router **nunca lee ni copia tus tokens**: cada CLI usa su propio login.
 
 > **Gemini CLI ya no se usa.** Google lo dio de baja para cuentas individuales (el login falla con *"This client is no longer supported"*). Su reemplazo es `agy`.
 
-No hace falta instalar los tres, pero el router reparte entre los que haya. Para instalar el router no hay que hacer nada: es un clon del repo.
+No hace falta instalar los tres, pero el router reparte entre los que haya.
+
+**Instalar el router** (Python 3.9 o superior):
+
+```bash
+brew install Mgobeaalcoba/tap/ia-router     # Homebrew
+pipx install ia-router                      # o: pip install ia-router
+ia-router                                   # abre el chat
+```
+
+**Desde un clon del repo** (para contribuir o probar cambios):
 
 ```bash
 gh repo clone Mgobeaalcoba/ia-suscription-router ~/Documents/ia-suscription-router
 cd ~/Documents/ia-suscription-router
 python3 -m unittest discover -s tests    # opcional: debe terminar en OK
+python3 cli.py                           # equivale a `ia-router`
 cp .env.example .env                     # opcional: para activar velocidad y costo (ver 4.2)
-ln -s "$PWD/cli.py" ~/.local/bin/ia-router   # opcional: abrirlo como `ia-router` desde cualquier carpeta
 ```
+
+Instalado con pip o brew, el `.env` va en `~/.ia-router/.env` (no hay carpeta del repo). Si querés cambiar los modelos o sus comandos, copiá `ia_router/data/models.json` a `~/.ia-router/models.json`: esa copia tiene prioridad sobre la incluida y **sobrevive a las actualizaciones** (ver 8.2).
 
 ---
 
@@ -470,8 +482,8 @@ El servidor MCP **usa el mismo ruteo por métricas** que el CLI. Si tardan mucho
 | Cooldowns | `~/.ia-router/state.json` |
 | Log de ejecuciones (sin prompts; con modelo y tokens) | `~/.ia-router/log.jsonl` |
 | Historial de lo que escribís en la caja de entrada | `~/.ia-router/history.jsonl` |
-| Tu clave de Artificial Analysis | `.env` (en el repo, ignorado por git) o la variable de entorno |
-| Modelos, comandos y timeouts | `models.json` (en el repo) |
+| Tu clave de Artificial Analysis | `~/.ia-router/.env` (o `.env` en la carpeta del clon, ignorado por git) o la variable de entorno |
+| Modelos, comandos y timeouts | `ia_router/data/models.json` (incluido) o tu copia en `~/.ia-router/models.json` |
 
 Para empezar de cero: `rm -r ~/.ia-router`. Para repetir solo una parte, borrá ese archivo (por ejemplo `profile.json` vuelve a los pesos por defecto).
 
@@ -487,7 +499,7 @@ Para empezar de cero: `rm -r ~/.ia-router`. Para repetir solo una parte, borrá 
 |---|---|---|
 | `ARTIFICIAL_ANALYSIS_API_KEY` | Clave gratuita de Artificial Analysis (velocidad, costo, benchmarks). Mejor en `.env` (ver 4.2). | `.env`: `ARTIFICIAL_ANALYSIS_API_KEY=…` |
 | `ROUTER_HOME` | Cambia la carpeta de estado (por defecto `~/.ia-router`). | `ROUTER_HOME=/tmp/prueba python3 cli.py scores` |
-| `ROUTER_MODELS` | Usa otro `models.json`. | `ROUTER_MODELS=~/mis-modelos.json python3 cli.py doctor` |
+| `ROUTER_MODELS` | Usa otro `models.json` (tiene prioridad sobre `~/.ia-router/models.json` y sobre el incluido). | `ROUTER_MODELS=~/mis-modelos.json python3 cli.py doctor` |
 | `ROUTER_CMD_<MODELO>` | Reemplaza el comando de un modelo (lista JSON). `{prompt}` se sustituye por la tarea. Con un comando propio no se agregan los flags de uso (se muestra `tokens n/d`). | `ROUTER_CMD_CODEX='["codex","exec","{prompt}"]'` |
 | `NO_COLOR` | Desactiva colores y estilos (la salida queda como texto plano). | `NO_COLOR=1 ia-router` |
 | `CODEX_HOME` | Carpeta de Codex de donde se lee el modelo que usó (si no es `~/.codex`). | |
@@ -495,6 +507,8 @@ Para empezar de cero: `rm -r ~/.ia-router`. Para repetir solo una parte, borrá 
 `ROUTER_HOME` es útil para probar sin tocar tu estado real. Todas se pueden poner en `.env` (ver `.env.example`).
 
 ### 8.2 `models.json`
+
+Rige el primero que exista: `ROUTER_MODELS` → `~/.ia-router/models.json` (tu copia) → el incluido en el paquete (`ia_router/data/models.json`).
 
 ```json
 "claude": {
@@ -558,6 +572,7 @@ Una tarea puede tener varias a la vez (por ejemplo `debugging×3, coding×2`). `
 
 ## 10. Límites que conviene conocer
 
+- **Licencia:** Apache-2.0. Podés usarlo y modificarlo, conservando el archivo `NOTICE` y la atribución al autor.
 - **Es para uso personal.** Corre con tus suscripciones, a ritmo humano. Si algún día lo distribuís a terceros, revisá los términos de cada proveedor (Anthropic, por ejemplo, exige API key para productos de terceros).
 - **Cada `ask` y cada `doctor --probe` gastan cuota real.** `route`, `scores`, `metrics` y `--dry-run` no gastan. Actualizar las métricas solo lee sitios públicos (y la API de Artificial Analysis con tu clave).
 - **Las métricas miden modelos, no tu CLI.** Arena mide preferencia humana, no respuestas correctas, y publica variantes por nivel de esfuerzo que pueden no coincidir con el de tu CLI (se marca como aproximado). Con modelos de frontera las diferencias suelen caer dentro del margen de error: el desempate lo dan velocidad y costo, si los activás.

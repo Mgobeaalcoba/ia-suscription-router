@@ -37,9 +37,9 @@ No hay build ni linter configurados. No agregues dependencias.
 
 | Módulo | Responsabilidad |
 |---|---|
-| `cli.py` | Subcomandos y entrada (carga `.env` primero). Sin argumentos abre el chat. |
+| `ia_router/cli.py` (+ `cli.py` atajo) | Subcomandos y entrada (carga `.env` primero). Sin argumentos abre el chat. El comando instalado es `ia-router`. |
 | `ia_router/metrics.py` | **Fuente de verdad de las métricas.** Arena (páginas de arena.ai) y Artificial Analysis (API con clave): descarga con reintentos, foto incluida + caché del usuario (`active()`), emparejamiento por id real y nivel de esfuerzo, y valores 0-10 de precisión, velocidad y costo. |
-| `ia_router/data/arena.json` | Foto de Arena incluida en el software (CC BY 4.0). La regenera `tools/update_snapshot.py`. |
+| `ia_router/data/arena.json` | Foto de Arena incluida en el software (CC BY 4.0; atribuida en `NOTICE`). La regenera `tools/update_snapshot.py`. |
 | `ia_router/scoring.py` | `puntaje = Σ peso × valor`, perfil de prioridades, tablas explicadas, diferencias al actualizar (`refresh_and_report`). Aplica el puntaje a `strengths`. |
 | `ia_router/priorities.py` · `select.py` | Cuestionario por tipo de tarea y selector ↑/↓ + Enter. |
 | `ia_router/probe.py` | Sonda de los CLIs y detección del **modelo real** de cada uno. |
@@ -89,7 +89,15 @@ Invariantes:
 - **Agregar un modelo:** entrada en `models.json` (`cmd`, `usage` con su `parser` en `adapters.parse_usage`, `reads_files`) + `python3 cli.py doctor --probe`. Si su CLI devuelve JSON distinto, sumá un parser y su fixture en `tests/fake_bin`.
 - **Agregar una categoría de tarea:** `router.PATTERNS`, y los mapas `metrics.ARENA_MAP` / `AA_MAP`; si va a tener su propia pregunta, `scoring.GROUPS`.
 - **Agregar una fuente de métricas:** una función `fetch_*` con `get` inyectable, un `match_*` por id real + esfuerzo, y su aporte a `precision_values` / `speed_values` / `cost_values`. Con tests offline, atribución en `metrics.ATTRIBUTION` y su variable en `.env.example`.
-- **Publicar una versión:** `python3 tools/update_snapshot.py` (regenera la foto de Arena; ~1 minuto), correr los tests y commitear `ia_router/data/arena.json`.
+- **Publicar una versión** (es público e irreversible: PyPI no permite resubir una versión; hacerlo solo cuando el dueño lo pida):
+  1. `python3 tools/update_snapshot.py` (regenera la foto de Arena; ~1 minuto) y subir `__version__` en `ia_router/__init__.py` (y `version`/`date-released` en `CITATION.cff`).
+  2. Tests en 3.9 y 3.14; `python -m build` y `twine check dist/*` (en un venv temporal; no son dependencias del proyecto).
+  3. Probar el wheel en un venv limpio (`ia-router --help`, `ia-router scores`) y confirmar que **no incluye `.env`** ni la clave.
+  4. `twine upload dist/*` (token de PyPI del dueño, nunca en el repo) y actualizar `url`/`sha256` de la fórmula en `Mgobeaalcoba/homebrew-tap` (plantilla en `packaging/homebrew/`).
+
+## Licencia
+
+Apache-2.0 (`LICENSE`) con `NOTICE` de atribución obligatoria al autor y a los datos de terceros (Arena, CC BY 4.0). No quites ni modifiques `NOTICE`/`LICENSE`; si se agrega una fuente de datos de terceros, va en `NOTICE`. `pyproject.toml` declara `license-files` para que viajen dentro del paquete.
 
 ## Documentación (mantenela al día en el mismo cambio)
 

@@ -29,11 +29,19 @@ tu tarea ──► clasificar ──► puntaje por modelo ──► elegir el m
 
 Velocidad y costo van en escala logarítmica (2 puntos menos por cada duplicación frente al mejor de tus modelos). Una dimensión solo cuenta si hay dato para **todos** tus modelos. Detalle en [docs/USO.md](docs/USO.md#4-ruteo-por-métricas-objetivas).
 
+## Instalación
+
+```bash
+brew install Mgobeaalcoba/tap/ia-router     # Homebrew
+pipx install ia-router                      # o pip: `pip install ia-router`
+```
+
+Instalado, el comando es `ia-router`. Desde un clon del repo: `python3 cli.py`. Necesitás Python 3.9 o superior y, al menos, uno de los CLIs oficiales instalado y logueado (`claude`, `codex` o `agy`).
+
 ## Primer uso
 
 ```bash
-python3 cli.py            # abre el chat
-ln -s "$PWD/cli.py" ~/.local/bin/ia-router   # opcional: abrirlo como `ia-router` desde cualquier carpeta
+ia-router            # abre el chat
 ```
 
 Al abrir te pregunta (y siempre antes de gastar algo): qué modelo usa cada CLI (una consulta mínima a cada uno, solo la primera vez), si querés actualizar las métricas si están viejas, y, una vez, si querés responder las preguntas de prioridades.
@@ -48,15 +56,15 @@ ia ❯ /metrics refresh                              ← actualizar las métrica
 ## Actualizar las métricas y activar velocidad/costo (`.env`)
 
 ```bash
-python3 cli.py metrics refresh        # lee ~11 páginas públicas de arena.ai (≈ 1 minuto)
+ia-router metrics refresh        # lee ~11 páginas públicas de arena.ai (≈ 1 minuto)
 ```
 
 Arena aporta la precisión. Para sumar **velocidad y costo** (y poder priorizarlos) usá la API de [Artificial Analysis](https://artificialanalysis.ai/), que tiene un plan **gratuito** (1.000 pedidos por día):
 
 ```bash
-cp .env.example .env
-# editá .env y pegá tu clave:   ARTIFICIAL_ANALYSIS_API_KEY=tu_clave
-python3 cli.py metrics refresh        # ahora también trae velocidad, precio y benchmarks
+mkdir -p ~/.ia-router && cp .env.example ~/.ia-router/.env      # instalado con pip/brew (o `.env` en la carpeta del repo si usás un clon)
+# editá ese archivo y pegá tu clave:   ARTIFICIAL_ANALYSIS_API_KEY=tu_clave
+ia-router metrics refresh        # ahora también trae velocidad, precio y benchmarks
 ```
 
 El `.env` **nunca se sube a git** (está en `.gitignore`); `.env.example` sí. Una variable ya definida en tu entorno tiene prioridad sobre el archivo. Artificial Analysis pide atribución: el router la muestra cada vez que usa sus datos.
@@ -82,8 +90,10 @@ También: caja de entrada propia con historial y varias líneas, **archivos arra
 
 | Archivo | Rol |
 |---|---|
-| `cli.py` | Punto de entrada y subcomandos. |
-| `models.json` | Modelos: comandos, flags de uso, timeouts y estimaciones de último recurso. |
+| `ia_router/cli.py` · `cli.py` | Subcomandos (el comando instalado es `ia-router`); `cli.py` es un atajo desde un clon. |
+| `pyproject.toml` · `packaging/homebrew/` | Paquete para PyPI y plantilla de la fórmula de Homebrew. |
+| `LICENSE` · `NOTICE` · `CITATION.cff` | Apache-2.0, atribución obligatoria y cómo citarlo. |
+| `ia_router/data/models.json` | Modelos: comandos, flags de uso, timeouts y estimaciones de último recurso. |
 | `.env.example` | Variables opcionales (clave de Artificial Analysis). Copiar a `.env`. |
 | `ia_router/metrics.py` | Arena y Artificial Analysis: descarga, emparejamiento por modelo real y valores 0-10. |
 | `ia_router/data/arena.json` | Foto de Arena incluida en el software (CC BY 4.0). |
@@ -120,6 +130,10 @@ Herramientas: `route_task`, `ask_model`, `list_models`.
 
 Las métricas se muestran con su atribución: **Arena** ([arena.ai](https://arena.ai), dataset `leaderboard-dataset`, CC BY 4.0) y **[Artificial Analysis](https://artificialanalysis.ai/)**.
 
-## Licencia
+## Licencia y cómo citar
 
-Por definir.
+[Apache License 2.0](LICENSE): podés usarlo, modificarlo y redistribuirlo, **conservando el archivo [NOTICE](NOTICE) y la atribución a su autor** (sección 4 de la licencia). Los datos de terceros conservan sus propias licencias (ver más arriba).
+
+Para citarlo en un trabajo: [CITATION.cff](CITATION.cff) (GitHub lo muestra como *Cite this repository*).
+
+> ia-router, por Mgobeaalcoba (2026). https://www.mgatc.com/recursos/ia-router/

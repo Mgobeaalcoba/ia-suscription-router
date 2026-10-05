@@ -10,7 +10,7 @@ class IaRouter < Formula
   homepage "https://www.mgatc.com/recursos/ia-router/"
   url "https://files.pythonhosted.org/packages/source/i/ia-router/ia_router-0.2.0.tar.gz"
   sha256 "REEMPLAZAR_CON_EL_SHA256_DEL_SDIST"
-  license :cannot_represent # licencia propietaria: ver el paquete
+  license "Apache-2.0"
 
   depends_on "python@3.13"
 

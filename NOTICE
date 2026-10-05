@@ -1,0 +1,18 @@
+ia-router
+Copyright 2026 Mgobeaalcoba (https://mgatc.com · https://github.com/Mgobeaalcoba)
+
+ia-router fue creado por Mgobeaalcoba. Si lo redistribuís, lo modificás o creás una obra derivada, conservá este
+archivo NOTICE y la atribución al autor, como exige la sección 4 de la Licencia Apache 2.0 (archivo LICENSE).
+
+---------------------------------------------------------------------------------------------------------------
+Datos de terceros
+
+Arena (https://arena.ai)
+  ia_router/data/arena.json contiene una copia reducida y reorganizada de los leaderboards públicos de Arena
+  (dataset "leaderboard-dataset"), publicados bajo la licencia Creative Commons Atribución 4.0 (CC BY 4.0,
+  https://creativecommons.org/licenses/by/4.0/). Cambios realizados: solo se conservan las categorías que usa el
+  router y los campos modelo, rating, intervalo de confianza, votos y precio, en un formato compacto.
+
+Artificial Analysis (https://artificialanalysis.ai/)
+  Sus datos se consultan por su API con la clave gratuita de cada usuario; no se redistribuyen con este software.
+  Se muestra su atribución cada vez que se usan.
