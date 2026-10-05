@@ -8,7 +8,7 @@ Todos los ejemplos asumen que estás en la carpeta del repo:
 cd ~/Documents/ia-suscription-router
 ```
 
-Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16). Los pasos de esta guía —instalación desde cero, registro por MCP y modo interactivo de `manifest refine`— fueron probados de punta a punta.
+Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16). Los pasos de esta guía —instalación desde cero, registro por MCP, modo interactivo de `manifest refine`, caja de entrada con archivos, calibración y métricas externas— fueron probados de punta a punta. Los 251 tests pasan con Python 3.9 y 3.14.
 
 ---
 
@@ -22,13 +22,14 @@ tu tarea ──► clasificar ──► consultar manifiesto ──► elegir mo
              manager LLM)    por tipo de tarea)        hay rate limit)      y tu cuota)
 ```
 
-Hay tres conceptos:
+Hay cuatro conceptos:
 
 | Concepto | Qué es |
 |---|---|
 | **Modelos** | Los CLIs oficiales instalados y logueados en tu máquina. Se definen en `models.json`. |
 | **Manager** | Un modelo **barato que elegís vos** (por defecto Claude Haiku). Clasifica tareas y mantiene el manifiesto. |
 | **Manifiesto** | Un archivo con el orden de preferencia de modelos por tipo de tarea. Lo arma el manager y lo ajustás conversando con él. |
+| **Puntaje objetivo** | Cuánto vale cada modelo en cada categoría, calculado con **métricas**: pruebas verificables que corrés vos (`calibrate`), benchmarks de Arena y Artificial Analysis, y la velocidad, el consumo de cuota y la confiabilidad que el router mide en tu uso real. Lo ajustás con tus **criterios** (`criteria`). Ver la sección 4b. |
 
 El router **nunca lee ni copia tus tokens**: cada CLI usa su propio login.
 
@@ -485,6 +486,14 @@ codex      6.0  OK             analysis×1→6
 (dry-run) orden de intento: ['claude', 'antigravity', 'codex']
 ```
 
+**Qué muestra la respuesta.** Una cabecera con el proveedor, el **modelo exacto** que respondió y los **tokens** de entrada (con lo que salió de caché entre paréntesis) y de salida, y después el texto con el markdown interpretado:
+
+```
+[claude (claude-sonnet-5-5) · in 16.5k (8.4k caché) · out 72]
+```
+
+Si el CLI no informa el modelo o los tokens, se muestra `tokens n/d`. Las rutas a archivos dentro de la tarea se anexan igual que en el chat (texto como contexto; imágenes y PDF por ruta, solo a modelos que pueden abrir archivos).
+
 **Fallback automático.** Si el modelo elegido falla, prueba el siguiente (máximo 3 intentos):
 
 | Situación | Qué hace el router |
@@ -591,13 +600,13 @@ python3 cli.py stats
 ```
 
 ```
-modelo   corridas  éxito seg. medio rate limits  auth
-claude          4   100%        5.6           0     0
-antigravity     2   100%        7.3           0     0
-codex           1   100%        8.0           0     0
+modelo       corridas  éxito seg. medio rate limits  auth  tokens in tokens out
+claude              5   100%        6.1           0     0      11391        156
+antigravity         3   100%        8.9           0     0          0          0
+codex               4   100%       60.5           0     0     454613       5960
 ```
 
-Sale del log local (`~/.ia-router/log.jsonl`). El log **no guarda tus prompts**, solo modelo, éxito, duración y errores.
+Sale del log local (`~/.ia-router/log.jsonl`). El log **no guarda tus prompts**, solo modelo, **id real del modelo**, tokens, éxito, duración y errores. Los tokens de entrada incluyen lo que salió de caché; las corridas anteriores a que existiera el registro de tokens (como las de `antigravity` acá) suman 0.
 
 ### 5.6 `reset-cooldowns`
 
@@ -646,10 +655,15 @@ El servidor MCP **usa el mismo manifiesto** que el CLI. Si tardan mucho las tare
 | Manifiesto | `~/.ia-router/manifest.json` |
 | Versión anterior del manifiesto | `~/.ia-router/manifest.prev.json` |
 | Cooldowns | `~/.ia-router/state.json` |
-| Log de ejecuciones (sin prompts) | `~/.ia-router/log.jsonl` |
+| Log de ejecuciones (sin prompts; con modelo y tokens) | `~/.ia-router/log.jsonl` |
+| Métricas de `calibrate` (aciertos, latencia, id del modelo) | `~/.ia-router/metrics.json` |
+| Tus criterios de ruteo (`criteria`) | `~/.ia-router/profile.json` |
+| Métricas externas descargadas (Arena, Artificial Analysis) | `~/.ia-router/external.json` |
+| Clave gratuita de Artificial Analysis (opcional) | `~/.ia-router/artificialanalysis.key` o la variable `ARTIFICIAL_ANALYSIS_API_KEY` |
+| Historial de lo que escribís en la caja de entrada | `~/.ia-router/history.jsonl` |
 | Modelos, comandos y timeouts | `models.json` (en el repo) |
 
-Para empezar de cero: `rm -r ~/.ia-router` (borra manifiesto, cooldowns y log).
+Para empezar de cero: `rm -r ~/.ia-router` (borra manifiesto, cooldowns, log, métricas, criterios e historial). Para repetir solo una parte, borrá ese archivo.
 
 ---
 
@@ -661,7 +675,10 @@ Para empezar de cero: `rm -r ~/.ia-router` (borra manifiesto, cooldowns y log).
 |---|---|---|
 | `ROUTER_HOME` | Cambia la carpeta de estado (por defecto `~/.ia-router`). | `ROUTER_HOME=/tmp/prueba python3 cli.py doctor` |
 | `ROUTER_MODELS` | Usa otro `models.json`. | `ROUTER_MODELS=~/mis-modelos.json python3 cli.py doctor` |
-| `ROUTER_CMD_<MODELO>` | Reemplaza el comando de un modelo (lista JSON). `{prompt}` se sustituye por la tarea. | `ROUTER_CMD_CODEX='["codex","exec","{prompt}"]'` |
+| `ROUTER_CMD_<MODELO>` | Reemplaza el comando de un modelo (lista JSON). `{prompt}` se sustituye por la tarea. Con un comando propio no se agregan los flags de uso/calibración (se muestra `tokens n/d`). | `ROUTER_CMD_CODEX='["codex","exec","{prompt}"]'` |
+| `ARTIFICIAL_ANALYSIS_API_KEY` | Clave gratuita de Artificial Analysis para `benchmarks refresh` (opcional). | `export ARTIFICIAL_ANALYSIS_API_KEY=…` |
+| `NO_COLOR` | Desactiva colores y estilos (la salida queda como texto plano). | `NO_COLOR=1 ia-router` |
+| `CODEX_HOME` | Carpeta de Codex de donde se lee el modelo que usó (si no es `~/.codex`). | |
 
 `ROUTER_HOME` es útil para probar sin tocar tu manifiesto real.
 
@@ -686,7 +703,13 @@ Cada modelo se define así:
 | `cmd_stdin` | Comando alternativo cuando el prompt supera 100.000 caracteres (viaja por stdin). Si falta, viaja por argumento. |
 | `cheap_cmd` | Comando barato, usado **cuando este modelo actúa de manager**. |
 | `timeout` | Segundos máximos por intento. |
-| `strengths` | Puntajes 0–10 por categoría. Son **hipótesis iniciales**: cuando existe un manifiesto, este los reemplaza. |
+| `strengths` | Puntajes 0–10 por categoría. Son **estimaciones iniciales**: las métricas externas y medidas los reemplazan, y cuando existe un manifiesto, este manda sobre todo. |
+| `usage` | `{parser, args, at}`: flags que hacen al CLI devolver JSON con el modelo real y los tokens (claude `--output-format json`, codex `--json`, agy `--output-format json --log-file`). `at` es la posición donde se insertan. |
+| `lean` | Flags del modo liviano de `calibrate` (claude: sin herramientas ni prompt de sistema). |
+| `add_dir` | Cómo darle acceso a la carpeta de un adjunto (claude: `--add-dir {dir}`). |
+| `reads_files` | `false` si el CLI no puede abrir archivos por ruta en modo no interactivo (antigravity): se descarta para imágenes, PDF y binarios adjuntos. |
+| `calibration` | Costo fijo por llamada que usa la estimación previa de `calibrate`. |
+| `external` | `{"arena": "nombre-exacto", "aa": "slug"}`: fuerza con qué entrada de Arena / Artificial Analysis se empareja el modelo. |
 
 Ajustes globales: `cooldown_minutes` (rate limit, 30), `auth_cooldown_minutes` (sin login, 60), `default_manager` (`claude`).
 
@@ -716,6 +739,10 @@ Una tarea puede tener varias a la vez (por ejemplo `debugging×3, coding×2`). `
 | `Error: modelo desconocido` | Pasaste un `-m` que no existe en `models.json`. | Usá `auto` o uno de los modelos listados en el mensaje. |
 | Un comando falla con *timeout* | La tarea tardó más que el `timeout` del modelo. | Subí `timeout` en `models.json`. |
 | Una tarea tardó minutos y respondió bien | La Mac se durmió a mitad de la llamada. | Corré el chat con `caffeinate -is ia-router`: no se duerme sola mientras esté abierto, pero podés suspenderla a mano (botón de bloqueo o menú ). |
+| `calibrate` muestra "sin respuesta por permisos" | El CLI quiso usar una herramienta (p. ej. una calculadora por línea de comandos) y el modo no interactivo no puede autorizarla. | Es lo que pasaría al usarlo por el router, así que cuenta como fallo. Si preferís darle el permiso, hacelo en la configuración de ese CLI. |
+| `benchmarks refresh` falla o pide esperar | arena.ai cambió el formato de sus páginas, o el sitio limita los pedidos (HTTP 429). | Reintentá más tarde (los datos se cachean 12 h). Mientras tanto el router usa las estimaciones. |
+| `benchmarks` dice "sin coincidencia" para un modelo | No hay un id real registrado, o el leaderboard no lo tiene con ese nombre. | Corré `/calibrate` o una tarea con ese modelo, o forzalo con `"external"` en `models.json`. |
+| Un archivo arrastrado no se reconoce | La terminal pegó la ruta sin que exista el archivo, o es una palabra suelta y no una ruta. | Las rutas deben empezar con `/`, `~`, `./`, `../` o `file://`. |
 | Falla el flag de un CLI tras actualizarlo | Los CLIs cambian seguido sus opciones. | Revisá `<cli> --help` y ajustá `cmd` en `models.json`, o usá `ROUTER_CMD_<MODELO>`. |
 
 ---
@@ -726,5 +753,7 @@ Una tarea puede tener varias a la vez (por ejemplo `debugging×3, coding×2`). `
 - **Cada `ask` y cada `setup` gastan cuota real** de tus suscripciones. `route` y `--dry-run` no gastan.
 - **`agy` no lee el prompt por stdin** en modo headless, así que los prompts muy grandes viajan por argumento.
 - **Seguridad:** los CLIs corren en modo no interactivo con sus permisos por defecto. El router **no** activa flags de "permitir todo".
-- **El manifiesto refleja preferencias, no mediciones propias.** Todavía no hay evals que lo calibren con resultados medidos.
-- **Todavía no hay** sesiones (continuar una conversación), streaming de salida ni versión de escritorio.
+- **Las métricas tienen límites.** Con modelos de frontera, `calibrate` satura varias categorías (todos aciertan todo) y ahí decide la velocidad. Arena mide preferencia humana, no respuestas correctas, y publica variantes por nivel de esfuerzo que pueden no coincidir con el de tu CLI. `research` y `quick` no tienen forma objetiva de corregirse y quedan estimadas.
+- **El manifiesto manda.** Mientras exista, sus preferencias explícitas pesan más que cualquier métrica; `criteria` puede rearmarlo desde los puntajes.
+- **Todavía no hay** sesiones persistentes (el chat recuerda los últimos turnos pero no se guarda al salir), streaming de salida ni versión de escritorio.
+- **`calibrate` ejecuta en tu máquina el código que devuelven tus modelos**, aislado (`python -I`, sin stdin, timeout, carpeta temporal). Son tus CLIs y tareas triviales, pero tenelo presente.
