@@ -11,7 +11,7 @@ Un router en Python que reparte tareas entre los **CLIs oficiales** de IA que el
 ## Comandos
 
 ```bash
-python3 -m unittest discover -s tests       # toda la suite (~248 tests, ~15 s); debe terminar en OK
+python3 -m unittest discover -s tests       # toda la suite (~251 tests, ~15 s); debe terminar en OK
 python3 -m unittest tests.test_scoring      # un archivo
 /usr/bin/python3 -m unittest discover -s tests   # en macOS: Python 3.9 del sistema (el mínimo soportado)
 python3 cli.py doctor                        # CLIs instalados y qué modelo usa cada uno (no gasta cuota)

@@ -8,7 +8,7 @@ Todos los ejemplos asumen que estás en la carpeta del repo:
 cd ~/Documents/ia-suscription-router
 ```
 
-Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16, y las métricas de Arena del 2026-10-05). Los 248 tests pasan con Python 3.9 y 3.14.
+Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16, y las métricas de Arena del 2026-10-05). Los 251 tests pasan con Python 3.9 y 3.14.
 
 ---
 
@@ -51,13 +51,44 @@ El router **nunca lee ni copia tus tokens**: cada CLI usa su propio login.
 
 No hace falta instalar los tres, pero el router reparte entre los que haya.
 
-**Instalar el router** (Python 3.9 o superior):
+**Instalar el router.** Dos opciones; elegí una (Python 3.9 o superior):
+
+#### Opción A · Homebrew (macOS)
 
 ```bash
-brew install Mgobeaalcoba/tap/ia-router     # Homebrew
-pipx install ia-router                      # o: pip install ia-router
-ia-router                                   # abre el chat
+brew install Mgobeaalcoba/tap/ia-router
 ```
+
+Equivale a `brew tap Mgobeaalcoba/tap && brew install ia-router`. Homebrew instala Python si hace falta.
+
+#### Opción B · pip o pipx (cualquier sistema con Python 3.9+)
+
+```bash
+pipx install ia-router                  # recomendado: lo instala aislado y deja el comando `ia-router` en tu PATH
+python3 -m pip install --user ia-router # alternativa con pip
+```
+
+Si no tenés `pipx`: `brew install pipx && pipx ensurepath` (macOS) o `python3 -m pip install --user pipx && python3 -m pipx ensurepath`. Después abrí una terminal nueva.
+
+#### Verificar que quedó bien
+
+```bash
+ia-router --version     # ia-router 0.2.0
+ia-router doctor        # qué CLIs tenés instalados y qué modelo usa cada uno (no gasta cuota)
+```
+
+Necesitás **al menos uno** de los CLIs oficiales instalado y logueado (`claude`, `codex` o `agy`); el router no los instala por vos.
+
+#### Actualizar y desinstalar
+
+| | Homebrew | pipx | pip |
+|---|---|---|---|
+| Actualizar | `brew upgrade ia-router` | `pipx upgrade ia-router` | `python3 -m pip install -U ia-router` |
+| Desinstalar | `brew uninstall ia-router` | `pipx uninstall ia-router` | `python3 -m pip uninstall ia-router` |
+
+Desinstalar **no borra tus datos** (`~/.ia-router`: métricas descargadas, prioridades, historial). Para empezar de cero: `rm -r ~/.ia-router`.
+
+Si aparece `ia-router: command not found` después de instalar con pip o pipx, falta el directorio de scripts en tu `PATH` (normalmente `~/.local/bin`): `pipx ensurepath` y abrí una terminal nueva.
 
 **Desde un clon del repo** (para contribuir o probar cambios):
 

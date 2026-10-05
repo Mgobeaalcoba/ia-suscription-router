@@ -31,12 +31,46 @@ Velocidad y costo van en escala logarítmica (2 puntos menos por cada duplicaci�
 
 ## Instalación
 
+Funciona en macOS (probado) y Linux, con Python 3.9 o superior. Hay dos formas de instalarlo, elegí una:
+
+### Opción A · Homebrew (macOS)
+
 ```bash
-brew install Mgobeaalcoba/tap/ia-router     # Homebrew
-pipx install ia-router                      # o pip: `pip install ia-router`
+brew install Mgobeaalcoba/tap/ia-router
 ```
 
-Instalado, el comando es `ia-router`. Desde un clon del repo: `python3 cli.py`. Necesitás Python 3.9 o superior y, al menos, uno de los CLIs oficiales instalado y logueado (`claude`, `codex` o `agy`).
+Equivale a `brew tap Mgobeaalcoba/tap && brew install ia-router`. Homebrew instala Python si hace falta.
+
+### Opción B · pip o pipx (cualquier sistema con Python 3.9+)
+
+```bash
+pipx install ia-router                  # recomendado: lo instala aislado y deja el comando `ia-router` en tu PATH
+python3 -m pip install --user ia-router # alternativa con pip
+```
+
+Si no tenés `pipx`: `brew install pipx && pipx ensurepath` (macOS) o `python3 -m pip install --user pipx && python3 -m pipx ensurepath`. Después abrí una terminal nueva.
+
+### Verificar que quedó bien
+
+```bash
+ia-router --version     # ia-router 0.2.0
+ia-router doctor        # qué CLIs tenés instalados y qué modelo usa cada uno (no gasta cuota)
+```
+
+Necesitás **al menos uno** de los CLIs oficiales instalado y logueado (`claude`, `codex` o `agy`); el router no los instala por vos.
+
+### Actualizar y desinstalar
+
+| | Homebrew | pipx | pip |
+|---|---|---|---|
+| Actualizar | `brew upgrade ia-router` | `pipx upgrade ia-router` | `python3 -m pip install -U ia-router` |
+| Desinstalar | `brew uninstall ia-router` | `pipx uninstall ia-router` | `python3 -m pip uninstall ia-router` |
+
+Desinstalar **no borra tus datos** (`~/.ia-router`: métricas descargadas, prioridades, historial). Para empezar de cero: `rm -r ~/.ia-router`.
+
+Si aparece `ia-router: command not found` después de instalar con pip o pipx, falta el directorio de scripts en tu `PATH` (normalmente `~/.local/bin`): `pipx ensurepath` y abrí una terminal nueva.
+
+Desde un clon del repo (para contribuir): `python3 cli.py`.
 
 ## Primer uso
 
@@ -104,7 +138,7 @@ También: caja de entrada propia con historial y varias líneas, **archivos arra
 | `ia_router/attachments.py` · `render.py` · `banner.py` | Archivos arrastrados, markdown interpretado y encabezado. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | Lector de `.env`, estado y log, servidor MCP. |
 | `tools/update_snapshot.py` | Para quien mantiene el repo: regenera la foto de Arena antes de publicar. |
-| `tests/` | 248 tests y CLIs falsos (`tests/fake_bin`). |
+| `tests/` | 251 tests y CLIs falsos (`tests/fake_bin`). |
 
 ## Usarlo desde Claude Code (MCP)
 

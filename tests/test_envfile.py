@@ -82,6 +82,19 @@ class LoadTests(unittest.TestCase):
         self.assertEqual(metrics.aa_key(), "CLAVE_DE_PRUEBA")
 
 
+class VersionTests(unittest.TestCase):
+    def test_version_flag_matches_the_package(self):
+        from ia_router import __version__
+        out = subprocess.run([sys.executable, str(ROOT / "cli.py"), "--version"], capture_output=True, text=True)
+        self.assertEqual(out.stdout.strip(), f"ia-router {__version__}")
+        out = subprocess.run([sys.executable, "-m", "ia_router", "--version"], capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(out.stdout.strip(), f"ia-router {__version__}")
+
+    def test_the_version_is_in_sync_with_citation_cff(self):
+        from ia_router import __version__
+        self.assertIn(f'version: "{__version__}"', (ROOT / "CITATION.cff").read_text())
+
+
 class RepoHygieneTests(unittest.TestCase):
     def test_env_is_ignored_by_git_and_the_example_has_no_real_key(self):
         self.assertIn(".env", (ROOT / ".gitignore").read_text().splitlines())

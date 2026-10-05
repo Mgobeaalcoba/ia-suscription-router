@@ -5,7 +5,7 @@ import argparse
 import os
 import sys
 
-from . import adapters, core, envfile, metrics, priorities, probe, render, scoring, state
+from . import __version__, adapters, core, envfile, metrics, priorities, probe, render, scoring, state
 
 
 def _color() -> bool:
@@ -102,6 +102,7 @@ def cmd_priorities(cfg, _args) -> int:
 def main() -> int:
     envfile.load()  # .env (p. ej. ARTIFICIAL_ANALYSIS_API_KEY); nunca pisa lo ya definido en el entorno
     p = argparse.ArgumentParser(prog="ia-router", description=__doc__)
+    p.add_argument("--version", action="version", version=f"ia-router {__version__}")
     sub = p.add_subparsers(dest="cmd")
     sub.add_parser("chat", help="modo conversacional (es lo que se abre sin argumentos)")
     dp = sub.add_parser("doctor", help="verifica qué CLIs están instalados y qué modelo usa cada uno")
