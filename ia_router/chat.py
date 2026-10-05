@@ -13,7 +13,7 @@ import shutil
 import sys
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import __version__, adapters, attachments, banner, core, editor as editor_mod, manifest, render, router, state
+from . import __version__, adapters, attachments, banner, calibrate, core, criteria, editor as editor_mod, manifest, render, router, scoring, state
 
 HISTORY_TURNS = 6
 HISTORY_ANSWER_CHARS = 1500
@@ -27,6 +27,8 @@ Atajos:
   /manager X         cambiar el modelo barato    /llm on|off  clasificar tareas con el manager
   /explain on|off    mostrar la tabla de ruteo   /setup       rearmar el manifiesto desde cero
   /md on|off         markdown interpretado o texto crudo
+  /calibrate [full]  medir el acierto de cada modelo   /scores [cat]  puntaje objetivo (con desglose)
+  /criteria          ajustar tus criterios de ruteo con preguntas
   /ask texto         forzar "es una tarea"       /config texto forzar "es configuración"
   /clear             olvidar la conversación     /help        esta ayuda      /exit  salir"""
 
@@ -37,7 +39,8 @@ COMMANDS = [
     editor_mod.Command("/llm", "clasificar tareas con el manager (on|off)"), editor_mod.Command("/explain", "mostrar la tabla de ruteo (on|off)"),
     editor_mod.Command("/md", "markdown interpretado o crudo (on|off)"), editor_mod.Command("/setup", "rearmar el manifiesto desde cero"),
     editor_mod.Command("/ask", "forzar: es una tarea"), editor_mod.Command("/config", "forzar: es configuración"),
-    editor_mod.Command("/clear", "olvidar la conversación"), editor_mod.Command("/exit", "salir"),
+    editor_mod.Command("/calibrate", "medir el acierto de cada modelo (full = más rondas)"), editor_mod.Command("/scores", "puntaje objetivo por categoría"),
+    editor_mod.Command("/criteria", "ajustar tus criterios de ruteo (preguntas)"), editor_mod.Command("/clear", "olvidar la conversación"), editor_mod.Command("/exit", "salir"),
 ]
 
 # ---------- interpretación de mensajes ----------
@@ -258,6 +261,17 @@ class Chat:
         elif cmd == "md":
             self.markdown = arg != "off"
             self.say(f"Markdown: {'interpretado (como un README en GitHub, sin signos)' if self.markdown else 'texto crudo'}.")
+        elif cmd == "calibrate":
+            res = calibrate.run_with_confirmation(cfg, 3 if arg == "full" else 1, None, None, self.ask_yes, self.say)
+            if res:
+                self.say("\n" + scoring.render_table(core.load_config(apply_manifest=False)))
+        elif cmd == "scores":
+            sc = core.load_config(apply_manifest=False)
+            self.say(scoring.render_table(sc, [arg] if arg else None) + (("\n\n" + scoring.explain(sc, arg)) if arg else ""))
+            if manifest.load():
+                self.say(self.dim("Nota: hay un manifiesto y manda sobre estos puntajes (/criteria puede rearmarlo)."))
+        elif cmd == "criteria":
+            criteria.run(core.load_config(apply_manifest=False), say=self.say, color=self.color)
         elif cmd == "setup":
             self.setup(notes=arg or (manifest.load() or {}).get("user_notes", ""))
         elif cmd == "clear":

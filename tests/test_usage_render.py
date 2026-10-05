@@ -45,10 +45,12 @@ class UsageTests(unittest.TestCase):
         self.assertEqual(r["tokens"]["output"], 12)
 
     def test_antigravity_model_read_from_log_and_temp_file_removed(self):
+        leftovers = lambda: {f for f in os.listdir(tempfile.gettempdir()) if f.startswith("ia-router-agy-")}
+        before = leftovers()  # puede haber logs de otras corridas en curso: solo importa que ésta no deje el suyo
         r = self.run_model("antigravity")
         self.assertEqual(r["model_id"], "Fake Flash (High)")
         self.assertEqual(r["tokens"], {"input": 500, "output": 40, "cached": 0, "reasoning": 30})
-        self.assertEqual([f for f in os.listdir(tempfile.gettempdir()) if f.startswith("ia-router-agy-")], [])
+        self.assertEqual(leftovers() - before, set())
 
     def test_explicit_model_flag_wins(self):
         self.assertEqual(adapters.parse_usage("agy", '{"status":"SUCCESS","response":"x"}', ["agy", "--model", "m1"])[1]["model"], "m1")

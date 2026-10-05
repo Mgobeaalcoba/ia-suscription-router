@@ -194,6 +194,9 @@ Siempre funcionan, aunque el lenguaje natural no los interprete como querés:
 | `/manager codex` | Cambiar el modelo barato que clasifica y mantiene el manifiesto. |
 | `/llm on\|off` | Clasificar las tareas con el manager (más preciso, un poco más lento) o solo con reglas. |
 | `/explain on\|off` | Mostrar la tabla completa de ruteo en cada mensaje. |
+| `/calibrate [full]` | Mide el acierto de cada modelo con tareas verificables (pide confirmación antes de gastar). |
+| `/scores [categoría]` | Puntaje objetivo por modelo y categoría; con una categoría, el desglose peso × valor. |
+| `/criteria` | Preguntas de opción múltiple para ajustar tus criterios de ruteo. |
 | `/md on\|off` | Respuestas con el markdown interpretado, como un README en GitHub: títulos, negrita, listas con viñetas, citas, tablas alineadas y bloques de código con fondo y colores, sin ningún signo (`#`, `**`, `` ` ``). `off` = texto crudo. Sin terminal (pipe) o con `NO_COLOR` se muestra crudo. |
 | `/setup [preferencias]` | Rearmar el manifiesto desde cero. |
 | `/ask texto` · `/config texto` | Forzar la interpretación como tarea o como configuración. |
@@ -315,6 +318,82 @@ def sumar_lista(lista):
 La tabla va por **stderr** y la respuesta por **stdout**. Así podés redirigir solo la respuesta: `python3 cli.py ask "..." > respuesta.txt`.
 
 ---
+
+## 4b. Ruteo objetivo: calibrar y ajustar tus criterios
+
+Las "fortalezas" de `models.json` son hipótesis iniciales. Para reemplazarlas por datos, el router **mide a los modelos que vos tenés**, con tus suscripciones, y combina esas métricas con los criterios que elijas.
+
+### Medir: `calibrate`
+
+```
+python3 cli.py calibrate            # o /calibrate en el chat
+```
+
+Corre tareas con **respuesta verificable por código** (no hay modelo-juez, así que no hay subjetividad):
+
+| Categoría | Cómo se corrige |
+|---|---|
+| `coding`, `debugging` | El código que devuelve el modelo se ejecuta contra tests, en un proceso aislado y con timeout. Hay problemas fáciles y difíciles (LRU, Dijkstra, parser de expresiones, N reinas, bugs sutiles…). |
+| `math`, `data` | Valor numérico exacto (calculado con soluciones de referencia): cuentas largas, interés compuesto, combinatoria, consultas sobre una tabla. |
+| `long_context` | Encontrar el código vigente en un texto largo con distractores y una actualización posterior. |
+| `writing` | Consignas con reglas medibles (cantidad de oraciones, rango de palabras, palabras prohibidas, formato exacto, cierre literal). |
+| `analysis` | Puzzles de lógica con solución única (verificada por fuerza bruta), calendario y sucesiones. |
+| `multimodal` | Una imagen generada con cuadrados de colores: contar, identificar el más grande y ubicar uno. Solo CLIs que abren archivos. |
+
+**Costo.** Antes de gastar nada muestra el costo estimado por modelo y pide confirmación (`--yes` para saltearla). Las preguntas van **agrupadas por categoría en una sola llamada** y Claude corre en modo liviano (sin herramientas ni prompt de sistema), porque casi todo el costo de entrada es el piso fijo de cada CLI (12-14k tokens por llamada en Codex y Antigravity). La salida es mínima.
+
+| Modo | Llamadas por modelo | Tokens de entrada (total, los 3 modelos) |
+|---|---|---|
+| `calibrate` (rápido, 1 ronda) | 7 | ≈ 200k |
+| `calibrate --full` (3 rondas con preguntas distintas) | 19 | ≈ 550k |
+
+También `--models claude,codex` para medir solo algunos y `--seed N` para repetir las mismas preguntas. Las métricas se guardan en `~/.ia-router/metrics.json` junto con el **id real del modelo** que respondió; si cambia de versión, conviene recalibrar.
+
+Notas honestas sobre lo que mide:
+- **Con modelos de frontera muchas categorías se saturan** (todos aciertan todo). Cuando pasa, `scores` lo avisa: ahí decide la velocidad, la cuota y la confiabilidad (que también son métricas objetivas) y no la calidad.
+- Si un CLI pide una herramienta que el modo no interactivo no puede autorizar (por ejemplo Antigravity para hacer cuentas), la respuesta queda vacía y **cuenta como fallo, marcado como "sin respuesta por permisos"**: es lo que pasaría al usarlo por el router.
+- El código de los modelos se ejecuta en tu máquina en un proceso aislado (`python -I`, sin stdin, con timeout, en una carpeta temporal). Son tus propios CLIs y tareas triviales, pero si no querés ejecutar código de modelos, no corras `calibrate`.
+
+### Cómo se calcula el puntaje: `scores`
+
+```
+puntaje(modelo, categoría) = Σ peso × valor        (valores de 0 a 10)
+```
+
+| Dimensión | De dónde sale |
+|---|---|
+| **calidad** | Aciertos medidos en esa categoría, mezclados con la estimación inicial como si ésta valiera 2 preguntas más: `(aciertos + 2×estimado) / (preguntas + 2)`. Con pocas muestras pesa más la estimación. |
+| **velocidad** | `10 × (más rápido / este modelo)`, con los segundos medios de las llamadas de calibración. |
+| **cuota** | `10 × (el que menos tokens gasta / este modelo)`, con los tokens por corrida reales del log (hacen falta 3 corridas). |
+| **confiabilidad** | `10 ×` tasa de éxito real del log (o la de la calibración). |
+
+Si falta un dato objetivo, esa dimensión vale lo mismo que la calidad: **sin datos el puntaje es exactamente la estimación inicial**, nada se mueve sin evidencia. `scores` muestra la tabla (con `m` = medido, `e` = estimado); `scores coding` muestra el desglose de cada modelo (peso × valor).
+
+### Ajustar tus criterios: `criteria`
+
+```
+python3 cli.py criteria            # o /criteria en el chat
+```
+
+Seis preguntas de opción múltiple con selector (↑/↓ o el número, Enter confirma, Esc cancela; cada respuesta queda resumida en una línea):
+
+1. ¿Qué priorizás? **Calidad primero** / Equilibrado / Velocidad primero / Ahorro de cuota. Define los pesos generales.
+2. Para código y debugging: máxima calidad / igual que el resto / rapidez razonable.
+3. Para tareas cortas: el más rápido / el de mejor calidad.
+4. ¿Querés cuidar la cuota de alguna suscripción? (resta 1 punto a ese modelo).
+5. Si dos modelos quedan parejos (menos de 0,5 puntos): mejor calidad / más rápido / gasta menos cuota.
+6. Resumen con los pesos resultantes y confirmación: **Guardar**, **Guardar y rearmar el manifiesto** (si tenés uno) o **Descartar**.
+
+No hay números inventados: cada respuesta se traduce a pesos explícitos que se muestran antes de guardar. El perfil queda en `~/.ia-router/profile.json` y las respuestas anteriores aparecen preseleccionadas.
+
+### Precedencia
+
+1. **Manifiesto** (tus preferencias explícitas, p. ej. "Codex para todo el código"): manda siempre. 
+2. **Criterios** (`criteria`) aplicados al puntaje.
+3. **Métricas medidas** (`calibrate`, log de uso).
+4. **Estimación inicial** de `models.json`.
+
+Si ya tenés un manifiesto, `criteria` te ofrece rearmarlo desde los puntajes; tu versión anterior queda en `manifest.prev.json`.
 
 ## 5. Los comandos, con ejemplos
 

@@ -48,6 +48,23 @@
           "{dir}"
         ],
         "at": 1
+      },
+      "lean": {
+        "args": [
+          "--tools",
+          "",
+          "--system-prompt",
+          "Respondé exactamente lo pedido, sin explicaciones.",
+          "--setting-sources",
+          "",
+          "--disable-slash-commands",
+          "--strict-mcp-config"
+        ],
+        "at": 1
+      },
+      "calibration": {
+        "overhead_in": 450,
+        "files_extra_in": 16000
       }
     },
     "codex": {
@@ -84,6 +101,9 @@
           "--json"
         ],
         "at": 2
+      },
+      "calibration": {
+        "overhead_in": 13500
       }
     },
     "antigravity": {
@@ -124,7 +144,10 @@
         ],
         "at": 1
       },
-      "reads_files": false
+      "reads_files": false,
+      "calibration": {
+        "overhead_in": 11800
+      }
     }
   },
   "default_manager": "claude",

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from . import adapters, attachments as att_mod, manifest as manifest_mod, router, state
+from . import adapters, attachments as att_mod, manifest as manifest_mod, router, scoring, state
 
 MAX_CONTEXT_CHARS = 400_000
 
@@ -14,6 +14,7 @@ MAX_CONTEXT_CHARS = 400_000
 def load_config(path: Optional[str] = None, apply_manifest: bool = True) -> Dict:
     p = Path(path or os.environ.get("ROUTER_MODELS") or Path(__file__).resolve().parent.parent / "models.json")
     cfg = json.loads(p.read_text(encoding="utf-8"))
+    cfg = scoring.apply_to_config(cfg)  # puntaje objetivo (métricas + criterios) bajo el manifiesto, que manda
     return manifest_mod.apply_to_config(cfg, manifest_mod.load()) if apply_manifest else cfg
 
 
@@ -83,6 +84,7 @@ def route(task: str, cfg: Dict, context_len: int = 0, prefer: Optional[str] = No
             if not models[r["name"]].get("reads_files", True):
                 r.update(usable=False, blocked=True, why=r["why"] + " (no abre archivos)")
         ranking.sort(key=lambda r: (not r["usable"], -r["score"]))
+    ranking = scoring.tiebreak(ranking, cfg, weights, cfg.get("_tiebreak"))
     chosen = next((r["name"] for r in ranking if r["usable"]), None)
     return {"weights": weights, "classifier": source, "ranking": ranking, "chosen": chosen,
             "manifest": bool(cfg.get("_manifest"))}

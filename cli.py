@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Router de suscripciones de IA. Sin argumentos abre el chat; también: setup | manifest | doctor | route | ask | stats | mcp | reset-cooldowns."""
+"""Router de suscripciones de IA. Sin argumentos abre el chat; también: setup | manifest | doctor | route | ask | stats | calibrate | scores | criteria | mcp | reset-cooldowns."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import os
 import sys
 from typing import Dict, Optional
 
-from ia_router import adapters, core, manifest, render, state
+from ia_router import adapters, calibrate, core, criteria, manifest, render, scoring, state
 
 
 def _interactive() -> bool:
@@ -169,6 +169,37 @@ def cmd_stats(cfg, _args) -> int:
     return 0
 
 
+def cmd_calibrate(cfg, args) -> int:
+    def confirm(q: str) -> bool:
+        if args.yes:
+            return True
+        if not _interactive():
+            print("Sin terminal interactiva: agregá --yes para confirmar el gasto.", file=sys.stderr)
+            return False
+        return _input(f"{q} [S/n]: ").lower() in ("", "s", "si", "sí", "y", "yes")
+    rounds = args.rounds or (3 if args.full else 1)
+    wanted = [m.strip() for m in args.models.split(",")] if args.models else None
+    res = calibrate.run_with_confirmation(cfg, rounds, wanted, args.seed, confirm, lambda s: print(s, flush=True))
+    if res is None:
+        return 1
+    print("\n" + scoring.render_table(core.load_config(apply_manifest=False)))
+    return 0
+
+
+def cmd_scores(_cfg, args) -> int:
+    cfg = core.load_config(apply_manifest=False)
+    print(scoring.render_table(cfg, [args.category] if args.category else None))
+    if args.category:
+        print("\n" + scoring.explain(cfg, args.category))
+    if manifest.load():
+        print("\nNota: hay un manifiesto y manda sobre estos puntajes. `criteria` puede rearmarlo desde ellos.")
+    return 0
+
+
+def cmd_criteria(_cfg, _args) -> int:
+    return 0 if criteria.run(core.load_config(apply_manifest=False), color=_color()) else 1
+
+
 def main() -> int:
     p = argparse.ArgumentParser(prog="router", description=__doc__)
     sub = p.add_subparsers(dest="cmd")
@@ -193,6 +224,15 @@ def main() -> int:
     sp.add_argument("--manager")
     sp.add_argument("--notes")
     sub.add_parser("stats", help="éxito, latencia y rate limits por modelo (del log)")
+    sp = sub.add_parser("calibrate", help="mide el acierto de cada modelo con tareas verificables y guarda las métricas")
+    sp.add_argument("--full", action="store_true", help="3 rondas con preguntas distintas (más confiable, ~3× el costo)")
+    sp.add_argument("--rounds", type=int, help="cantidad de rondas (por defecto 1; --full = 3)")
+    sp.add_argument("--models", help="solo estos modelos, separados por coma")
+    sp.add_argument("--seed", type=int, help="semilla de las preguntas (por defecto cambia cada día)")
+    sp.add_argument("--yes", "-y", action="store_true", help="no pedir confirmación")
+    sp = sub.add_parser("scores", help="puntaje objetivo por modelo y categoría (con desglose si indicás una)")
+    sp.add_argument("category", nargs="?", help="ej: coding")
+    sub.add_parser("criteria", help="cuestionario de opción múltiple para ajustar tus criterios de ruteo")
     sub.add_parser("mcp", help="correr el servidor MCP (stdio)")
     sub.add_parser("reset-cooldowns", help="limpiar cooldowns (rate limit y auth)")
     args = p.parse_args()
@@ -210,7 +250,7 @@ def main() -> int:
         return 0
     cfg = core.load_config()
     return {"doctor": cmd_doctor, "route": cmd_route, "ask": cmd_ask, "setup": cmd_setup,
-            "manifest": cmd_manifest, "stats": cmd_stats}[args.cmd](cfg, args)
+            "manifest": cmd_manifest, "stats": cmd_stats, "calibrate": cmd_calibrate, "scores": cmd_scores, "criteria": cmd_criteria}[args.cmd](cfg, args)
 
 
 if __name__ == "__main__":
