@@ -70,7 +70,7 @@ Desinstalar **no borra tus datos** (`~/.ia-router`: métricas descargadas, prior
 
 Si aparece `ia-router: command not found` después de instalar con pip o pipx, falta el directorio de scripts en tu `PATH` (normalmente `~/.local/bin`): `pipx ensurepath` y abrí una terminal nueva.
 
-Desde un clon del repo (para contribuir): `python3 cli.py`.
+Desde el código fuente ([Mgobeaalcoba/ia-suscription-router](https://github.com/Mgobeaalcoba/ia-suscription-router)): `git clone https://github.com/Mgobeaalcoba/ia-suscription-router.git && cd ia-suscription-router && python3 cli.py`.
 
 ## Primer uso
 

@@ -93,7 +93,7 @@ Si aparece `ia-router: command not found` después de instalar con pip o pipx, f
 **Desde un clon del repo** (para contribuir o probar cambios):
 
 ```bash
-gh repo clone Mgobeaalcoba/ia-suscription-router ~/Documents/ia-suscription-router
+git clone https://github.com/Mgobeaalcoba/ia-suscription-router.git ~/Documents/ia-suscription-router
 cd ~/Documents/ia-suscription-router
 python3 -m unittest discover -s tests    # opcional: debe terminar en OK
 python3 cli.py                           # equivale a `ia-router`

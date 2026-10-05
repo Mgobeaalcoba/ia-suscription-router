@@ -32,6 +32,7 @@ dependencies = []  # solo librería estándar
 
 [project.urls]
 Homepage = "https://www.mgatc.com/recursos/ia-router/"
+Source = "https://github.com/Mgobeaalcoba/ia-suscription-router"
 Author = "https://github.com/Mgobeaalcoba"
 
 [project.scripts]

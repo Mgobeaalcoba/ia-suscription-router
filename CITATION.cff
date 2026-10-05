@@ -10,6 +10,7 @@ version: "0.2.0"
 date-released: "2026-10-05"
 license: Apache-2.0
 url: "https://www.mgatc.com/recursos/ia-router/"
+repository-code: "https://github.com/Mgobeaalcoba/ia-suscription-router"
 keywords:
   - ia
   - llm
