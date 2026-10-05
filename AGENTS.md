@@ -11,7 +11,7 @@ Un router en Python que reparte tareas entre los **CLIs oficiales** de IA que el
 ## Comandos
 
 ```bash
-python3 -m unittest discover -s tests       # toda la suite (~260 tests, ~15 s); debe terminar en OK
+python3 -m unittest discover -s tests       # toda la suite (~266 tests, ~15 s); debe terminar en OK
 python3 -m unittest tests.test_scoring      # un archivo
 /usr/bin/python3 -m unittest discover -s tests   # en macOS: Python 3.9 del sistema (el mínimo soportado)
 python3 cli.py doctor                        # CLIs instalados y qué modelo usa cada uno (no gasta cuota)
@@ -90,7 +90,7 @@ Invariantes:
 - **Agregar una categoría de tarea:** `router.PATTERNS`, y los mapas `metrics.ARENA_MAP` / `AA_MAP`; si va a tener su propia pregunta, `scoring.GROUPS`.
 - **Agregar una fuente de métricas:** una función `fetch_*` con `get` inyectable, un `match_*` por id real + esfuerzo, y su aporte a `precision_values` / `speed_values` / `cost_values`. Con tests offline, atribución en `metrics.ATTRIBUTION` y su variable en `.env.example`.
 - **Publicar una versión** (público e irreversible: PyPI no permite resubir una versión; solo cuando el dueño lo pida):
-  1. `python3 tools/update_snapshot.py` (regenera la foto de Arena; ~1 minuto), subir `__version__` en `ia_router/__init__.py` y `version`/`date-released` en `CITATION.cff`, y commitear.
+  1. `python3 tools/update_snapshot.py` (regenera la foto de Arena; ~1 minuto), subir `__version__` en `ia_router/__init__.py` y `version`/`date-released` en `CITATION.cff`, agregar la entrada de la versión en `CHANGELOG.md`, y commitear.
   2. `tools/release.sh` (ensayo: tests, build, `twine check`, comprueba que no vaya `.env` y que `LICENSE`/`NOTICE` estén, e instala el wheel en un venv limpio) y después `tools/release.sh --yes`: sube a PyPI, completa `url` y `sha256` de la fórmula en `Mgobeaalcoba/homebrew-tap` y verifica `pip` y `brew`.
   3. Credenciales: token de PyPI en `~/.pypirc` (`[pypi]`, `username = __token__`, `password = <token>`, `chmod 600`) o `TWINE_USERNAME`/`TWINE_PASSWORD`. **Nunca en el repo ni en un chat.** El primer token debe ser de "toda la cuenta" (el proyecto todavía no existe); después conviene uno acotado a `ia-router`.
   4. Recién con el paquete publicado se publica la página del sitio (sus comandos de instalación solo funcionan entonces).
@@ -98,6 +98,23 @@ Invariantes:
 ## Licencia
 
 Apache-2.0 (`LICENSE`) con `NOTICE` de atribución obligatoria al autor y a los datos de terceros (Arena, CC BY 4.0). No quites ni modifiques `NOTICE`/`LICENSE`; si se agrega una fuente de datos de terceros, va en `NOTICE`. `pyproject.toml` declara `license-files` para que viajen dentro del paquete.
+
+## Mapa de enlaces (mantenelos conectados)
+
+El proyecto vive en cinco lugares que se enlazan entre sí. Si cambia una URL o se publica una versión, actualizá **todos** los que correspondan:
+
+| Qué | URL canónica | Dónde se referencia |
+|---|---|---|
+| Web (nota de venta) | https://www.mgatc.com/recursos/ia-router/ | `README.md`, `docs/USO.md`, `CONTRIBUTING.md`, `CITATION.cff`, `pyproject.toml` (`Homepage`), fórmula y README del tap |
+| PyPI | https://pypi.org/project/ia-router/ | `README.md`, `docs/USO.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, la web, README del tap |
+| Tap de Homebrew | https://github.com/Mgobeaalcoba/homebrew-tap | `README.md`, `docs/USO.md`, `CONTRIBUTING.md`, `pyproject.toml` (`Homebrew`), la web |
+| Código | https://github.com/Mgobeaalcoba/ia-suscription-router | `CITATION.cff`, `pyproject.toml` (`Source`, `Issues`), la web, README del tap |
+| Guía | `docs/USO.md` en GitHub | `README.md`, `pyproject.toml` (`Documentation`), la web |
+
+Reglas:
+- **El `README.md` es también la ficha de PyPI**, que no resuelve rutas relativas: sus enlaces deben ser **absolutos** (hay un test que lo exige). Las imágenes también (`raw.githubusercontent.com`).
+- Al publicar una versión: `ia_router/__init__.py`, `CITATION.cff` (`version`) y una entrada `## X.Y.Z` en `CHANGELOG.md` (el script de release lo exige).
+- La web vive en otro repo (`Mgobeaalcoba.github.io`, `apps/web/src/components/recursos/IaRouterPage.tsx` y `apps/web/public/llms.txt`): ahí también hay que reflejar los cambios de instalación o de enlaces.
 
 ## Documentación (mantenela al día en el mismo cambio)
 

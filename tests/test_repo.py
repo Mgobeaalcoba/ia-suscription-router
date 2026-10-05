@@ -97,5 +97,53 @@ class GovernanceFilesTests(unittest.TestCase):
         self.assertIn('"LICENSE", "NOTICE"', p)
 
 
+class ConnectedDocsTests(unittest.TestCase):
+    """El README es también la ficha de PyPI: ahí no se resuelven rutas relativas, y las URLs del proyecto deben coincidir en todos lados."""
+    WEB = "https://www.mgatc.com/recursos/ia-router/"
+    PYPI = "https://pypi.org/project/ia-router/"
+    REPO = "https://github.com/Mgobeaalcoba/ia-suscription-router"
+    TAP = "https://github.com/Mgobeaalcoba/homebrew-tap"
+
+    def read(self, rel):
+        return (ROOT / rel).read_text(encoding="utf-8")
+
+    def test_readme_links_and_images_are_absolute(self):
+        import re
+        readme = self.read("README.md")
+        targets = re.findall(r"\]\(([^)\s]+)", readme)
+        self.assertTrue(targets)
+        relative = [t for t in targets if not re.match(r"(https?://|#|mailto:)", t)]
+        self.assertEqual(relative, [], "PyPI no resuelve rutas relativas: usar URLs absolutas")
+
+    def test_readme_points_to_every_place_the_project_lives(self):
+        readme = self.read("README.md")
+        for url in (self.WEB, self.PYPI, self.REPO, self.TAP):
+            self.assertIn(url, readme, url)
+        self.assertIn("brew install Mgobeaalcoba/tap/ia-router", readme)
+        self.assertIn("pipx install ia-router", readme)
+
+    def test_package_metadata_urls(self):
+        p = self.read("pyproject.toml")
+        for key, url in (("Homepage", self.WEB), ("Source", self.REPO), ("Issues", self.REPO + "/issues"), ("Homebrew", self.TAP)):
+            self.assertIn(f'{key} = "{url}"', p, key)
+        for key in ("Documentation", "Changelog"):
+            self.assertIn(f"{key} = ", p)
+        self.assertIn(f'repository-code: "{self.REPO}"', self.read("CITATION.cff"))
+
+    def test_other_docs_link_to_pypi_and_homebrew(self):
+        for rel in ("docs/USO.md", "CONTRIBUTING.md"):
+            text = self.read(rel)
+            for url in (self.WEB, self.PYPI, self.TAP):
+                self.assertIn(url, text, f"{rel}: {url}")
+
+    def test_changelog_has_the_current_version(self):
+        sys.path.insert(0, str(ROOT))
+        import ia_router
+        self.assertIn(f"## {ia_router.__version__} ", self.read("CHANGELOG.md"))
+
+    def test_release_script_requires_changelog(self):
+        self.assertIn("CHANGELOG.md", self.read("tools/release.sh"))
+
+
 if __name__ == "__main__":
     unittest.main()

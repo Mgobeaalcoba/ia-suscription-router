@@ -10,8 +10,23 @@ Se abre como `claude`: escribís una tarea y se rutea sola al mejor modelo segú
 - **No toca tokens OAuth:** cada CLI usa su propio login y su propia suscripción. Nunca se activan flags de "permitir todo".
 - **Por Mgobeaalcoba · [mgatc.com](https://mgatc.com)** — [GitHub](https://github.com/Mgobeaalcoba)
 
-> **Guía de uso completa, con ejemplos y solución de problemas: [docs/USO.md](docs/USO.md).**
-> Si sos un agente de IA o vas a contribuir: [AGENTS.md](AGENTS.md).
+> **Guía de uso completa, con ejemplos y solución de problemas: [docs/USO.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USO.md).**
+> Si sos un agente de IA o vas a contribuir: [AGENTS.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/AGENTS.md).
+
+![Encabezado de ia-router en la terminal: logo, métricas de Arena y Artificial Analysis, modelos y cuadro de entrada](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-header.png)
+
+## Dónde encontrarlo
+
+| | |
+|---|---|
+| **Web** | [mgatc.com/recursos/ia-router](https://www.mgatc.com/recursos/ia-router/): qué es, casos de uso e instalación |
+| **PyPI** | [pypi.org/project/ia-router](https://pypi.org/project/ia-router/): `pipx install ia-router` |
+| **Homebrew** | [Mgobeaalcoba/homebrew-tap](https://github.com/Mgobeaalcoba/homebrew-tap): `brew install Mgobeaalcoba/tap/ia-router` |
+| **Código** | [github.com/Mgobeaalcoba/ia-suscription-router](https://github.com/Mgobeaalcoba/ia-suscription-router) |
+| **Guía de uso** | [docs/USO.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USO.md) |
+| **Cambios** | [CHANGELOG.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CHANGELOG.md) |
+| **Problemas e ideas** | [Issues](https://github.com/Mgobeaalcoba/ia-suscription-router/issues) |
+| **Licencia** | [Apache-2.0](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/LICENSE) · [NOTICE](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/NOTICE) · [cómo citarlo](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CITATION.cff) |
 
 ## Cómo decide
 
@@ -27,7 +42,7 @@ tu tarea ──► clasificar ──► puntaje por modelo ──► elegir el m
 | **Velocidad** | **Artificial Analysis** (tokens/s). Requiere su clave gratuita. |
 | **Costo** | Precio por millón de tokens (Artificial Analysis o Arena): proxy del consumo de cuota. |
 
-Velocidad y costo van en escala logarítmica (2 puntos menos por cada duplicación frente al mejor de tus modelos). Una dimensión solo cuenta si hay dato para **todos** tus modelos. Detalle en [docs/USO.md](docs/USO.md#4-ruteo-por-métricas-objetivas).
+Velocidad y costo van en escala logarítmica (2 puntos menos por cada duplicación frente al mejor de tus modelos). Una dimensión solo cuenta si hay dato para **todos** tus modelos. Detalle en [docs/USO.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USO.md#4-ruteo-por-métricas-objetivas).
 
 ## Instalación
 
@@ -138,7 +153,7 @@ También: caja de entrada propia con historial y varias líneas, **archivos arra
 | `ia_router/attachments.py` · `render.py` · `banner.py` | Archivos arrastrados, markdown interpretado y encabezado. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | Lector de `.env`, estado y log, servidor MCP. |
 | `tools/update_snapshot.py` | Para quien mantiene el repo: regenera la foto de Arena antes de publicar. |
-| `tests/` | 260 tests y CLIs falsos (`tests/fake_bin`). |
+| `tests/` | 266 tests y CLIs falsos (`tests/fake_bin`). |
 
 ## Usarlo desde Claude Code (MCP)
 
@@ -166,12 +181,12 @@ Las métricas se muestran con su atribución: **Arena** ([arena.ai](https://aren
 
 ## Contribuir
 
-Las contribuciones son bienvenidas: leé [CONTRIBUTING.md](CONTRIBUTING.md) (entorno, reglas, y firma de commits con el [DCO](DCO): `git commit -s`) y [AGENTS.md](AGENTS.md).
+Las contribuciones son bienvenidas: leé [CONTRIBUTING.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CONTRIBUTING.md) (entorno, reglas, y firma de commits con el [DCO](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/DCO): `git commit -s`) y [AGENTS.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/AGENTS.md).
 
 ## Licencia y cómo citar
 
-[Apache License 2.0](LICENSE): podés usarlo, modificarlo y redistribuirlo, **conservando el archivo [NOTICE](NOTICE) y la atribución a su autor** (sección 4 de la licencia). Los datos de terceros conservan sus propias licencias (ver más arriba).
+[Apache License 2.0](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/LICENSE): podés usarlo, modificarlo y redistribuirlo, **conservando el archivo [NOTICE](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/NOTICE) y la atribución a su autor** (sección 4 de la licencia). Los datos de terceros conservan sus propias licencias (ver más arriba).
 
-Para citarlo en un trabajo: [CITATION.cff](CITATION.cff) (GitHub lo muestra como *Cite this repository*).
+Para citarlo en un trabajo: [CITATION.cff](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CITATION.cff) (GitHub lo muestra como *Cite this repository*).
 
 > ia-router, por Mgobeaalcoba (2026). https://www.mgatc.com/recursos/ia-router/

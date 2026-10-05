@@ -6,7 +6,7 @@ type: software
 authors:
   - alias: "Mgobeaalcoba"
     website: "https://github.com/Mgobeaalcoba"
-version: "0.2.0"
+version: "0.2.1"
 date-released: "2026-10-05"
 license: Apache-2.0
 url: "https://www.mgatc.com/recursos/ia-router/"

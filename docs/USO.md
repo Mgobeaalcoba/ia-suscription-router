@@ -2,13 +2,15 @@
 
 Esta guía explica **cómo se usa** el router, paso a paso y con ejemplos. Para una visión general, ver el [README](../README.md). Si sos un agente de IA o vas a contribuir: [AGENTS.md](../AGENTS.md).
 
+**Enlaces:** [web](https://www.mgatc.com/recursos/ia-router/) · [PyPI](https://pypi.org/project/ia-router/) · [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap) · [código](https://github.com/Mgobeaalcoba/ia-suscription-router) · [cambios](../CHANGELOG.md) · [issues](https://github.com/Mgobeaalcoba/ia-suscription-router/issues) · [licencia](../LICENSE).
+
 Todos los ejemplos asumen que estás en la carpeta del repo:
 
 ```bash
 cd ~/Documents/ia-suscription-router
 ```
 
-Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16, y las métricas de Arena del 2026-10-05). Los 260 tests pasan con Python 3.9 y 3.14.
+Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16, y las métricas de Arena del 2026-10-05). Los 266 tests pasan con Python 3.9 y 3.14.
 
 ---
 

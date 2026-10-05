@@ -32,7 +32,11 @@ dependencies = []  # solo librería estándar
 
 [project.urls]
 Homepage = "https://www.mgatc.com/recursos/ia-router/"
+Documentation = "https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USO.md"
 Source = "https://github.com/Mgobeaalcoba/ia-suscription-router"
+Issues = "https://github.com/Mgobeaalcoba/ia-suscription-router/issues"
+Changelog = "https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CHANGELOG.md"
+Homebrew = "https://github.com/Mgobeaalcoba/homebrew-tap"
 Author = "https://github.com/Mgobeaalcoba"
 
 [project.scripts]

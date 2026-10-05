@@ -20,6 +20,7 @@ if [[ "$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/ia-router
   echo "La versión $VERSION YA está en PyPI. Subí __version__ (ia_router/__init__.py y CITATION.cff) antes de publicar." >&2; exit 1
 fi
 grep -q "version: \"$VERSION\"" CITATION.cff || { echo "CITATION.cff no está en la versión $VERSION" >&2; exit 1; }
+grep -q "^## $VERSION " CHANGELOG.md || { echo "CHANGELOG.md no tiene la entrada '## $VERSION'" >&2; exit 1; }
 [[ -z "$(git status --porcelain)" ]] || { echo "Hay cambios sin commitear: commitealos antes de publicar." >&2; exit 1; }
 
 say "Tests"
@@ -80,6 +81,8 @@ python3 -m venv "$TMP/pip" && "$TMP/pip/bin/pip" install -q "ia-router==$VERSION
 if command -v brew >/dev/null; then
   brew tap Mgobeaalcoba/tap >/dev/null 2>&1 || true
   brew update >/dev/null 2>&1 || true
-  brew install Mgobeaalcoba/tap/ia-router && ia-router --version && brew test ia-router
+  if brew list --versions ia-router >/dev/null 2>&1; then brew upgrade Mgobeaalcoba/tap/ia-router; else brew install Mgobeaalcoba/tap/ia-router; fi
+  [[ "$(ia-router --version)" == "ia-router $VERSION" ]] || { echo "brew quedó en otra versión: $(ia-router --version)" >&2; exit 1; }
+  brew test ia-router || echo "aviso: 'brew test' no pudo correr (en algunas Mac falla al compilar gemas de desarrollo de Homebrew); la instalación sí se verificó."
 fi
 say "Publicado: ia-router $VERSION en PyPI y Homebrew"

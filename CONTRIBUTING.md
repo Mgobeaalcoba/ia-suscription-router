@@ -2,6 +2,8 @@
 
 ¡Gracias por querer sumar! ia-router es software libre ([Apache-2.0](LICENSE)) y las contribuciones son bienvenidas: bugs, ideas, documentación, tests y código.
 
+Dónde está todo: [web](https://www.mgatc.com/recursos/ia-router/) · [PyPI](https://pypi.org/project/ia-router/) · [tap de Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap) · [issues](https://github.com/Mgobeaalcoba/ia-suscription-router/issues) · [cambios](CHANGELOG.md).
+
 Antes de empezar, leé [AGENTS.md](AGENTS.md): resume las reglas del proyecto, el mapa del código y las trampas conocidas.
 
 ## Qué es fácil de aceptar
@@ -13,14 +15,14 @@ Antes de empezar, leé [AGENTS.md](AGENTS.md): resume las reglas del proyecto, e
 
 ## Qué conviene hablar antes
 
-Abrí un *issue* antes de empezar si querés cambiar el diseño (cómo se puntúan los modelos, fuentes de métricas nuevas, comandos nuevos). El proyecto se simplificó a propósito: no hay manifiesto con "manager", ni calibración propia, ni configuración por lenguaje natural, y no se van a reincorporar sin una buena razón.
+Abrí un [*issue*](https://github.com/Mgobeaalcoba/ia-suscription-router/issues/new/choose) antes de empezar si querés cambiar el diseño (cómo se puntúan los modelos, fuentes de métricas nuevas, comandos nuevos). El proyecto se simplificó a propósito: no hay manifiesto con "manager", ni calibración propia, ni configuración por lenguaje natural, y no se van a reincorporar sin una buena razón.
 
 ## Preparar el entorno
 
 ```bash
 git clone https://github.com/Mgobeaalcoba/ia-suscription-router.git
 cd ia-suscription-router
-python3 -m unittest discover -s tests     # debe terminar en OK (~260 tests, ~15 s)
+python3 -m unittest discover -s tests     # debe terminar en OK (~266 tests, ~15 s)
 ```
 
 No hay dependencias que instalar: el proyecto usa **solo la librería estándar de Python** y es compatible con **Python 3.9** (probalo con `/usr/bin/python3` en macOS). No agregues dependencias.
