@@ -89,11 +89,11 @@ Invariantes:
 - **Agregar un modelo:** entrada en `models.json` (`cmd`, `usage` con su `parser` en `adapters.parse_usage`, `reads_files`) + `python3 cli.py doctor --probe`. Si su CLI devuelve JSON distinto, sumá un parser y su fixture en `tests/fake_bin`.
 - **Agregar una categoría de tarea:** `router.PATTERNS`, y los mapas `metrics.ARENA_MAP` / `AA_MAP`; si va a tener su propia pregunta, `scoring.GROUPS`.
 - **Agregar una fuente de métricas:** una función `fetch_*` con `get` inyectable, un `match_*` por id real + esfuerzo, y su aporte a `precision_values` / `speed_values` / `cost_values`. Con tests offline, atribución en `metrics.ATTRIBUTION` y su variable en `.env.example`.
-- **Publicar una versión** (es público e irreversible: PyPI no permite resubir una versión; hacerlo solo cuando el dueño lo pida):
-  1. `python3 tools/update_snapshot.py` (regenera la foto de Arena; ~1 minuto) y subir `__version__` en `ia_router/__init__.py` (y `version`/`date-released` en `CITATION.cff`).
-  2. Tests en 3.9 y 3.14; `python -m build` y `twine check dist/*` (en un venv temporal; no son dependencias del proyecto).
-  3. Probar el wheel en un venv limpio (`ia-router --help`, `ia-router scores`) y confirmar que **no incluye `.env`** ni la clave.
-  4. `twine upload dist/*` (token de PyPI del dueño, nunca en el repo) y actualizar `url`/`sha256` de la fórmula en `Mgobeaalcoba/homebrew-tap` (plantilla en `packaging/homebrew/`).
+- **Publicar una versión** (público e irreversible: PyPI no permite resubir una versión; solo cuando el dueño lo pida):
+  1. `python3 tools/update_snapshot.py` (regenera la foto de Arena; ~1 minuto), subir `__version__` en `ia_router/__init__.py` y `version`/`date-released` en `CITATION.cff`, y commitear.
+  2. `tools/release.sh` (ensayo: tests, build, `twine check`, comprueba que no vaya `.env` y que `LICENSE`/`NOTICE` estén, e instala el wheel en un venv limpio) y después `tools/release.sh --yes`: sube a PyPI, completa `url` y `sha256` de la fórmula en `Mgobeaalcoba/homebrew-tap` y verifica `pip` y `brew`.
+  3. Credenciales: token de PyPI en `~/.pypirc` (`[pypi]`, `username = __token__`, `password = <token>`, `chmod 600`) o `TWINE_USERNAME`/`TWINE_PASSWORD`. **Nunca en el repo ni en un chat.** El primer token debe ser de "toda la cuenta" (el proyecto todavía no existe); después conviene uno acotado a `ia-router`.
+  4. Recién con el paquete publicado se publica la página del sitio (sus comandos de instalación solo funcionan entonces).
 
 ## Licencia
 
