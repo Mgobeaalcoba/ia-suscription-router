@@ -27,7 +27,8 @@ class IaRouter < Formula
   end
 
   test do
-    assert_match "ia-router", shell_output("#{bin}/ia-router --help")
-    assert_match "categoría", shell_output("#{bin}/ia-router scores")
+    ENV["ROUTER_HOME"] = testpath.to_s
+    assert_match version.to_s, shell_output("#{bin}/ia-router --version")
+    assert_match "usage: ia-router", shell_output("#{bin}/ia-router --help")
   end
 end
