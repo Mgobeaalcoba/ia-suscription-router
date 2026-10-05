@@ -31,7 +31,7 @@ Velocidad y costo van en escala logarítmica (2 puntos menos por cada duplicaci�
 
 ## Instalación
 
-Funciona en macOS (probado) y Linux, con Python 3.9 o superior. Hay dos formas de instalarlo, elegí una:
+Probado en macOS (debería funcionar también en Linux), con Python 3.9 o superior. Hay dos formas de instalarlo, elegí una:
 
 ### Opción A · Homebrew (macOS)
 
