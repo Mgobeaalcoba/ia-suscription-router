@@ -138,7 +138,7 @@ También: caja de entrada propia con historial y varias líneas, **archivos arra
 | `ia_router/attachments.py` · `render.py` · `banner.py` | Archivos arrastrados, markdown interpretado y encabezado. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | Lector de `.env`, estado y log, servidor MCP. |
 | `tools/update_snapshot.py` | Para quien mantiene el repo: regenera la foto de Arena antes de publicar. |
-| `tests/` | 251 tests y CLIs falsos (`tests/fake_bin`). |
+| `tests/` | 260 tests y CLIs falsos (`tests/fake_bin`). |
 
 ## Usarlo desde Claude Code (MCP)
 
@@ -163,6 +163,10 @@ Herramientas: `route_task`, `ask_model`, `list_models`.
 ## Datos de terceros
 
 Las métricas se muestran con su atribución: **Arena** ([arena.ai](https://arena.ai), dataset `leaderboard-dataset`, CC BY 4.0) y **[Artificial Analysis](https://artificialanalysis.ai/)**.
+
+## Contribuir
+
+Las contribuciones son bienvenidas: leé [CONTRIBUTING.md](CONTRIBUTING.md) (entorno, reglas, y firma de commits con el [DCO](DCO): `git commit -s`) y [AGENTS.md](AGENTS.md).
 
 ## Licencia y cómo citar
 

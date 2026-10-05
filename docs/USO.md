@@ -8,7 +8,7 @@ Todos los ejemplos asumen que estás en la carpeta del repo:
 cd ~/Documents/ia-suscription-router
 ```
 
-Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16, y las métricas de Arena del 2026-10-05). Los 251 tests pasan con Python 3.9 y 3.14.
+Las salidas que se muestran son reales (capturadas con claude 2.1.288, codex 0.160.0 y agy 1.2.16, y las métricas de Arena del 2026-10-05). Los 260 tests pasan con Python 3.9 y 3.14.
 
 ---
 
