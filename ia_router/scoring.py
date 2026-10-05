@@ -139,7 +139,7 @@ def render_table(cfg: Dict, cats: Optional[List[str]] = None) -> str:
     names = enabled_models(cfg)
     table = {n: cfg["models"][n]["_scoring"] for n in names}
     cats = cats or [c for c in CATEGORIES if c != "general"]
-    head = f"{'categoría':<14}" + "".join(f"{n:>14}" for n in names)
+    head = f"{'categoría':<14}" + "".join(f"{n:>12}   " for n in names)   # cada celda: puntaje (12) + marca * + marca e + espacio
     lines = [head, "─" * len(head)]
     for cat in cats:
         best = max(table[n][cat]["score"] for n in names)
