@@ -196,6 +196,7 @@ Siempre funcionan, aunque el lenguaje natural no los interprete como querés:
 | `/explain on\|off` | Mostrar la tabla completa de ruteo en cada mensaje. |
 | `/calibrate [full]` | Mide el acierto de cada modelo con tareas verificables (pide confirmación antes de gastar). |
 | `/scores [categoría]` | Puntaje objetivo por modelo y categoría; con una categoría, el desglose peso × valor. |
+| `/benchmarks [refresh]` | Métricas externas de Arena y Artificial Analysis (prior de calidad). |
 | `/criteria` | Preguntas de opción múltiple para ajustar tus criterios de ruteo. |
 | `/md on\|off` | Respuestas con el markdown interpretado, como un README en GitHub: títulos, negrita, listas con viñetas, citas, tablas alineadas y bloques de código con fondo y colores, sin ningún signo (`#`, `**`, `` ` ``). `off` = texto crudo. Sin terminal (pipe) o con `NO_COLOR` se muestra crudo. |
 | `/setup [preferencias]` | Rearmar el manifiesto desde cero. |
@@ -354,6 +355,48 @@ Notas honestas sobre lo que mide:
 - Si un CLI pide una herramienta que el modo no interactivo no puede autorizar (por ejemplo Antigravity para hacer cuentas), la respuesta queda vacía y **cuenta como fallo, marcado como "sin respuesta por permisos"**: es lo que pasaría al usarlo por el router.
 - El código de los modelos se ejecuta en tu máquina en un proceso aislado (`python -I`, sin stdin, con timeout, en una carpeta temporal). Son tus propios CLIs y tareas triviales, pero si no querés ejecutar código de modelos, no corras `calibrate`.
 
+### Fuentes externas: Arena y Artificial Analysis
+
+Además de lo que medís vos, el router puede usar dos portales respetados como **prior de calidad** (reemplazan a las estimaciones a mano de `models.json`; tus mediciones locales las corrigen después):
+
+| Fuente | Qué mide | Acceso |
+|---|---|---|
+| **[Arena](https://arena.ai/leaderboard)** | Preferencia humana en comparaciones a ciegas (Elo con intervalo de confianza y cantidad de votos), por categoría: `coding`, `hard_prompts`, `expert`, `math`, `creative_writing`, `instruction_following`, `longer_query`, y los arenas de visión, búsqueda y webdev. | Dataset público oficial en Hugging Face (`lmarena-ai/leaderboard-dataset`, licencia CC BY 4.0). Sin clave. |
+| **[Artificial Analysis](https://artificialanalysis.ai/)** | Benchmarks con respuesta correcta: índices de inteligencia, coding y math (GPQA, HLE, LiveCodeBench, SciCode, AIME…), velocidad y precio. | API con **clave gratuita** (1.000 pedidos por día; pide atribución). Es opcional: sin clave se omite. |
+
+```
+python3 cli.py benchmarks refresh       # o /benchmarks refresh en el chat
+python3 cli.py benchmarks               # ver qué entradas se encontraron para tus modelos
+```
+
+Para activar Artificial Analysis, creá una clave gratis en su sitio y guardala en la variable `ARTIFICIAL_ANALYSIS_API_KEY` o en el archivo `~/.ia-router/artificialanalysis.key` (una línea; conviene `chmod 600`). La clave viaja por la entrada estándar de `curl`, nunca por la línea de comandos.
+
+**Cómo se usan, y por qué es conservador**
+- **Nunca se consultan solas:** `refresh` es una acción tuya. El resultado se cachea (si tiene menos de 12 horas no vuelve a pedir; `--force` para insistir). Arena es un servicio público: se descargan unas 125 páginas de a una, con pausa y reintentos ante límite de pedidos, y puede tardar un par de minutos.
+- **El id real del modelo** que usa cada CLI (el que registra `calibrate` o el log de uso) se empareja con el leaderboard. Si no hay coincidencia, `benchmarks` lo dice; podés forzarla en `models.json` con `"external": {"arena": "nombre-exacto", "aa": "slug"}`.
+- **Nivel de esfuerzo:** Arena publica variantes (`-high`, `-xhigh`, `-max`). Se elige la que coincide con tu CLI y, si no existe, la más cercana, marcada con ⚠ **aproximada**: tu CLI puede correr con otro esfuerzo que el del leaderboard.
+- **Una fuente solo cuenta para una categoría si cubre a TODOS tus modelos.** Si falta alguno, esa categoría sigue con las estimaciones: no se mezclan escalas.
+- **Del Elo a 0-10:** `10` = empata o gana al mejor de tus modelos; se traduce a probabilidad de victoria de Elo (100 puntos ≈ 64%) y se escala ×2, por lo que 100 puntos de diferencia ≈ 7,2. **Las diferencias que caen dentro del margen de error no premian a nadie.** Artificial Analysis se escala proporcional al mejor índice.
+- **Qué categoría mira cada una:**
+
+| Categoría del router | Arena | Artificial Analysis |
+|---|---|---|
+| `general` | text/overall | índice de inteligencia |
+| `coding` | text/coding + webdev | índice de coding |
+| `debugging` | text/coding + hard_prompts | índice de coding |
+| `writing` | creative_writing + instruction_following | — |
+| `analysis` | hard_prompts + expert | índice de inteligencia |
+| `data` | math + coding | índices de coding y math |
+| `math` | text/math | índice de math |
+| `research` | search arena | índice de inteligencia |
+| `long_context` | longer_query | — |
+| `multimodal` | vision arena | — |
+| `quick` | — | — |
+
+Si una categoría tiene datos de las dos fuentes, se promedian. En `scores` las celdas marcadas con `x` usan un prior externo; `m` = además medido con tus tests; `e` = estimado a mano.
+
+**Qué NO es.** Arena mide **preferencia humana**, no si la respuesta es correcta, y los datos son de modelos genéricos, no de tu CLI con sus herramientas. Por eso se usa como punto de partida y se corrige con las pruebas verificables de `calibrate`, no como verdad.
+
 ### Cómo se calcula el puntaje: `scores`
 
 ```
@@ -362,7 +405,7 @@ puntaje(modelo, categoría) = Σ peso × valor        (valores de 0 a 10)
 
 | Dimensión | De dónde sale |
 |---|---|
-| **calidad** | Aciertos medidos en esa categoría, mezclados con la estimación inicial como si ésta valiera 2 preguntas más: `(aciertos + 2×estimado) / (preguntas + 2)`. Con pocas muestras pesa más la estimación. |
+| **calidad** | Aciertos medidos en esa categoría, mezclados con el prior (el de Arena / Artificial Analysis si lo bajaste, si no la estimación inicial) como si éste valiera 2 preguntas más: `(aciertos + 2×prior) / (preguntas + 2)`. Con pocas muestras pesa más el prior. |
 | **velocidad** | `10 × (más rápido / este modelo)`, con los segundos medios de las llamadas de calibración. |
 | **cuota** | `10 × (el que menos tokens gasta / este modelo)`, con los tokens por corrida reales del log (hacen falta 3 corridas). |
 | **confiabilidad** | `10 ×` tasa de éxito real del log (o la de la calibración). |
@@ -391,7 +434,8 @@ No hay números inventados: cada respuesta se traduce a pesos explícitos que se
 1. **Manifiesto** (tus preferencias explícitas, p. ej. "Codex para todo el código"): manda siempre. 
 2. **Criterios** (`criteria`) aplicados al puntaje.
 3. **Métricas medidas** (`calibrate`, log de uso).
-4. **Estimación inicial** de `models.json`.
+4. **Prior externo** (Arena / Artificial Analysis), si lo bajaste.
+5. **Estimación inicial** de `models.json`.
 
 Si ya tenés un manifiesto, `criteria` te ofrece rearmarlo desde los puntajes; tu versión anterior queda en `manifest.prev.json`.
 

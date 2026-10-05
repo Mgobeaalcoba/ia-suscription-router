@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Router de suscripciones de IA. Sin argumentos abre el chat; también: setup | manifest | doctor | route | ask | stats | calibrate | scores | criteria | mcp | reset-cooldowns."""
+"""Router de suscripciones de IA. Sin argumentos abre el chat; también: setup | manifest | doctor | route | ask | stats | calibrate | scores | criteria | benchmarks | mcp | reset-cooldowns."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import os
 import sys
 from typing import Dict, Optional
 
-from ia_router import adapters, calibrate, core, criteria, manifest, render, scoring, state
+from ia_router import adapters, calibrate, core, criteria, external, manifest, render, scoring, state
 
 
 def _interactive() -> bool:
@@ -196,6 +196,18 @@ def cmd_scores(_cfg, args) -> int:
     return 0
 
 
+def cmd_benchmarks(_cfg, args) -> int:
+    cfg = core.load_config(apply_manifest=False)
+    if args.action == "refresh":
+        try:
+            external.refresh(cfg, say=lambda s: print(s, flush=True), force=args.force)
+        except (OSError, ValueError) as exc:
+            print(f"No pude actualizar las métricas externas: {exc}", file=sys.stderr)
+            return 1
+    print(external.render(cfg, external.load()))
+    return 0
+
+
 def cmd_criteria(_cfg, _args) -> int:
     return 0 if criteria.run(core.load_config(apply_manifest=False), color=_color()) else 1
 
@@ -232,6 +244,9 @@ def main() -> int:
     sp.add_argument("--yes", "-y", action="store_true", help="no pedir confirmación")
     sp = sub.add_parser("scores", help="puntaje objetivo por modelo y categoría (con desglose si indicás una)")
     sp.add_argument("category", nargs="?", help="ej: coding")
+    sp = sub.add_parser("benchmarks", help="métricas externas (Arena y, con clave gratuita, Artificial Analysis) usadas como prior de calidad")
+    sp.add_argument("action", nargs="?", choices=["show", "refresh"], default="show")
+    sp.add_argument("--force", action="store_true", help="(refresh) consultar aunque los datos tengan menos de 12 horas")
     sub.add_parser("criteria", help="cuestionario de opción múltiple para ajustar tus criterios de ruteo")
     sub.add_parser("mcp", help="correr el servidor MCP (stdio)")
     sub.add_parser("reset-cooldowns", help="limpiar cooldowns (rate limit y auth)")
@@ -250,7 +265,7 @@ def main() -> int:
         return 0
     cfg = core.load_config()
     return {"doctor": cmd_doctor, "route": cmd_route, "ask": cmd_ask, "setup": cmd_setup,
-            "manifest": cmd_manifest, "stats": cmd_stats, "calibrate": cmd_calibrate, "scores": cmd_scores, "criteria": cmd_criteria}[args.cmd](cfg, args)
+            "manifest": cmd_manifest, "stats": cmd_stats, "calibrate": cmd_calibrate, "scores": cmd_scores, "criteria": cmd_criteria, "benchmarks": cmd_benchmarks}[args.cmd](cfg, args)
 
 
 if __name__ == "__main__":

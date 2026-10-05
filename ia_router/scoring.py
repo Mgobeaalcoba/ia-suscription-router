@@ -20,7 +20,7 @@ import re
 import time
 from typing import Dict, List, Optional
 
-from . import calibrate, state
+from . import calibrate, external, state
 
 PRIOR_K = 2
 DIMS = ("quality", "speed", "quota", "reliability")
@@ -95,8 +95,11 @@ def _relative_best(values: Dict[str, Optional[float]]) -> Dict[str, Optional[flo
     return {n: (10 * best / v if v and best else None) for n, v in values.items()}
 
 
-def compute(cfg: Dict, metrics: Dict, stats: Dict, profile: Dict, priors: Optional[Dict[str, Dict]] = None) -> Dict[str, Dict[str, Dict]]:
-    """{modelo: {categoría: desglose}}. `priors` = estimaciones iniciales (models.json) por modelo."""
+def compute(cfg: Dict, metrics: Dict, stats: Dict, profile: Dict, priors: Optional[Dict[str, Dict]] = None,
+            ext_priors: Optional[Dict[str, Dict[str, Dict]]] = None) -> Dict[str, Dict[str, Dict]]:
+    """{modelo: {categoría: desglose}}. `priors` = estimaciones iniciales (models.json) por modelo; `ext_priors` = priors de
+    Arena / Artificial Analysis (`external.derive_priors`), que cuando existen reemplazan a esas estimaciones."""
+    ext_priors = ext_priors or {}
     names = list(cfg["models"])
     raw = raw_metrics(names, metrics, stats)
     speed = _relative_best({n: raw[n]["seconds"] for n in names})
@@ -109,17 +112,18 @@ def compute(cfg: Dict, metrics: Dict, stats: Dict, profile: Dict, priors: Option
         meas = raw[n]["categories"]
         measured_vals = [10 * c["passed"] / c["total"] for c in meas.values() if c.get("total")]
         for cat in cats:
-            prior = prior_s.get(cat, prior_s.get("general", 5))
+            ext = (ext_priors.get(n) or {}).get(cat)
+            prior = ext["prior"] if ext else prior_s.get(cat, prior_s.get("general", 5))
             m = meas.get(cat)
             if m and m.get("total"):
                 n_q = m["total"]
                 quality = (10 * m["passed"] + PRIOR_K * prior) / (n_q + PRIOR_K)
-                src = f"medido {m['passed']}/{n_q}" + (f" ({m['blocked']} sin respuesta por permisos)" if m.get("blocked") else "")
+                src = f"medido {m['passed']}/{n_q}" + (f" ({m['blocked']} sin respuesta por permisos)" if m.get("blocked") else "") + (f" + prior externo" if ext else "")
             elif cat == "general" and measured_vals:
                 quality = (sum(measured_vals) + PRIOR_K * prior) / (len(measured_vals) + PRIOR_K)
                 src = f"promedio de {len(measured_vals)} medidas"
             else:
-                quality, src = float(prior), "estimado"
+                quality, src = float(prior), (f"externo: {ext['src']}" if ext else "estimado")
             vals = {"quality": quality,
                     "speed": speed[n] if speed[n] is not None else quality,
                     "quota": quota[n] if quota[n] is not None else quality,
@@ -133,17 +137,19 @@ def compute(cfg: Dict, metrics: Dict, stats: Dict, profile: Dict, priors: Option
     return out
 
 
-def has_evidence(metrics: Dict, profile: Dict) -> bool:
-    return bool((metrics.get("models") or {}) or profile)
+def has_evidence(metrics: Dict, profile: Dict, ext: Optional[Dict] = None) -> bool:
+    return bool((metrics.get("models") or {}) or profile or (ext and (ext.get("arena") or ext.get("aa"))))
 
 
 def apply_to_config(cfg: Dict) -> Dict:
     """Reemplaza `strengths` por el puntaje objetivo (si hay métricas o perfil). Guarda el desglose en spec['_scoring']."""
-    metrics, profile = calibrate.load(), load_profile()
-    if not has_evidence(metrics, profile):
+    metrics, profile, ext = calibrate.load(), load_profile(), external.load()
+    if not has_evidence(metrics, profile, ext):
         return cfg
     priors = {n: dict(spec.get("strengths", {})) for n, spec in cfg["models"].items()}
-    table = compute(cfg, metrics, state.stats(), profile, priors)
+    enabled = [n for n, spec in cfg["models"].items() if spec.get("enabled", True)]
+    ext_priors = external.derive_priors(enabled, ext) if len(enabled) >= 2 else {}
+    table = compute(cfg, metrics, state.stats(), profile, priors, ext_priors)
     for n, spec in cfg["models"].items():
         spec["_prior_strengths"] = priors[n]
         spec["_scoring"] = table[n]
@@ -191,13 +197,17 @@ def render_table(cfg: Dict, cats: Optional[List[str]] = None) -> str:
         for n in names:
             d = table[n][cat]
             mark = "*" if d["score"] == best else " "
-            tag = "m" if d["quality_src"].startswith("medido") else "e"
+            tag = "m" if d["quality_src"].startswith("medido") else "x" if d["quality_src"].startswith("externo") else "e"
             row += f"{d['score']:>11.1f}{mark}{tag} "
         lines.append(row)
-    lines += ["", "* = mejor de la fila · m = calidad medida · e = estimada (sin calibrar para esa categoría)"]
+    lines += ["", "* = mejor de la fila · m = calidad medida (con tus tests) · x = prior de Arena / Artificial Analysis · e = estimada a mano"]
     flat = ties(cfg)
     if flat:
         lines.append(f"Sin diferencias medidas (todos acertaron todo): {', '.join(flat)}. Ahí decide la velocidad y la estimación; `calibrate --full` suma preguntas distintas.")
+    ext = external.load()
+    used = [external.ATTRIBUTION[k] for k in ("arena", "aa") if ext.get(k)]
+    if used:
+        lines.append("Fuentes externas: " + " · ".join(used))
     return "\n".join(lines)
 
 
