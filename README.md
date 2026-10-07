@@ -169,6 +169,8 @@ ia-router connectors add crm --url https://crm.example.com/mcp --header 'Authori
 ia-router connectors test        # starts them and lists their tools (spends no model quota)
 ```
 
+![Registering two MCP connectors, testing them and listing them: the filesystem and memory servers, with their tools](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-connectors.png)
+
 The router runs **one proxy MCP server** that aggregates all your connectors and hands it to `claude` and `codex` on every call (no config files are touched); for `agy` register it once with `ia-router connectors install agy` (it also adds a scoped allow rule to agy's settings). The router never handles OAuth tokens: each MCP server does its own login. Connectors can read **and write** (a model can send an email if you ask), so use `/connectors off` or a `deny` list when you do not want that. Details in [docs/USAGE.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USAGE.md#6-connectors-let-the-models-use-your-other-apps).
 
 ## Using it from Claude Code (MCP)

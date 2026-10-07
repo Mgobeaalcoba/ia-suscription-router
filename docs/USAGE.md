@@ -499,6 +499,8 @@ ia-router connectors test        # starts each one and lists its tools; spends n
 ia-router connectors list
 ```
 
+![Real output of adding two official MCP servers, testing them and listing them](img/ia-router-connectors.png)
+
 Names are lowercase letters, digits and hyphens. Everything after `--` is the command, options included. The router does not ship a catalog: use the MCP server of the app you want (its own documentation says how to start it and how to log in).
 
 **Credentials.** The router never handles OAuth tokens: each MCP server does its own login (many open a browser the first time, or read a token you give them). When a server needs a key, reference it as `${NAME}`: it is resolved from your environment or from your `.env` when the server starts, so the key never lands in the registry. If you type a literal value, the router warns you; the registry (`~/.ia-router/connectors.json`) is created readable only by you.

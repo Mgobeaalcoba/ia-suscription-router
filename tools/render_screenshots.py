@@ -174,6 +174,24 @@ def main() -> int:
     opts = [select.Option(scoring.PRESET_LABELS[k], priorities.OPTION_TEXT[k]) for k in keys]
     lines = editor.echo_lines("/priorities", [], [], COLS, True) + select.render_lines("For code and debugging, what do you prioritize?", opts, 2, "", True, "1/6", COLS)
     shot(lines, out / "ia-router-prioridades.png", "ia-router · /priorities", COLS)
+
+    # 5) connectors: REAL output of the official MCP servers (filesystem and memory) in a throwaway state folder, never your real registry
+    with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as docs:
+        env = dict(os.environ, ROUTER_HOME=home, NO_COLOR="1")
+
+        def run(*args):
+            r = subprocess.run([sys.executable, str(ROOT / "cli.py"), *args], capture_output=True, text=True, env=env, timeout=240)
+            text = (r.stdout + r.stderr).rstrip().replace(docs, "~/Documents")
+            return re.sub(r"/(?:private/)?var/folders/\S+", "~/Documents", text)  # `list` shortens long paths, so the temp folder may be cut
+
+        steps = [("connectors", "add", "files", "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", docs),
+                 ("connectors", "add", "memory", "--", "npx", "-y", "@modelcontextprotocol/server-memory"),
+                 ("connectors", "test"), ("connectors", "list")]
+        lines = []
+        for args in steps:
+            shown = " ".join(a if a != docs else "~/Documents" for a in args)
+            lines += ["\033[1;38;2;200;90;160m$\033[0m ia-router " + shown] + run(*args).split("\n") + [""]
+        shot(lines[:-1], out / "ia-router-connectors.png", "ia-router · connectors", COLS)
     return 0
 
 
