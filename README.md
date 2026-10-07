@@ -68,7 +68,7 @@ If you do not have `pipx`: `brew install pipx && pipx ensurepath` (macOS) or `py
 ### Check that it worked
 
 ```bash
-ia-router --version     # ia-router 0.3.0
+ia-router --version     # ia-router 0.4.0
 ia-router doctor        # which CLIs you have installed and which model each one uses (spends no quota)
 ```
 
@@ -130,7 +130,8 @@ The `.env` is **never pushed to git** (it is in `.gitignore`); `.env.example` is
 | `priorities` | Questions: what you prioritize for each kind of task. |
 | `doctor [--probe]` | Installed CLIs and which model each one uses; with `--probe`, real login and latency. |
 | `stats` | Success, latency, rate limits and tokens per model. |
-| `mcp` | MCP server (stdio). |
+| `connectors [list\|add\|remove\|enable\|disable\|test\|install]` | MCP connectors (Gmail, Calendar, Slack…) that every model can use. |
+| `mcp` | MCP server (stdio): exposes the router itself as tools. |
 | `reset-cooldowns` | Clears rate-limit or auth cooldowns. |
 
 Also: its own input box with history and multiple lines, **dragged files** (text as context; images and PDFs by path), every answer with the **exact model and the tokens**, and markdown rendered like a README on GitHub.
@@ -153,9 +154,22 @@ The task classifier understands tasks written in English and in Spanish; the who
 | `ia_router/adapters.py` · `probe.py` | CLI execution (model and tokens, rate limit, login) and the probe. |
 | `ia_router/chat.py` · `editor.py` · `select.py` | Chat, input box and option selector. |
 | `ia_router/attachments.py` · `render.py` · `banner.py` | Dragged files, rendered markdown and the header. |
+| `ia_router/connectors.py` | MCP connectors: registry, proxy server that aggregates them, per-CLI injection. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | `.env` reader, state and log, MCP server. |
 | `tools/update_snapshot.py` | For whoever maintains the repo: regenerates the Arena snapshot before publishing. |
-| `tests/` | 269 tests and fake CLIs (`tests/fake_bin`). |
+| `tests/` | 294 tests and fake CLIs (`tests/fake_bin`). |
+
+## Connectors: let any model use your other apps (MCP)
+
+Register MCP servers once and every model can use them: Gmail, Calendar, Slack, GitHub, your own tools…
+
+```bash
+ia-router connectors add gmail --env GMAIL_TOKEN='${GMAIL_TOKEN}' -- npx -y @your/gmail-mcp-server
+ia-router connectors add crm --url https://crm.example.com/mcp --header 'Authorization: Bearer ${CRM_KEY}'
+ia-router connectors test        # starts them and lists their tools (spends no model quota)
+```
+
+The router runs **one proxy MCP server** that aggregates all your connectors and hands it to `claude` and `codex` on every call (no config files are touched); for `agy` register it once with `ia-router connectors install agy` (it also adds a scoped allow rule to agy's settings). The router never handles OAuth tokens: each MCP server does its own login. Connectors can read **and write** (a model can send an email if you ask), so use `/connectors off` or a `deny` list when you do not want that. Details in [docs/USAGE.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USAGE.md#6-connectors-let-the-models-use-your-other-apps).
 
 ## Using it from Claude Code (MCP)
 

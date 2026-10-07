@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from . import adapters, attachments as att_mod, router, scoring, state
+from . import adapters, attachments as att_mod, connectors as connectors_mod, router, scoring, state
 
 MAX_CONTEXT_CHARS = 400_000
 
@@ -81,11 +81,14 @@ def ask(
     preamble: str = "",
     route_text: Optional[str] = None,
     attachments: Optional[List[att_mod.Attachment]] = None,
+    connectors: Optional[bool] = None,
 ) -> Dict:
     """`preamble` (e.g. the chat history) is prepended to the prompt but does not influence routing.
     `route_text` lets you classify with a different text than the one sent (e.g. a short follow-up inherits the previous topic).
     `attachments`: text ones are appended as context; images/PDFs/binaries/folders are referenced by path and
-    force the use of a model that can open files."""
+    force the use of a model that can open files.
+    `connectors`: give the model the registered MCP connectors (Gmail, Calendar…) through the router's proxy;
+    None = automatic (on when at least one enabled connector is registered)."""
     inline, referenced = att_mod.split_for_prompt(attachments or [])
     prompt, ctx_len, warnings = build_prompt(task, list(context_files or []) + inline)
     prompt = preamble + prompt + att_mod.reference_block(referenced)
@@ -102,7 +105,8 @@ def ask(
         order = [r["name"] for r in decision["ranking"] if r["usable"]][:max_attempts]
 
     att_dirs = sorted({str(a.path if a.kind == "dir" else a.path.parent) for a in referenced})
-    result: Dict = {"decision": decision, "order": order, "warnings": warnings, "attempts": [], "ok": False, "output": ""}
+    use_mcp = connectors_mod.has_connectors() if connectors is None else bool(connectors)
+    result: Dict = {"decision": decision, "order": order, "warnings": warnings, "attempts": [], "ok": False, "output": "", "connectors": use_mcp}
     if dry_run:
         result["dry_run"] = True
         return result
@@ -111,7 +115,7 @@ def ask(
         return result
 
     for name in order:
-        res = adapters.run_cli(name, models[name], prompt, timeout=timeout, cwd=cwd, usage=True, extra_dirs=att_dirs)
+        res = adapters.run_cli(name, models[name], prompt, timeout=timeout, cwd=cwd, usage=True, extra_dirs=att_dirs, mcp=use_mcp)
         attempt = {k: res[k] for k in ("seconds", "returncode", "rate_limited", "auth_required", "error", "model_id", "tokens")}
         attempt["model"] = name
         result["attempts"].append(attempt)

@@ -11,7 +11,7 @@ A Python router that splits tasks across the **official CLIs** of the AI subscri
 ## Commands
 
 ```bash
-python3 -m unittest discover -s tests       # the whole suite (269 tests, ~15 s); it must end in OK
+python3 -m unittest discover -s tests       # the whole suite (294 tests, ~15 s); it must end in OK
 python3 -m unittest tests.test_scoring      # one file
 /usr/bin/python3 -m unittest discover -s tests   # on macOS: system Python 3.9 (the minimum supported)
 python3 cli.py doctor                        # installed CLIs and which model each one uses (spends no quota)
@@ -52,7 +52,8 @@ There is no build or linter configured. Do not add dependencies.
 | `ia_router/render.py` · `banner.py` | Rendered markdown (ANSI, no markup characters) and the header. |
 | `ia_router/envfile.py` | Minimal `.env` reader (never overrides the environment). |
 | `ia_router/state.py` | Cooldowns, `log.jsonl`, seen ids, startup flags. |
-| `ia_router/mcp_server.py` | MCP stdio server. |
+| `ia_router/mcp_server.py` | MCP stdio server that exposes the router itself as tools. |
+| `ia_router/connectors.py` | **Connectors**: registry (`connectors.json`), MCP clients (stdio and Streamable HTTP), the single **proxy MCP server** that aggregates them (`ia-router connectors serve`) and the per-CLI argument injection (`cli_args`). Pure registry/naming/args; only the clients and `serve` do I/O. |
 
 Design pattern worth keeping: **pure logic separated from I/O** (e.g. `State` / `render_frame` / `SelectState` / `metrics.precision_values` do not touch the terminal or the network and are tested without them).
 
@@ -80,6 +81,7 @@ Invariants:
 - **Arena's dataset on Hugging Face** (`datasets-server`) returns 429 after ~30 pages: do not use that path; the per-category pages of `arena.ai/leaderboard/...` are read (see `metrics.arena_pages`). If the format of those pages changes, `parse_leaderboard` fails with a clear error.
 - **Arena does not publish the price of every model** (e.g. `gpt-6.1-sol`): cost usually depends on Artificial Analysis.
 - **Artificial Analysis: the real fields differ from the documentation.** It was verified against the real API (690 models): it does not publish every index (`artificial_analysis_coding_index`, `math_index`) for every model, but it does publish other benchmarks (`lcr`, `hle`, `scicode`, `terminalbench_v4_0`…). `metrics.AA_MAP` lists several candidates per category and only those covering all the models count. Names carry filler (`Claude Sonnet 5.5 (Max, Default Fallback)`): `metrics.NOISE` discards it; if a new word shows up, add it there with a test.
+- **Connectors design (decided with the owner):** ONE proxy MCP server for every CLI, tools enabled for reading and writing, any MCP server (no catalog). Do not add per-CLI connector registries. The router never handles OAuth: the MCP servers log in on their own. Registry file is `0600`; secrets should be `${NAME}` references. The audit log never stores arguments or results. claude gets `--allowedTools mcp__ia-router-connectors` (that one server, never `--dangerously-skip-permissions`); codex gets `default_tools_approval_mode="approve"` for the proxy only; **agy has no per-call MCP option** and needs the one-time `connectors install agy`, which also adds the allow rule `mcp(ia-router-connectors/*)` to agy's `settings.json` (headless agy auto-denies MCP tools without it; the syntax is `mcp(<server>/<tool>)`). The CLIs start MCP servers with a trimmed environment (codex does), so `cli_args` passes `ROUTER_HOME` explicitly; without it a custom state folder made the proxy read an empty registry. claude's `--mcp-config`/`--allowedTools` are variadic: they must sit before `-p`, never right before the prompt.
 - **Averaging tokens** only over runs that have recorded tokens (`token_runs`).
 - **Pty tests** (`PtySmokeTests`, `test_select`) compare before/after and not the absolute state of the file system.
 - `pyte` (terminal emulator) was used **by hand** to look at real screens; it is not a dependency and it is not imported in tests.

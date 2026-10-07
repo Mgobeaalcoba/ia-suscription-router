@@ -10,7 +10,7 @@ All the examples assume you are in the repo folder:
 cd ~/Documents/ia-suscription-router
 ```
 
-The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 269 tests pass with Python 3.9 and 3.14.
+The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 294 tests pass with Python 3.9 and 3.14.
 
 ---
 
@@ -75,7 +75,7 @@ If you do not have `pipx`: `brew install pipx && pipx ensurepath` (macOS) or `py
 #### Check that it worked
 
 ```bash
-ia-router --version     # ia-router 0.3.0
+ia-router --version     # ia-router 0.4.0
 ia-router doctor        # which CLIs you have installed and which model each one uses (spends no quota)
 ```
 
@@ -118,7 +118,7 @@ The header shows where the metrics that drive the routing come from:
 
 ```
  ●─╮     ╦╔═╗   ╦═╗╔═╗╦ ╦╔╦╗╔═╗╦═╗
- ●─┼─◉   ║╠═╣ ─ ╠╦╝║ ║║ ║ ║ ║╣ ╠╦╝  v0.3.0
+ ●─┼─◉   ║╠═╣ ─ ╠╦╝║ ║║ ║ ║ ║╣ ╠╦╝  v0.4.0
  ●─╯     ╩╩ ╩   ╩╚═╚═╝╚═╝ ╩ ╚═╝╩╚═  your AI subscriptions, routed
 
  ╭──────────────────────────────────────────────────────────────────────────╮
@@ -171,6 +171,7 @@ They always work. When you type `/` the filtered list appears.
 | `/priorities` | Questions: what you prioritize for each kind of task (accuracy, speed or cost). |
 | `/model codex` · `/model auto` | Pin a model for everything that follows, or go back to automatic routing. |
 | `/stats` | Success, latency and tokens per model. |
+| `/connectors [on\|off]` | MCP connectors (Gmail, Calendar…) the models can use; see section 6. |
 | `/explain on\|off` | Show the routing table on every message. |
 | `/md on\|off` | Rendered markdown (like a README on GitHub, without markup characters) or raw text. Without a terminal (pipe) or with `NO_COLOR` it is shown raw. |
 | `/ask text` | Force the interpretation as a task. |
@@ -181,7 +182,7 @@ It also understands queries in natural language ("show me the stats", "which mod
 
 ### Standalone commands (without opening the chat)
 
-Everything in the chat also exists as commands for scripts (`ask`, `route`, `scores`, `metrics`, `priorities`, `doctor`, `stats`). They are described in section 5.
+Everything in the chat also exists as commands for scripts (`ask`, `route`, `scores`, `metrics`, `priorities`, `doctor`, `stats`, `connectors`). They are described in section 5.
 
 ---
 
@@ -473,7 +474,68 @@ If a model ended up in cooldown and you already fixed it (you logged in again, o
 
 ---
 
-## 6. Using it from Claude Code (MCP)
+## 6. Connectors: let the models use your other apps
+
+Connectors give **any** model (claude, codex, agy) access to other apps through [MCP](https://modelcontextprotocol.io) servers: Gmail, Calendar, Drive, Slack, GitHub, a CRM, your own tools. You register a server once; from then on every task can use it.
+
+```
+claude / codex / agy ──► ia-router connectors serve (one proxy) ──► gmail server
+                                                                 ├─► calendar server
+                                                                 └─► your CRM (http)
+```
+
+The router runs **one proxy MCP server** that starts all your enabled connectors and exposes their tools as `<connector>__<tool>` (for example `gmail__search_messages`). Each CLI is pointed at that single proxy, so permissions, logging and credentials live in one place and it behaves the same with every model.
+
+### 6.1 Add a connector
+
+```bash
+# a local server, started with a command (the usual case: npx, uvx, docker…)
+ia-router connectors add gmail --env GMAIL_TOKEN='${GMAIL_TOKEN}' -- npx -y @your/gmail-mcp-server
+
+# a remote server (Streamable HTTP) with a static header
+ia-router connectors add crm --url https://crm.example.com/mcp --header 'Authorization: Bearer ${CRM_KEY}'
+
+ia-router connectors test        # starts each one and lists its tools; spends no model quota
+ia-router connectors list
+```
+
+Names are lowercase letters, digits and hyphens. Everything after `--` is the command, options included. The router does not ship a catalog: use the MCP server of the app you want (its own documentation says how to start it and how to log in).
+
+**Credentials.** The router never handles OAuth tokens: each MCP server does its own login (many open a browser the first time, or read a token you give them). When a server needs a key, reference it as `${NAME}`: it is resolved from your environment or from your `.env` when the server starts, so the key never lands in the registry. If you type a literal value, the router warns you; the registry (`~/.ia-router/connectors.json`) is created readable only by you.
+
+### 6.2 How each CLI gets them
+
+| CLI | How |
+|---|---|
+| `claude` | On every call the router adds `--mcp-config` with the proxy and `--allowedTools mcp__ia-router-connectors`: only that server is pre-approved, never a blanket "allow everything". |
+| `codex` | On every call the router adds `-c mcp_servers.ia-router-connectors.…` overrides, including `default_tools_approval_mode="approve"` for that server only. Your `~/.codex/config.toml` is not touched. |
+| `agy` | Antigravity has no per-call option, so register the proxy once: `ia-router connectors install agy` (undo with `uninstall agy`). It runs `agy mcp add …` and adds the allow rule `mcp(ia-router-connectors/*)` under `permissions.allow` in `~/.gemini/antigravity-cli/settings.json`: without it agy's non-interactive mode auto-denies MCP tools. The rule covers only this proxy, and `uninstall` removes it. |
+
+A custom `ROUTER_CMD_<MODEL>` command is respected as is: connectors are not injected into it.
+
+### 6.3 Using them
+
+- **Chat:** connectors are on automatically when at least one enabled connector is registered. `/connectors` lists them; `/connectors off` / `/connectors on` switches them for the session.
+- **One-off commands:** `ia-router ask "…"` uses them; add `--no-connectors` to skip them for that task.
+- **Cost:** every connector you enable adds its tool descriptions to each call (a few thousand tokens for a big server) and the time to start it. Disable the ones you do not use daily: `ia-router connectors disable NAME`.
+
+Example, in the chat: `ia ❯ summarize the unread emails from today and put a 30-minute focus block on my calendar`.
+
+### 6.4 Permissions and safety
+
+- **Connectors can read and write.** If a server offers a "send email" tool, a model can send an email when you ask it to. To hide tools, add an `allow` (only these) or `deny` (never these) list of the server's own tool names in `~/.ia-router/connectors.json`:
+
+  ```json
+  { "servers": { "gmail": { "command": ["npx", "-y", "@your/gmail-mcp-server"], "deny": ["send_email", "delete_message"] } } }
+  ```
+
+- **Prompt injection is real.** A model that reads an email or a web page can be told to do things by that content. Keep `deny` lists on destructive tools and prefer `/connectors off` for tasks that read untrusted text.
+- **Audit log:** every tool call is recorded in `~/.ia-router/connectors.log.jsonl` with the server, the tool, success and duration. Arguments and results are never logged.
+- A failing connector is skipped and reported on stderr; the rest keep working.
+
+---
+
+## 6b. Using the router from Claude Code (MCP)
 
 It lets Claude delegate subtasks to the other models within a conversation.
 
@@ -515,6 +577,8 @@ The MCP server **uses the same metrics-based routing** as the CLI. If tasks take
 | Cooldowns | `~/.ia-router/state.json` |
 | Run log (no prompts; with model and tokens) | `~/.ia-router/log.jsonl` |
 | History of what you type in the input box | `~/.ia-router/history.jsonl` |
+| Your MCP connectors (can hold keys: readable only by you) | `~/.ia-router/connectors.json` |
+| Connector tool-call log (no arguments or results) | `~/.ia-router/connectors.log.jsonl` |
 | Your Artificial Analysis key | `~/.ia-router/.env` (or `.env` in the clone folder, ignored by git) or the environment variable |
 | Models, commands and timeouts | `ia_router/data/models.json` (bundled) or your copy in `~/.ia-router/models.json` |
 

@@ -2,6 +2,17 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are published on [PyPI](https://pypi.org/project/ia-router/) and [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
 
+## 0.4.0 — 2026-10-07
+
+### Added
+- **Connectors:** any model can now use your other apps (Gmail, Calendar, Slack, GitHub…) through MCP servers. Register servers with `ia-router connectors add NAME -- COMMAND…` (or `--url` for a remote one) and the router gives them to claude and codex on every call through one proxy MCP server that aggregates all of them. `ia-router connectors list|test|enable|disable|remove`, `/connectors` in the chat, and `ask --no-connectors`.
+- Antigravity (`agy`) has no per-call MCP option, so it needs a one-time `ia-router connectors install agy`, which registers the proxy and adds the allow rule `mcp(ia-router-connectors/*)` to agy's settings (without it agy denies MCP tools when run non-interactively); `uninstall agy` removes both.
+- Tool calls are logged to `~/.ia-router/connectors.log.jsonl` (server, tool, success, duration; never arguments or results). Per-server `allow`/`deny` tool lists are supported in `connectors.json`.
+
+### Security
+- The router never handles OAuth tokens: each MCP server logs in on its own. Secrets in `connectors.json` can be references such as `${GMAIL_TOKEN}`, resolved from your environment or `.env`; the file is created readable only by you.
+- Connectors are enabled for reading and writing: a model can send an email if you ask it to. Use `deny` to hide specific tools, or `/connectors off` to turn them off.
+
 ## 0.3.0 — 2026-10-07
 
 ### Changed

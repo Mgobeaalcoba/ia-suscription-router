@@ -14,7 +14,7 @@ import sys
 import time
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import __version__, adapters, attachments, banner, core, editor as editor_mod, metrics, priorities, probe as probe_mod, render, router, scoring, state
+from . import __version__, adapters, attachments, banner, connectors as connectors_mod, core, editor as editor_mod, metrics, priorities, probe as probe_mod, render, router, scoring, state
 
 HISTORY_TURNS = 6
 HISTORY_ANSWER_CHARS = 1500
@@ -28,6 +28,7 @@ HELP = """Just talk normally: each message is a task and is routed to the best m
   /priorities        questions: what you prioritize for each kind of task (accuracy, speed, cost)
   /model X           pin a model (X = claude|codex|... or auto)         /stats   success, latency and tokens
   /explain on|off    show the routing table on every message            /md on|off   rendered or raw markdown
+  /connectors [on|off] MCP connectors (Gmail, Calendar…) the models can use; manage them with `ia-router connectors`
   /ask text          force "this is a task"                             /clear   forget the conversation
   /help              this help                                          /exit    quit"""
 
@@ -37,7 +38,7 @@ COMMANDS = [
     editor_mod.Command("/priorities", "what you prioritize for each kind of task (questions)"), editor_mod.Command("/model", "pin a model or auto"),
     editor_mod.Command("/stats", "success, latency and tokens per model"), editor_mod.Command("/explain", "show the routing table (on|off)"),
     editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/ask", "force: this is a task"),
-    editor_mod.Command("/clear", "forget the conversation"), editor_mod.Command("/exit", "quit"),
+    editor_mod.Command("/connectors", "MCP connectors the models can use (on|off)"), editor_mod.Command("/clear", "forget the conversation"), editor_mod.Command("/exit", "quit"),
 ]
 
 # ---------- message interpretation ----------
@@ -84,6 +85,7 @@ class Chat:
         self.pinned = "auto"
         self.explain = False
         self.markdown = True
+        self.connectors: Optional[bool] = None   # None = automatic: on when an enabled connector is registered
 
     # --- utilities ---
     def dim(self, s: str) -> str:
@@ -126,7 +128,7 @@ class Chat:
         self.say(self.dim("… routing"))
         try:
             res = core.ask(text, cfg, model=self.pinned, context_files=files, attachments=atts,
-                           preamble=build_preamble(self.history), route_text=self.route_text(text))
+                           preamble=build_preamble(self.history), route_text=self.route_text(text), connectors=self.connectors)
         except ValueError as exc:
             self.say(f"Error: {exc}")
             return
@@ -189,6 +191,16 @@ class Chat:
         elif cmd == "priorities":
             if priorities.run(cfg, say=self.say, color=self.color):
                 self.say("\n" + scoring.render_table(core.load_config()))
+        elif cmd == "connectors":
+            if arg in ("on", "off"):
+                self.connectors = arg == "on"
+            servers = connectors_mod.load()
+            active = connectors_mod.has_connectors() if self.connectors is None else self.connectors
+            if not servers:
+                self.say("No connectors yet. Add an MCP server from your shell, e.g.: ia-router connectors add NAME -- COMMAND…")
+            else:
+                self.say("\n".join(f"{n:<14} {'on ' if s.get('enabled', True) else 'off'}  {s.get('url') or ' '.join(s.get('command') or [])[:60]}" for n, s in servers.items()))
+                self.say(f"Connectors are {'ON' if active else 'OFF'} for the models (/connectors on|off). Manage them with `ia-router connectors`.")
         elif cmd == "clear":
             self.history.clear()
             self.say("Conversation forgotten.")

@@ -16,6 +16,8 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from . import connectors as connectors_mod
+
 RATE_LIMIT_RE = re.compile(
     r"rate.?limit|quota|\b429\b|too many requests|usage limit|limit reached|"
     r"resource.?exhausted|exceeded your|try again (later|in)",
@@ -72,6 +74,7 @@ def run_cli(
     cwd: Optional[str] = None,
     usage: bool = False,
     extra_dirs: Optional[List[str]] = None,
+    mcp: bool = False,
 ) -> Dict:
     """Runs the model's CLI and returns a normalized dict.
 
@@ -86,6 +89,8 @@ def run_cli(
     if usage:
         template = _with_usage_args(name, spec, template, logfile)
     template = _with_dirs(name, spec, template, list(extra_dirs or []))
+    if mcp and not os.environ.get(f"ROUTER_CMD_{name.upper()}"):  # a custom command is respected as is
+        template = connectors_mod.inject((spec.get("usage") or {}).get("parser", ""), template)
     argv = [a.replace("{prompt}", prompt) for a in template]
     t0 = time.time()
     try:

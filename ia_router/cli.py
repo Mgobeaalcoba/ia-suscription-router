@@ -1,11 +1,13 @@
-"""AI subscription router that routes by objective metrics. With no arguments it opens the chat; also: doctor | route | ask | stats | scores | metrics | priorities | mcp | reset-cooldowns."""
+"""AI subscription router that routes by objective metrics. With no arguments it opens the chat; also: doctor | route | ask | stats | scores | metrics | priorities | connectors | mcp | reset-cooldowns."""
 from __future__ import annotations
 
 import argparse
 import os
 import sys
 
-from . import __version__, adapters, core, envfile, metrics, priorities, probe, render, scoring, state
+import subprocess
+
+from . import __version__, adapters, connectors, core, envfile, metrics, priorities, probe, render, scoring, state
 
 
 def _color() -> bool:
@@ -47,13 +49,14 @@ def cmd_route(cfg, args) -> int:
 
 def cmd_ask(cfg, args) -> int:
     try:
-        res = core.ask(args.task, cfg, model=args.model, context_files=args.context, dry_run=args.dry_run)
+        res = core.ask(args.task, cfg, model=args.model, context_files=args.context, dry_run=args.dry_run,
+                       connectors=False if args.no_connectors else None)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
     print(core.format_ranking(res["decision"]), file=sys.stderr)
     if res.get("dry_run"):
-        print(f"(dry-run) attempt order: {res['order']}", file=sys.stderr)
+        print(f"(dry-run) attempt order: {res['order']} · connectors: {'on' if res['connectors'] else 'off'}", file=sys.stderr)
         return 0
     for a in res["attempts"]:
         print(f"attempt {a['model']}: {'OK' if not a['error'] else a['error'][:80]} ({a['seconds']}s)", file=sys.stderr)
@@ -99,6 +102,88 @@ def cmd_priorities(cfg, _args) -> int:
     return 0 if priorities.run(cfg, color=_color()) else 1
 
 
+def _connector_line(name: str, spec: dict) -> str:
+    kind = spec.get("url") or " ".join(spec.get("command") or [])
+    state_ = "on " if spec.get("enabled", True) else "off"
+    extra = (f"  allow={','.join(spec['allow'])}" if spec.get("allow") else "") + (f"  deny={','.join(spec['deny'])}" if spec.get("deny") else "")
+    return f"{name:<14} {state_}  {kind[:70]}{extra}"
+
+
+def _test_connectors(names) -> int:
+    servers = {n: s for n, s in connectors.load().items() if not names or n in names}
+    if not servers:
+        print("No connectors to test. Add one with `ia-router connectors add NAME -- COMMAND…`.")
+        return 1
+    bad = 0
+    for name, spec in servers.items():
+        client = connectors.make_client(name, spec)
+        try:
+            client.start()
+            tools = connectors.filter_tools(connectors.list_tools(client), spec)
+            print(f"{name:<14} OK    {len(tools)} tools: " + ", ".join(t["name"] for t in tools[:8]) + (" …" if len(tools) > 8 else ""))
+        except (connectors.McpError, OSError) as exc:
+            bad += 1
+            print(f"{name:<14} FAIL  {exc}")
+        finally:
+            client.close()
+    return 1 if bad else 0
+
+
+def cmd_connectors(args) -> int:
+    act = args.action or "list"
+    if act == "serve":
+        return connectors.serve()
+    servers = connectors.load()
+    if act == "list":
+        if not servers:
+            print("No connectors yet. Example: ia-router connectors add gmail -- npx -y @your/gmail-mcp-server")
+            return 0
+        print("\n".join(_connector_line(n, s) for n, s in servers.items()))
+        print(f"\nEvery model gets them through one proxy ({connectors.PROXY_NAME}). `ia-router connectors test` checks them without spending quota.")
+        return 0
+    if act == "add":
+        command = args.command
+        try:
+            spec = connectors.add(args.name, command=command or None, url=args.url, env=connectors.parse_pairs(args.env, "="),
+                                  headers=connectors.parse_pairs(args.header, ":"))
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
+        print(f"Added connector '{args.name}'. Check it with: ia-router connectors test {args.name}")
+        literal = connectors.secret_literals(spec)
+        if literal:
+            print(f"Note: {', '.join(literal)} is stored in {connectors.registry_path()} (readable only by you). "
+                  "To keep secrets out of the file use ${NAME}, e.g. --env TOKEN='${MY_TOKEN}', and put MY_TOKEN in your .env.")
+        return 0
+    if act in ("remove", "enable", "disable"):
+        ok = connectors.remove(args.name) if act == "remove" else connectors.set_enabled(args.name, act == "enable")
+        print(f"{act}: {args.name}" if ok else f"No connector named '{args.name}'.", file=sys.stdout if ok else sys.stderr)
+        return 0 if ok else 1
+    if act == "test":
+        return _test_connectors([args.name] if args.name else [])
+    if act in ("install", "uninstall"):
+        if args.cli != "agy":
+            print("Only agy needs a one-time registration; claude and codex get the connectors on every call.", file=sys.stderr)
+            return 2
+        installing = act == "install"
+        cmd = connectors.install_agy() if installing else connectors.uninstall_agy()
+        print("Running: " + " ".join(cmd))
+        try:
+            code = subprocess.run(cmd).returncode
+        except OSError as exc:
+            print(f"Could not run agy: {exc.strerror}", file=sys.stderr)
+            return 1
+        try:
+            done = connectors.agy_allow_rule(installing)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print(f"agy settings ({connectors.agy_settings_path()}): rule {connectors.AGY_RULE} {done}. "
+              + ("It lets agy use ONLY this proxy's tools in non-interactive mode; nothing else is allowed." if installing else ""))
+        return code
+    return 2
+
+
 def main() -> int:
     envfile.load()  # .env (e.g. ARTIFICIAL_ANALYSIS_API_KEY); never overrides what is already set in the environment
     p = argparse.ArgumentParser(prog="ia-router", description=__doc__)
@@ -114,6 +199,7 @@ def main() -> int:
         if name == "ask":
             sp.add_argument("--model", "-m", default="auto", help="auto|claude|codex|antigravity")
             sp.add_argument("--dry-run", action="store_true", help="only show the decision")
+            sp.add_argument("--no-connectors", action="store_true", help="do not give the model your MCP connectors for this task")
     sub.add_parser("stats", help="success, latency, rate limits and tokens per model (from the log)")
     sp = sub.add_parser("scores", help="score per model and category (with a breakdown if you give one)")
     sp.add_argument("category", nargs="?", help="e.g. coding")
@@ -121,9 +207,28 @@ def main() -> int:
     sp.add_argument("action", nargs="?", choices=["show", "refresh"], default="show")
     sp.add_argument("--force", action="store_true", help="(refresh) query even if your data is less than 12 hours old")
     sub.add_parser("priorities", help="questions: what you prioritize for each kind of task (accuracy, speed or cost)")
+    cp = sub.add_parser("connectors", help="MCP connectors (Gmail, Calendar, Slack…) that every model can use")
+    cs = cp.add_subparsers(dest="action")
+    cs.add_parser("list", help="show the registered connectors")
+    ca = cs.add_parser("add", help="register an MCP server: add NAME [--env K=V] [--header 'K: V'] (--url URL | -- COMMAND…)")
+    ca.add_argument("name")
+    ca.add_argument("--url", help="URL of a remote (Streamable HTTP) MCP server")
+    ca.add_argument("--env", action="append", default=[], help="environment variable for a local server, KEY=VALUE (repeatable; use ${NAME} to reference your environment)")
+    ca.add_argument("--header", action="append", default=[], help="HTTP header for a remote server, 'Key: value' (repeatable)")
+    for verb, text in (("remove", "forget a connector"), ("enable", "turn a connector on"), ("disable", "turn a connector off without forgetting it")):
+        cs.add_parser(verb, help=text).add_argument("name")
+    ct = cs.add_parser("test", help="start the connectors and list their tools (spends no model quota)")
+    ct.add_argument("name", nargs="?")
+    for verb, text in (("install", "register the proxy once in a CLI that has no per-call option (agy)"), ("uninstall", "remove that registration")):
+        cs.add_parser(verb, help=text).add_argument("cli", choices=["agy", "claude", "codex"])
+    cs.add_parser("serve", help="run the proxy MCP server (stdio); the CLIs start it themselves")
     sub.add_parser("mcp", help="run the MCP server (stdio)")
     sub.add_parser("reset-cooldowns", help="clear cooldowns (rate limit and auth)")
-    args = p.parse_args()
+    argv, tail = sys.argv[1:], []
+    if argv[:1] == ["connectors"] and "--" in argv:  # everything after -- is the server command, options included
+        argv, tail = argv[: argv.index("--")], argv[argv.index("--") + 1:]
+    args = p.parse_args(argv)
+    args.command = tail
 
     if args.cmd in (None, "chat"):
         from . import chat
@@ -132,6 +237,8 @@ def main() -> int:
         from . import mcp_server
         mcp_server.main()
         return 0
+    if args.cmd == "connectors":
+        return cmd_connectors(args)
     if args.cmd == "reset-cooldowns":
         state.reset_cooldowns()
         print("cooldowns cleared")
