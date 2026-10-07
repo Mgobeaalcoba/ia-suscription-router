@@ -1,4 +1,4 @@
-"""AI subscription router that routes by objective metrics. With no arguments it opens the chat; also: doctor | route | ask | stats | scores | metrics | priorities | connectors | mcp | reset-cooldowns."""
+"""AI subscription router that routes by objective metrics. With no arguments it opens the chat; also: setup | doctor | route | ask | stats | scores | metrics | priorities | connectors | mcp | reset-cooldowns."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import sys
 
 import subprocess
 
-from . import __version__, adapters, connectors, core, envfile, metrics, priorities, probe, render, scoring, state
+from . import __version__, adapters, connectors, core, setup as setup_mod, envfile, metrics, priorities, probe, render, scoring, state
 
 
 def _color() -> bool:
@@ -93,6 +93,17 @@ def cmd_metrics(cfg, args) -> int:
         print()
     print(scoring.describe_sources(cfg))
     return 0
+
+
+def cmd_setup(cfg, _args) -> int:
+    def ask_yes(question: str, default: bool = True) -> bool:
+        try:
+            ans = input(f"{question} [{'Y/n' if default else 'y/N'}]: ").strip().lower()
+        except EOFError:
+            return default
+        return default if not ans else ans in ("y", "yes", "s", "si")
+    rows = setup_mod.run(cfg, say=print, ask_yes=ask_yes, explicit=True)
+    return 0 if setup_mod.usable(rows) else 1
 
 
 def cmd_priorities(cfg, _args) -> int:
@@ -206,6 +217,7 @@ def main() -> int:
     sp = sub.add_parser("metrics", help="where the metrics come from; `refresh` updates them (Arena and, with a key, Artificial Analysis)")
     sp.add_argument("action", nargs="?", choices=["show", "refresh"], default="show")
     sp.add_argument("--force", action="store_true", help="(refresh) query even if your data is less than 12 hours old")
+    sub.add_parser("setup", help="check which official CLIs are installed and logged in, and what to do about the missing ones")
     sub.add_parser("priorities", help="questions: what you prioritize for each kind of task (accuracy, speed or cost)")
     cp = sub.add_parser("connectors", help="MCP connectors (Gmail, Calendar, Slack…) that every model can use")
     cs = cp.add_subparsers(dest="action")
@@ -245,4 +257,4 @@ def main() -> int:
         return 0
     cfg = core.load_config()
     return {"doctor": cmd_doctor, "route": cmd_route, "ask": cmd_ask, "stats": cmd_stats, "scores": cmd_scores,
-            "metrics": cmd_metrics, "priorities": cmd_priorities}[args.cmd](cfg, args)
+            "metrics": cmd_metrics, "priorities": cmd_priorities, "setup": cmd_setup}[args.cmd](cfg, args)

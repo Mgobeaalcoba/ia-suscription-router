@@ -123,11 +123,13 @@ def ask(
         state.log_event({"model": name, "model_id": res["model_id"], "tokens": res["tokens"], "ok": res["ok"], "seconds": res["seconds"],
                          "error": res["error"], "task_chars": len(task), "weights": decision["weights"]})
         if res["ok"]:
+            state.set_auth_missing(name, False)
             result.update(ok=True, output=res["output"], model_used=name, model_id=res["model_id"], tokens=res["tokens"])
             return result
         if res["rate_limited"]:
             state.set_cooldown(name, cfg.get("cooldown_minutes", 30))
         elif res["auth_required"]:  # no login/API key: do not retry until the user fixes it
+            state.set_auth_missing(name, True)
             state.set_cooldown(name, cfg.get("auth_cooldown_minutes", 60))
     result["error"] = "all attempts failed"
     return result

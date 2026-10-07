@@ -51,6 +51,23 @@ def set_cooldown(model: str, minutes: float) -> None:
 def reset_cooldowns() -> None:
     state = load_state()
     state["cooldowns"] = {}
+    state["auth_missing"] = {}
+    save_state(state)
+
+
+def auth_missing() -> set:
+    """Models where a task failed for lack of login and that have not worked since."""
+    d = load_state().get("auth_missing")
+    return {k for k, v in d.items() if v} if isinstance(d, dict) else set()
+
+
+def set_auth_missing(model: str, missing: bool) -> None:
+    if (model in auth_missing()) == missing:
+        return
+    state = load_state()
+    d = state.get("auth_missing") if isinstance(state.get("auth_missing"), dict) else {}
+    d[model] = missing
+    state["auth_missing"] = d
     save_state(state)
 
 

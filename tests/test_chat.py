@@ -158,14 +158,14 @@ class CommandTests(Base):
 
     def test_removed_commands_are_gone(self):
         c = self.chat()
-        for cmd in ("/manifest", "/manager claude", "/setup", "/config x", "/calibrate", "/criteria", "/benchmarks", "/llm on"):
+        for cmd in ("/manifest", "/manager claude", "/config x", "/calibrate", "/criteria", "/benchmarks", "/llm on"):
             c.handle(cmd)
-        self.assertEqual(self.text().count("Unknown command"), 8)
+        self.assertEqual(self.text().count("Unknown command"), 7)
 
     def test_help_and_palette_list_the_new_commands_only(self):
         names = {c.name for c in chat.COMMANDS}
-        self.assertTrue({"/scores", "/metrics", "/priorities", "/models", "/model", "/stats"} <= names)
-        self.assertFalse(names & {"/manifest", "/manager", "/setup", "/calibrate", "/criteria", "/benchmarks", "/llm", "/config"})
+        self.assertTrue({"/scores", "/metrics", "/priorities", "/models", "/model", "/stats", "/setup"} <= names)
+        self.assertFalse(names & {"/manifest", "/manager", "/calibrate", "/criteria", "/benchmarks", "/llm", "/config"})
         self.assertIn("/priorities", chat.HELP)
         self.assertNotIn("manifiesto", chat.HELP.lower())
 

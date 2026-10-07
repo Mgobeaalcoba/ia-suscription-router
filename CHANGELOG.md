@@ -2,6 +2,14 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are published on [PyPI](https://pypi.org/project/ia-router/) and [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
 
+## Unreleased
+
+### Added
+- **First-run onboarding.** On the first open the chat checks which official CLIs are installed and tells you, for each missing one, the exact step to install it and log in. If none is installed it says tasks cannot run yet and asks again on the next start; with just one it explains that everything goes to it. It stays silent when all three are present. It never installs a CLI or logs in for you.
+- `/setup` in the chat and `ia-router setup` repeat that check at any time. Both can also check the logins: one minimal query per CLI, always asked first and declined by default.
+- A task that fails for lack of login now says which CLI and how to log in, and the router remembers it: the next start reminds you and no longer spends a detection query on that CLI. A later success clears it, and `reset-cooldowns` clears it too.
+- The first-run guidance also points to the optional MCP connectors.
+
 ## 0.4.0 — 2026-10-07
 
 ### Added

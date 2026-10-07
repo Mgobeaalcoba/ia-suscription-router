@@ -10,7 +10,7 @@ All the examples assume you are in the repo folder:
 cd ~/Documents/ia-suscription-router
 ```
 
-The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 294 tests pass with Python 3.9 and 3.14.
+The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 311 tests pass with Python 3.9 and 3.14.
 
 ---
 
@@ -112,6 +112,25 @@ When installed with pip or brew, the `.env` goes in `~/.ia-router/.env` (there i
 ia-router      # or: python3 cli.py
 ```
 
+### First open: onboarding
+
+On the first open the chat checks which of the three official CLIs are installed. If everything is there it says nothing. If something is missing you get the exact step for each one, for example:
+
+```
+Welcome to ia-router. It routes your tasks across the official AI CLIs you already pay for. Here is where you stand:
+  ✔ claude       installed (login not checked)
+  ✗ codex        not installed
+  ✗ antigravity  not installed
+  codex: Install the Codex CLI (see its documentation). Run `codex` once and follow the login.
+  antigravity: Install it with `brew install --cask antigravity-cli`. Run `agy` with no arguments in a terminal and choose to sign in with Google.
+With only one model ready everything goes to it: the router has nothing to choose between. It works; add another CLI whenever you want the split.
+```
+
+- **Nothing installed:** it says tasks cannot run yet and shows this again on every start until at least one CLI is there.
+- **Only one CLI:** it works, and everything goes to that model.
+- **Installed but logged out:** the router does not check logins on its own (that costs a query per CLI). Run `/setup` (or `ia-router setup`) and accept the optional login check, or just use it: a task that fails for lack of login tells you which CLI and how to log in, and the next start reminds you.
+- **The router never installs a CLI or logs in for you**: that would mean handling their credentials. It tells you the step and checks again.
+
 ### What happens on startup
 
 The header shows where the metrics that drive the routing come from:
@@ -165,6 +184,7 @@ They always work. When you type `/` the filtered list appears.
 
 | Shortcut | What it does |
 |---|---|
+| `/setup` | Which CLIs are installed and logged in, and what to do about the missing ones (it can check the logins: one minimal query each, asked first). |
 | `/models` · `/models probe` | Status of the CLIs and **which model each one uses**; with `probe`, a real minimal query (login, latency; spends a pinch of quota). |
 | `/scores [category]` | Score per model and category; with a category, the weight × value breakdown. |
 | `/metrics` · `/metrics refresh` | Where the data comes from and which entry of each portal each model was matched with; with `refresh`, it updates them showing every step (`force` = even if recent). |
@@ -182,7 +202,7 @@ It also understands queries in natural language ("show me the stats", "which mod
 
 ### Standalone commands (without opening the chat)
 
-Everything in the chat also exists as commands for scripts (`ask`, `route`, `scores`, `metrics`, `priorities`, `doctor`, `stats`, `connectors`). They are described in section 5.
+Everything in the chat also exists as commands for scripts (`setup`, `ask`, `route`, `scores`, `metrics`, `priorities`, `doctor`, `stats`, `connectors`). They are described in section 5.
 
 ---
 
@@ -658,7 +678,7 @@ A task can have several at once (for example `debugging×3, coding×2`). The cla
 | `Artificial Analysis: could not be queried` | Invalid key, daily quota exhausted (1,000 requests) or no network. | Check the key in `.env`; Arena keeps working. |
 | `doctor --probe` shows `auth=missing` | The CLI is installed but not logged in. | Log in to that CLI (run it with no arguments). Then `python3 cli.py reset-cooldowns`. |
 | `agy` or `gemini` say *"This client is no longer supported"* | Google discontinued Gemini CLI. | Use `agy` (Antigravity) instead. |
-| `no model available` | All are uninstalled, disabled or in cooldown. | `python3 cli.py doctor` and, if applicable, `reset-cooldowns`. |
+| `no model available` | All are uninstalled, disabled or in cooldown. | `ia-router setup` shows which are missing and the step for each; `python3 cli.py doctor` and, if applicable, `reset-cooldowns`. |
 | It always picks the same model | That is what the metrics say for that category. | `scores <category>` shows why; `/priorities` adjusts it; `/model X` pins it. |
 | The router chose wrong for a task | The rule-based classification did not understand it. | `route "your task"` shows how it classified it; force with `-m`. |
 | A dragged file is not recognized | The terminal pasted a path for a file that does not exist, or it is a bare word. | Paths must start with `/`, `~`, `./`, `../` or `file://`. |

@@ -93,6 +93,8 @@ From the source code ([Mgobeaalcoba/ia-suscription-router](https://github.com/Mg
 ia-router            # opens the chat
 ```
 
+If a CLI is missing or logged out, the first open tells you the exact step for each one (`/setup` or `ia-router setup` repeat that check any time). The router never installs a CLI or logs in for you.
+
 On open it asks you (always before spending anything): which model each CLI uses (a minimal query to each one, only the first time), whether you want to update the metrics if they are old, and, once, whether you want to answer the priority questions.
 
 ```
@@ -128,6 +130,7 @@ The `.env` is **never pushed to git** (it is in `.gitignore`); `.env.example` is
 | `scores [category]` | Score per model and category; with a category, the breakdown. |
 | `metrics [refresh] [--force]` | Where the data comes from and which entry each model was matched with; `refresh` updates it. |
 | `priorities` | Questions: what you prioritize for each kind of task. |
+| `setup` | Which official CLIs are installed and logged in, and the exact step for the missing ones. |
 | `doctor [--probe]` | Installed CLIs and which model each one uses; with `--probe`, real login and latency. |
 | `stats` | Success, latency, rate limits and tokens per model. |
 | `connectors [list\|add\|remove\|enable\|disable\|test\|install]` | MCP connectors (Gmail, Calendar, Slack…) that every model can use. |
@@ -151,13 +154,13 @@ The task classifier understands tasks written in English and in Spanish; the who
 | `ia_router/data/arena.json` | Arena snapshot bundled with the software (CC BY 4.0). |
 | `ia_router/scoring.py` · `priorities.py` | Score per category, weights and the priorities questionnaire. |
 | `ia_router/core.py` · `router.py` | Orchestration, classification and ranking. |
-| `ia_router/adapters.py` · `probe.py` | CLI execution (model and tokens, rate limit, login) and the probe. |
+| `ia_router/adapters.py` · `probe.py` · `setup.py` | CLI execution (model and tokens, rate limit, login), the probe, and the first-run onboarding. |
 | `ia_router/chat.py` · `editor.py` · `select.py` | Chat, input box and option selector. |
 | `ia_router/attachments.py` · `render.py` · `banner.py` | Dragged files, rendered markdown and the header. |
 | `ia_router/connectors.py` | MCP connectors: registry, proxy server that aggregates them, per-CLI injection. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | `.env` reader, state and log, MCP server. |
 | `tools/update_snapshot.py` | For whoever maintains the repo: regenerates the Arena snapshot before publishing. |
-| `tests/` | 294 tests and fake CLIs (`tests/fake_bin`). |
+| `tests/` | 311 tests and fake CLIs (`tests/fake_bin`). |
 
 ## Connectors: let any model use your other apps (MCP)
 

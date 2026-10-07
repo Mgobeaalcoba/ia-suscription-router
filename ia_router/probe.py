@@ -42,7 +42,8 @@ def probe(cfg: Dict, only: Optional[List[str]] = None) -> Dict[str, Dict]:
 
 def missing_ids(cfg: Dict) -> List[str]:
     """Installed models whose real id we do not know yet."""
-    names = [n for n, s in cfg["models"].items() if s.get("enabled", True) and adapters.is_available(n, s)]
+    logged_out = state.auth_missing()  # asking a CLI that is known to be logged out would only fail
+    names = [n for n, s in cfg["models"].items() if s.get("enabled", True) and adapters.is_available(n, s) and n not in logged_out]
     ids = metrics.known_model_ids(names)
     return [n for n in names if not ids.get(n)]
 

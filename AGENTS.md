@@ -11,7 +11,7 @@ A Python router that splits tasks across the **official CLIs** of the AI subscri
 ## Commands
 
 ```bash
-python3 -m unittest discover -s tests       # the whole suite (294 tests, ~15 s); it must end in OK
+python3 -m unittest discover -s tests       # the whole suite (311 tests, ~15 s); it must end in OK
 python3 -m unittest tests.test_scoring      # one file
 /usr/bin/python3 -m unittest discover -s tests   # on macOS: system Python 3.9 (the minimum supported)
 python3 cli.py doctor                        # installed CLIs and which model each one uses (spends no quota)
@@ -43,6 +43,7 @@ There is no build or linter configured. Do not add dependencies.
 | `ia_router/scoring.py` | `score = Σ weight × value`, priorities profile, explained tables, differences on update (`refresh_and_report`). Applies the score to `strengths`. |
 | `ia_router/priorities.py` · `select.py` | Per-kind-of-task questionnaire and the ↑/↓ + Enter selector. |
 | `ia_router/probe.py` | CLI probe and detection of each one's **real model**. |
+| `ia_router/setup.py` | First-run onboarding and `setup`: installed/logged-in table and the exact next step per CLI. Pure `statuses`/`table`/`advice`; `run` takes `say`/`ask_yes` and an injectable login check. |
 | `ia_router/core.py` | `load_config`, `route`, `ask` (fallback, attachments, log; records the real model id). |
 | `ia_router/router.py` | Rule-based classification into weighted categories and ranking. |
 | `ia_router/adapters.py` | `run_cli`: builds the command (`usage` flags, `add_dir`), runs without a shell, interprets each CLI's JSON (model and tokens), detects rate limit and missing login. |
@@ -82,6 +83,7 @@ Invariants:
 - **Arena does not publish the price of every model** (e.g. `gpt-6.1-sol`): cost usually depends on Artificial Analysis.
 - **Artificial Analysis: the real fields differ from the documentation.** It was verified against the real API (690 models): it does not publish every index (`artificial_analysis_coding_index`, `math_index`) for every model, but it does publish other benchmarks (`lcr`, `hle`, `scicode`, `terminalbench_v4_0`…). `metrics.AA_MAP` lists several candidates per category and only those covering all the models count. Names carry filler (`Claude Sonnet 5.5 (Max, Default Fallback)`): `metrics.NOISE` discards it; if a new word shows up, add it there with a test.
 - **Connectors design (decided with the owner):** ONE proxy MCP server for every CLI, tools enabled for reading and writing, any MCP server (no catalog). Do not add per-CLI connector registries. The router never handles OAuth: the MCP servers log in on their own. Registry file is `0600`; secrets should be `${NAME}` references. The audit log never stores arguments or results. claude gets `--allowedTools mcp__ia-router-connectors` (that one server, never `--dangerously-skip-permissions`); codex gets `default_tools_approval_mode="approve"` for the proxy only; **agy has no per-call MCP option** and needs the one-time `connectors install agy`, which also adds the allow rule `mcp(ia-router-connectors/*)` to agy's `settings.json` (headless agy auto-denies MCP tools without it; the syntax is `mcp(<server>/<tool>)`). The CLIs start MCP servers with a trimmed environment (codex does), so `cli_args` passes `ROUTER_HOME` explicitly; without it a custom state folder made the proxy read an empty registry. claude's `--mcp-config`/`--allowedTools` are variadic: they must sit before `-p`, never right before the prompt.
+- **Onboarding never spends quota unasked and never handles credentials.** `setup.run` only checks installation for free; the login check is one probe per CLI, asked first, default no. It stays silent when all CLIs are present (existing startup tests rely on it). A login failure is remembered in `state.json` (`auth_missing`) by `core.ask` and cleared on the next success or by `reset-cooldowns`; `probe.missing_ids` skips those CLIs. Install steps are deliberately vague ("see its documentation") except Antigravity's `brew install --cask`, the only one we can vouch for; do not invent install commands or URLs.
 - **Averaging tokens** only over runs that have recorded tokens (`token_runs`).
 - **Pty tests** (`PtySmokeTests`, `test_select`) compare before/after and not the absolute state of the file system.
 - `pyte` (terminal emulator) was used **by hand** to look at real screens; it is not a dependency and it is not imported in tests.

@@ -14,7 +14,7 @@ import sys
 import time
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import __version__, adapters, attachments, banner, connectors as connectors_mod, core, editor as editor_mod, metrics, priorities, probe as probe_mod, render, router, scoring, state
+from . import __version__, adapters, attachments, banner, connectors as connectors_mod, core, setup as setup_mod, editor as editor_mod, metrics, priorities, probe as probe_mod, render, router, scoring, state
 
 HISTORY_TURNS = 6
 HISTORY_ANSWER_CHARS = 1500
@@ -25,6 +25,7 @@ HELP = """Just talk normally: each message is a task and is routed to the best m
   /models [probe]    status of the CLIs and which model each one uses (probe = real minimal query)
   /scores [cat]      score per model and category; with a category, the breakdown
   /metrics [refresh] where the data comes from; refresh = update it (force = even if recent)
+  /setup             which CLIs are installed and logged in, and what to do about the missing ones
   /priorities        questions: what you prioritize for each kind of task (accuracy, speed, cost)
   /model X           pin a model (X = claude|codex|... or auto)         /stats   success, latency and tokens
   /explain on|off    show the routing table on every message            /md on|off   rendered or raw markdown
@@ -35,7 +36,7 @@ HELP = """Just talk normally: each message is a task and is routed to the best m
 COMMANDS = [
     editor_mod.Command("/help", "show the shortcuts"), editor_mod.Command("/models", "status of the CLIs and which model each one uses"),
     editor_mod.Command("/scores", "score per model and category"), editor_mod.Command("/metrics", "where the data comes from; refresh = update it"),
-    editor_mod.Command("/priorities", "what you prioritize for each kind of task (questions)"), editor_mod.Command("/model", "pin a model or auto"),
+    editor_mod.Command("/setup", "check your CLIs and get the steps for the missing ones"), editor_mod.Command("/priorities", "what you prioritize for each kind of task (questions)"), editor_mod.Command("/model", "pin a model or auto"),
     editor_mod.Command("/stats", "success, latency and tokens per model"), editor_mod.Command("/explain", "show the routing table (on|off)"),
     editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/ask", "force: this is a task"),
     editor_mod.Command("/connectors", "MCP connectors the models can use (on|off)"), editor_mod.Command("/clear", "forget the conversation"), editor_mod.Command("/exit", "quit"),
@@ -140,6 +141,11 @@ class Chat:
         if not res["ok"]:
             trace = "; ".join(f"{a['model']}: {(a['error'] or 'ok')[:60]}" for a in res["attempts"]) or "no attempts"
             self.say(f"Could not resolve it: {res.get('error')} ({trace}). Try /models or /models probe.")
+            for a in res["attempts"]:
+                if a.get("error") == "auth_required":
+                    self.say(f"{a['model']} is not logged in. {setup_mod.guide(a['model'], 'login')} Then run /setup to check.")
+            if not res["attempts"]:
+                self.say("No CLI is ready. Run /setup to see which ones are missing and how to fix them.")
             return
         used = res["model_used"]
         why = ", ".join(f"{c}×{w:g}" for c, w in dec["weights"].items()) or "general"
@@ -191,6 +197,8 @@ class Chat:
         elif cmd == "priorities":
             if priorities.run(cfg, say=self.say, color=self.color):
                 self.say("\n" + scoring.render_table(core.load_config()))
+        elif cmd == "setup":
+            setup_mod.run(cfg, say=self.say, ask_yes=self.ask_yes, explicit=True)
         elif cmd == "connectors":
             if arg in ("on", "off"):
                 self.connectors = arg == "on"
@@ -225,6 +233,12 @@ class Chat:
         """The first thing that happens on open: learn which model each CLI uses, offer up-to-date metrics and (once) the priority questions.
         Anything that spends something (a minimal query, ~1 minute of web reading) is explained and asked about first."""
         cfg = core.load_config(apply_scoring=False)
+        if setup_mod.needs_onboarding(cfg):
+            setup_mod.run(cfg, say=self.say, ask_yes=self.ask_yes)
+        else:
+            for name in sorted(state.auth_missing()):
+                if name in cfg["models"] and adapters.is_available(name, cfg["models"][name]):
+                    self.say(f"{name} was not logged in the last time it ran. {setup_mod.guide(name, 'login')} (/setup checks again.)")
         todo = probe_mod.missing_ids(cfg)
         if todo:
             self.say(f"To route by metrics I need to know which model each CLI uses ({', '.join(todo)}).")
