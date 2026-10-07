@@ -28,33 +28,33 @@ class DcoCheckTests(unittest.TestCase):
         return subprocess.run(["bash", str(SCRIPT), "main", "HEAD"], cwd=self.d, capture_output=True, text=True)
 
     def test_signed_commits_pass(self):
-        self.commit("feat: algo\n\nSigned-off-by: Ana Pérez <ana@example.com>")
-        git(self.d, "commit", "-q", "--allow-empty", "-s", "-m", "fix: otro")             # firmado con `git commit -s`
+        self.commit("feat: something\n\nSigned-off-by: Ana Perez <ana@example.com>")
+        git(self.d, "commit", "-q", "--allow-empty", "-s", "-m", "fix: otro")             # signed off with `git commit -s`
         r = self.check()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("firmados", r.stdout)
+        self.assertIn("signed off", r.stdout)
 
     def test_an_unsigned_commit_fails_and_is_named(self):
-        self.commit("feat: firmado\n\nSigned-off-by: Ana <ana@example.com>")
-        self.commit("fix: sin firma")
+        self.commit("feat: signed\n\nSigned-off-by: Ana <ana@example.com>")
+        self.commit("fix: unsigned")
         r = self.check()
         self.assertEqual(r.returncode, 1)
-        self.assertIn("sin firma", r.stdout)
-        self.assertNotIn("feat: firmado", r.stdout)
+        self.assertIn("unsigned", r.stdout)
+        self.assertNotIn("feat: signed", r.stdout)
         self.assertIn("git commit -s", r.stdout)
 
     def test_malformed_signoffs_do_not_count(self):
-        for bad in ("Signed-off-by: sin email", "signed-off-by: x <x@y.com>", "Signed-off-by: <@>", "Co-Authored-By: A <a@b.com>"):
+        for bad in ("Signed-off-by: no email", "signed-off-by: x <x@y.com>", "Signed-off-by: <@>", "Co-Authored-By: A <a@b.com>"):
             self.commit(f"fix: x\n\n{bad}")
         r = self.check()
         self.assertEqual(r.returncode, 1)
-        self.assertEqual(r.stdout.count("Falta la firma"), 4)
+        self.assertEqual(r.stdout.count("Missing DCO sign-off"), 4)
 
     def test_merge_commits_are_ignored_and_empty_range_passes(self):
-        self.assertEqual(self.check().returncode, 0)                                      # sin commits propios
+        self.assertEqual(self.check().returncode, 0)                                      # no commits of its own
         self.commit("feat: ok\n\nSigned-off-by: Ana <ana@example.com>")
         git(self.d, "checkout", "-q", "main")
-        git(self.d, "merge", "-q", "--no-ff", "-m", "Merge sin firma", "feature")
+        git(self.d, "merge", "-q", "--no-ff", "-m", "Merge without sign-off", "feature")
         git(self.d, "checkout", "-q", "-b", "otra", "main~0")
         self.assertEqual(subprocess.run(["bash", str(SCRIPT), "main~1", "main"], cwd=self.d, capture_output=True, text=True).returncode, 0)
 
@@ -71,7 +71,7 @@ class GovernanceFilesTests(unittest.TestCase):
                     ".github/ISSUE_TEMPLATE/bug_report.md", ".github/ISSUE_TEMPLATE/feature_request.md", ".github/workflows/dco.yml"):
             self.assertTrue((ROOT / rel).exists(), rel)
         c = self.read("CONTRIBUTING.md")
-        for needle in ("DCO", "git commit -s", "Signed-off-by", "NOTICE", "Apache", "AGENTS.md", "tools/check_dco.sh", "solo la librería estándar"):
+        for needle in ("DCO", "git commit -s", "Signed-off-by", "NOTICE", "Apache", "AGENTS.md", "tools/check_dco.sh", "standard library"):
             self.assertIn(needle, c, needle)
         self.assertIn("CONTRIBUTING.md", self.read("README.md"))
         self.assertIn("CONTRIBUTING.md", self.read("AGENTS.md"))
@@ -88,7 +88,7 @@ class GovernanceFilesTests(unittest.TestCase):
         w = self.read(".github/workflows/dco.yml")
         self.assertIn("pull_request", w)
         self.assertIn("tools/check_dco.sh", w)
-        self.assertIn("fetch-depth: 0", w)                               # sin historial completo no se puede comparar con la base
+        self.assertIn("fetch-depth: 0", w)                               # without the full history it cannot be compared with the base
         self.assertNotIn("secrets.", w)
 
     def test_license_files_are_declared_in_the_package(self):
@@ -98,7 +98,7 @@ class GovernanceFilesTests(unittest.TestCase):
 
 
 class ConnectedDocsTests(unittest.TestCase):
-    """El README es también la ficha de PyPI: ahí no se resuelven rutas relativas, y las URLs del proyecto deben coincidir en todos lados."""
+    """The README is also the PyPI page: relative paths do not resolve there, and the project URLs must match everywhere."""
     WEB = "https://www.mgatc.com/recursos/ia-router/"
     PYPI = "https://pypi.org/project/ia-router/"
     REPO = "https://github.com/Mgobeaalcoba/ia-suscription-router"
@@ -113,7 +113,7 @@ class ConnectedDocsTests(unittest.TestCase):
         targets = re.findall(r"\]\(([^)\s]+)", readme)
         self.assertTrue(targets)
         relative = [t for t in targets if not re.match(r"(https?://|#|mailto:)", t)]
-        self.assertEqual(relative, [], "PyPI no resuelve rutas relativas: usar URLs absolutas")
+        self.assertEqual(relative, [], "PyPI does not resolve relative paths: use absolute URLs")
 
     def test_readme_points_to_every_place_the_project_lives(self):
         readme = self.read("README.md")
@@ -131,7 +131,7 @@ class ConnectedDocsTests(unittest.TestCase):
         self.assertIn(f'repository-code: "{self.REPO}"', self.read("CITATION.cff"))
 
     def test_other_docs_link_to_pypi_and_homebrew(self):
-        for rel in ("docs/USO.md", "CONTRIBUTING.md"):
+        for rel in ("docs/USAGE.md", "CONTRIBUTING.md"):
             text = self.read(rel)
             for url in (self.WEB, self.PYPI, self.TAP):
                 self.assertIn(url, text, f"{rel}: {url}")
@@ -143,6 +143,43 @@ class ConnectedDocsTests(unittest.TestCase):
 
     def test_release_script_requires_changelog(self):
         self.assertIn("CHANGELOG.md", self.read("tools/release.sh"))
+
+
+class LanguageTests(unittest.TestCase):
+    """The project is English-only. The one exception is the task classifier, which deliberately recognizes Spanish keywords."""
+    SPANISH = "áéíóúñÁÉÍÓÚÑ¿¡"
+    ALLOWED = {"ia_router/router.py", "ia_router/chat.py"}   # classifier patterns and chat intent patterns
+    # words that only appear in Spanish prose (no accents needed): a guard for text written without accents
+    WORDS = ("tarea", "modelo", "métricas", "instalá", "ejecutá", "abrilo", "guía", "elegí", "cuota", "archivo", "carpeta")
+
+    def files(self):
+        import subprocess
+        out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout.split()
+        exts = (".py", ".md", ".sh", ".yml", ".toml", ".cff", ".rb", ".json", ".example")
+        skip = ("tests/", "ia_router/data/arena.json", "LICENSE", "docs/USO.md")
+        return [f for f in out if f.endswith(exts) and not f.startswith(skip) and (ROOT / f).exists()]
+
+    def test_no_spanish_characters_outside_the_classifier(self):
+        bad = []
+        for rel in self.files():
+            if rel in self.ALLOWED:
+                continue
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            bad += [f"{rel}:{n}: {line.strip()[:80]}" for n, line in enumerate(text.splitlines(), 1)
+                    if any(c in line for c in self.SPANISH) and "`sí`" not in line]   # the changelog documents the accepted answers
+        self.assertEqual(bad, [], "Spanish text found: translate it (only the classifier may keep Spanish keywords)")
+
+    def test_no_unaccented_spanish_words_in_user_facing_files(self):
+        import re
+        pat = re.compile(r"\b(" + "|".join(self.WORDS) + r")\b", re.I)
+        bad = []
+        for rel in self.files():
+            if rel in self.ALLOWED or rel.startswith("ia_router/data/models.json"):
+                continue
+            for n, line in enumerate((ROOT / rel).read_text(encoding="utf-8").splitlines(), 1):
+                if pat.search(line) and "Spanish" not in line:
+                    bad.append(f"{rel}:{n}: {line.strip()[:80]}")
+        self.assertEqual(bad, [])
 
 
 if __name__ == "__main__":

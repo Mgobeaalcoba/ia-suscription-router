@@ -1,28 +1,28 @@
-# Fórmula de Homebrew para ia-router. Va en el repo del tap: github.com/Mgobeaalcoba/homebrew-tap  ->  Formula/ia-router.rb
-# Instalación para el usuario:   brew install Mgobeaalcoba/tap/ia-router
+# Homebrew formula for ia-router. It goes in the tap repo: github.com/Mgobeaalcoba/homebrew-tap  ->  Formula/ia-router.rb
+# User installation:   brew install Mgobeaalcoba/tap/ia-router
 #
-# Se completa DESPUÉS de publicar la versión en PyPI: reemplazar `url` y `sha256` por los del archivo fuente (sdist).
-#   sha256:  curl -sL <url> | shasum -a 256        (o el que muestra https://pypi.org/project/ia-router/#files)
+# It is completed AFTER publishing the version on PyPI: replace `url` and `sha256` with those of the source archive (sdist).
+#   sha256:  curl -sL <url> | shasum -a 256        (or the one shown at https://pypi.org/project/ia-router/#files)
 class IaRouter < Formula
   include Language::Python::Virtualenv
 
-  desc "Reparte tus tareas entre los CLIs oficiales de IA con métricas objetivas de Arena y Artificial Analysis"
+  desc "Routes your tasks across the official AI CLIs using objective metrics from Arena and Artificial Analysis"
   homepage "https://www.mgatc.com/recursos/ia-router/"
   url "https://files.pythonhosted.org/packages/source/i/ia-router/ia_router-0.2.0.tar.gz"
-  sha256 "REEMPLAZAR_CON_EL_SHA256_DEL_SDIST"
+  sha256 "REPLACE_WITH_THE_SDIST_SHA256"
   license "Apache-2.0"
 
   depends_on "python@3.13"
 
   def install
-    virtualenv_install_with_resources # no hay dependencias de Python: solo librería estándar
+    virtualenv_install_with_resources # no Python dependencies: standard library only
   end
 
   def caveats
     <<~EOS
-      ia-router rutea hacia los CLIs oficiales que ya tengas instalados y logueados (claude, codex, agy).
-      Para sumar velocidad y costo, creá tu clave gratuita de Artificial Analysis y guardala en:
-        ~/.ia-router/.env      (ARTIFICIAL_ANALYSIS_API_KEY=tu_clave)
+      ia-router routes to the official CLIs you already have installed and logged in (claude, codex, agy).
+      To add speed and cost, create your free Artificial Analysis key and save it in:
+        ~/.ia-router/.env      (ARTIFICIAL_ANALYSIS_API_KEY=your_key)
     EOS
   end
 

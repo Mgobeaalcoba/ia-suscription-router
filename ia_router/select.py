@@ -1,7 +1,7 @@
-"""Selector de opción única en la terminal: ↑/↓ (o j/k, o el número), Enter confirma, Esc cancela.
+"""Single-choice selector in the terminal: ↑/↓ (or j/k, or the number), Enter confirms, Esc cancels.
 
-`SelectState` es puro (se testea sin terminal); `choose()` lo maneja sobre un tty y redibuja en el lugar.
-Sin terminal interactiva devuelve la opción por defecto, así los flujos no se cuelgan en pipes ni en tests.
+`SelectState` is pure (testable without a terminal); `choose()` drives it over a tty and redraws in place.
+Without an interactive terminal it returns the default option, so flows do not hang in pipes or tests.
 """
 from __future__ import annotations
 
@@ -75,12 +75,12 @@ def render_lines(title: str, options: Sequence[Option], sel: int, subtitle: str 
             lines.append(f"    {GRAY}{mark}{RESET} {label}{dim(o.desc)}")
         else:
             lines.append(f"  {'>' if on else ' '} {mark} {label}{o.desc}")
-    lines += ["", "  " + dim("↑/↓ elegir · 1-9 salto directo · ⏎ confirmar · esc cancelar")]
+    lines += ["", "  " + dim("↑/↓ choose · 1-9 jump · ⏎ confirm · esc cancel")]
     return [l if _vlen(l) < width else l[: width - 1] for l in lines]
 
 
 def summary_line(title: str, label: str, step: str = "", color: bool = True) -> str:
-    """Cómo queda una pregunta ya contestada: ✔ 1/6 ¿Qué priorizás…  › Equilibrado"""
+    """How an already answered question looks: ✔ 1/6 What do you prioritize…  › Balanced"""
     if not color:
         return f"  ✔ {step + '  ' if step else ''}{title} › {label}"
     return f"  {_rgb((52, 168, 83), True)}✔{RESET} {DIM}{step + '  ' if step else ''}{title}{RESET} {GRAY}›{RESET} {BOLD}{label}{RESET}"
@@ -91,7 +91,7 @@ def interactive() -> bool:
 
 
 def choose(title: str, options: Sequence[Option], default: int = 0, subtitle: str = "", step: str = "", color: bool = True) -> Optional[int]:
-    """Índice elegido, o None si se cancela. Sin tty, la opción por defecto."""
+    """Chosen index, or None if cancelled. Without a tty, the default option."""
     if not interactive():
         return default
     import termios
@@ -121,8 +121,8 @@ def choose(title: str, options: Sequence[Option], default: int = 0, subtitle: st
                 res = st.apply(ev)
                 if res:
                     done = res[0] == "done"
-                    sys.stdout.write((f"\033[{drawn - 1}A" if drawn > 1 else "") + "\r\033[J")  # borra la pregunta
-                    if done:  # y la deja resumida en una línea
+                    sys.stdout.write((f"\033[{drawn - 1}A" if drawn > 1 else "") + "\r\033[J")  # erase the question
+                    if done:  # and leave it summarized in one line
                         sys.stdout.write(summary_line(title, options[int(res[1])].label, step, color) + "\r\n")
                     return int(res[1]) if done else None
             draw()

@@ -1,24 +1,40 @@
-# Cambios
+# Changelog
 
-Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Las versiones se publican en [PyPI](https://pypi.org/project/ia-router/) y [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are published on [PyPI](https://pypi.org/project/ia-router/) and [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
+
+## 0.3.0 — 2026-10-07
+
+### Changed
+- **The whole interface is now in English:** chat, commands, prompts, selector, error messages, the `/help` text, the MCP tool descriptions and the sample outputs. It was Spanish (Rioplatense) before.
+- The documentation is in English: `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, this changelog, the issue and pull request templates, and the usage guide, which moved from `docs/USO.md` to `docs/USAGE.md` (the old path is a stub so published links keep working).
+- Package metadata and the Homebrew formula description are in English.
+- The website page has an English version at <https://www.mgatc.com/en/recursos/ia-router/>.
+
+### Added
+- The task classifier now also recognizes English keywords for analysis, data, research, long-context and quick tasks. Spanish keywords still work, on purpose.
+- A test that fails if Spanish text slips into the docs or the source (outside the classifier keywords).
+
+### Compatibility
+- The files in `~/.ia-router` keep their format, so existing data, priorities and history keep working.
+- Chat answers to yes/no questions still accept `s`, `si`, `sí`, `y` and `yes`.
 
 ## 0.2.1 — 2026-10-05
 
-### Agregado
-- Código público en GitHub con `CONTRIBUTING.md`, firma de commits (DCO) y plantillas de issues y pull requests.
-- `CHANGELOG.md` y una tabla «Dónde encontrarlo» (web, PyPI, Homebrew, código, guía, licencia) en el README.
-- Metadatos del paquete con `Source`, `Documentation`, `Issues`, `Changelog` y `Homebrew`.
+### Added
+- Public code on GitHub with `CONTRIBUTING.md`, commit sign-off (DCO) and issue and pull request templates.
+- `CHANGELOG.md` and a "Where to find it" table (website, PyPI, Homebrew, code, guide, license) in the README.
+- Package metadata with `Source`, `Documentation`, `Issues`, `Changelog` and `Homebrew`.
 
-### Cambiado
-- El README usa enlaces absolutos para que se vea bien en PyPI, e incluye la captura del encabezado.
-- Se aclara que solo se probó en macOS (en Linux debería funcionar, pero no se verificó).
+### Changed
+- The README uses absolute links so it renders properly on PyPI, and includes the header screenshot.
+- It is made clear that it was only tested on macOS (it should work on Linux, but that was not verified).
 
 ## 0.2.0 — 2026-10-05
 
-Primera versión pública.
+First public version.
 
-- Ruteo por métricas objetivas: precisión (Arena), velocidad y costo (Artificial Analysis, con clave gratuita), con la última foto de Arena incluida.
-- Preguntas de prioridades por tipo de tarea; las métricas se actualizan con visibilidad de lo que cambia.
-- Chat con caja de entrada propia, archivos arrastrados, modelo exacto y tokens en cada respuesta, y markdown interpretado.
-- Instalación con Homebrew y pip/pipx, `ia-router --version`.
-- Licencia Apache-2.0 con `NOTICE` de atribución.
+- Routing by objective metrics: accuracy (Arena), speed and cost (Artificial Analysis, with a free key), with the latest Arena snapshot bundled.
+- Priority questions per kind of task; the metrics are updated with visibility of what changes.
+- Chat with its own input box, dragged files, exact model and tokens in every answer, and rendered markdown.
+- Installation with Homebrew and pip/pipx, `ia-router --version`.
+- Apache-2.0 license with an attribution `NOTICE`.

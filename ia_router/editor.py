@@ -1,11 +1,11 @@
-"""Caja de entrada del chat: un editor de línea propio (sin dependencias) con marco, placeholder, varias líneas,
-historial, paleta de comandos "/" y soporte de archivos arrastrados (llegan como texto pegado con corchetes).
+"""Chat input box: a custom line editor (no dependencies) with a frame, placeholder, multiple lines,
+history, "/" command palette and support for dragged files (they arrive as bracketed-paste text).
 
-Piezas separadas para poder testearlas sin terminal:
-  Parser  : bytes de la terminal -> eventos ("text", s) | ("key", nombre) | ("paste", s)
-  State   : texto, cursor, historial, paleta; `apply(evento)` -> None | ("submit", texto) | ("eof",)
-  layout/render_frame : estado + ancho -> líneas ya pintadas y posición del cursor
-  LineEditor : el bucle real sobre un tty (modo raw, redibujado)
+Separate pieces so they can be tested without a terminal:
+  Parser  : terminal bytes -> events ("text", s) | ("key", name) | ("paste", s)
+  State   : text, cursor, history, palette; `apply(event)` -> None | ("submit", text) | ("eof",)
+  layout/render_frame : state + width -> already painted lines and cursor position
+  LineEditor : the real loop over a tty (raw mode, redraw)
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from .banner import _lerp, _rgb
 from .render import BOLD, DIM, GRAY, RESET, UNDER, _vlen
 
 PROMPT = "❯ "
-PLACEHOLDER = "Escribí una tarea o una preferencia · arrastrá archivos acá"
+PLACEHOLDER = "Type a task or a preference · drag files here"
 MAX_BODY_ROWS = 10
 MAX_PALETTE = 6
 HISTORY_MAX = 500
@@ -42,7 +42,7 @@ def text_width(s: str) -> int:
     return sum(cell_width(c) for c in s)
 
 
-# ---------- teclas ----------
+# ---------- keys ----------
 
 _CSI_KEYS = {"A": "up", "B": "down", "C": "right", "D": "left", "H": "home", "F": "end", "Z": "shift_tab"}
 _TILDE_KEYS = {"1": "home", "3": "delete", "4": "end", "7": "home", "8": "end"}
@@ -51,7 +51,7 @@ _CTRL = {1: "home", 2: "left", 4: "eof", 5: "end", 6: "right", 8: "backspace", 9
 
 
 class Parser:
-    """Convierte bytes en eventos. Mantiene estado entre llamadas (UTF-8 y secuencias de escape partidas)."""
+    """Converts bytes into events. Keeps state between calls (split UTF-8 and escape sequences)."""
 
     def __init__(self) -> None:
         self.dec = codecs.getincrementaldecoder("utf-8")(errors="replace")
@@ -63,7 +63,7 @@ class Parser:
         return self._drain(final=False)
 
     def flush(self) -> List[Tuple[str, str]]:
-        """Un ESC solo (sin nada detrás tras una pausa) es la tecla Esc."""
+        """A lone ESC (with nothing after it following a pause) is the Esc key."""
         return self._drain(final=True)
 
     def _drain(self, final: bool) -> List[Tuple[str, str]]:
@@ -79,7 +79,7 @@ class Parser:
             if self.paste is not None:
                 end = self.buf.find("\x1b[201~")
                 if end < 0:
-                    # puede venir cortado justo en el marcador: se guarda lo que no es prefijo del cierre
+                    # it may arrive cut right at the marker: what is not a prefix of the closing is kept
                     keep = max((k for k in range(1, 6) if "\x1b[201~".startswith(self.buf[-k:])), default=0)
                     self.paste.append(self.buf[: len(self.buf) - keep])
                     self.buf = self.buf[len(self.buf) - keep:]
@@ -94,7 +94,7 @@ class Parser:
             if c == "\x1b":
                 ev, used = self._escape(final)
                 if used == 0:
-                    break  # secuencia incompleta: esperar más bytes
+                    break  # incomplete sequence: wait for more bytes
                 self.buf = self.buf[used:]
                 if ev == ("paste_start", ""):
                     flush_text()
@@ -128,14 +128,14 @@ class Parser:
                 if params == "200":
                     return ("paste_start", ""), used
                 return (("key", _TILDE_KEYS[params.split(";")[0]]), used) if params.split(";")[0] in _TILDE_KEYS else (None, used)
-            if final_ch == "u":  # protocolo kitty/CSI u: Enter con modificador = nueva línea
+            if final_ch == "u":  # kitty/CSI u protocol: Enter with a modifier = new line
                 p = params.split(";")
                 if p[0] == "13":
                     return ("key", "newline" if len(p) > 1 and p[1] != "1" else "enter"), used
                 return None, used
             if final_ch in _CSI_KEYS:
                 mods = params.split(";")[1] if ";" in params else ""
-                if final_ch in "CD" and mods in ("3", "5", "9"):  # alt/ctrl + flechas: salto de palabra
+                if final_ch in "CD" and mods in ("3", "5", "9"):  # alt/ctrl + arrows: word jump
                     return ("key", "word_right" if final_ch == "C" else "word_left"), used
                 return ("key", _CSI_KEYS[final_ch]), used
             return None, used
@@ -149,11 +149,11 @@ class Parser:
         return ("key", "esc"), 1
 
 
-# ---------- estado ----------
+# ---------- state ----------
 
 @dataclass
 class Command:
-    name: str  # con la barra: "/help"
+    name: str  # with the slash: "/help"
     desc: str
 
 
@@ -166,13 +166,13 @@ class State:
         self.draft = ""
         self.commands = list(commands)
         self.sel = 0
-        self.armed = False  # Ctrl-C con el campo vacío: el siguiente sale
+        self.armed = False  # Ctrl-C with an empty field: the next one quits
         self.cwd = cwd
         self._att_key: Optional[str] = None
         self._att: List[att_mod.Attachment] = []
         self._spans: List[Tuple[int, int]] = []
 
-    # --- derivados ---
+    # --- derived ---
     def attachments(self) -> List[att_mod.Attachment]:
         self._scan()
         return self._att
@@ -190,11 +190,11 @@ class State:
     def palette(self) -> List[Command]:
         if not self.commands or not self.text.startswith("/") or "\n" in self.text or " " in self.text:
             return []
-        if att_mod.resolve(self.text, self.cwd):  # es la ruta de un archivo, no un comando
+        if att_mod.resolve(self.text, self.cwd):  # it is a file path, not a command
             return []
         return [c for c in self.commands if c.name.startswith(self.text.lower())]
 
-    # --- edición ---
+    # --- editing ---
     def _set(self, text: str, cur: Optional[int] = None) -> None:
         self.text = text
         self.cur = len(text) if cur is None else cur
@@ -258,7 +258,7 @@ class State:
     def _key(self, k: str) -> Optional[Tuple[str, ...]]:
         t, c = self.text, self.cur
         if k == "enter":
-            if t[:c].endswith("\\"):  # "\" + Enter = nueva línea (como Claude Code)
+            if t[:c].endswith("\\"):  # "\" + Enter = new line (like Claude Code)
                 self._set(t[: c - 1] + "\n" + t[c:], c)
                 return None
             pal = self.palette()
@@ -340,12 +340,12 @@ class State:
             self.cur = min(ns + col, ne)
 
 
-# ---------- dibujo ----------
+# ---------- drawing ----------
 
 @dataclass
 class Frame:
     lines: List[str]
-    cursor: Tuple[int, int]  # (fila, columna) dentro del frame
+    cursor: Tuple[int, int]  # (row, column) inside the frame
 
 
 def _grad(s: str, x0: int, total: int, color: bool) -> str:
@@ -355,7 +355,7 @@ def _grad(s: str, x0: int, total: int, color: bool) -> str:
 
 
 def layout(text: str, cur: int, area: int, spans: Sequence[Tuple[int, int]]):
-    """Parte el texto en filas de `area` celdas. Devuelve (filas, (fila, col) del cursor); cada fila = [(char, en_ruta)]."""
+    """Splits the text into rows of `area` cells. Returns (rows, cursor (row, col)); each row = [(char, in_path)]."""
     marked = set()
     for s, e in spans:
         marked.update(range(s, e))
@@ -443,7 +443,7 @@ def render_frame(st: State, cols: int, rows_avail: int = 30, model: str = "auto"
     for a in atts[:3]:
         under.append("  " + dim(f"⎘ {a.label()}"))
     if len(atts) > 3:
-        under.append("  " + dim(f"⎘ +{len(atts) - 3} más"))
+        under.append("  " + dim(f"⎘ +{len(atts) - 3} more"))
     pal = st.palette()
     for i, c in enumerate(pal[:MAX_PALETTE]):
         on = i == st.sel % len(pal)
@@ -453,10 +453,10 @@ def render_frame(st: State, cols: int, rows_avail: int = 30, model: str = "auto"
         else:
             under.append("  " + ("▸ " if on else "  ") + f"{name} {c.desc}")
     if st.armed:
-        hint = dim("Ctrl-C otra vez para salir")
+        hint = dim("Ctrl-C again to quit")
     else:
-        full = "⏎ enviar · ⌥⏎ o \\⏎ nueva línea · / comandos · ⌃D salir"
-        short = "⏎ enviar · / comandos"
+        full = "⏎ send · ⌥⏎ or \\⏎ new line · / commands · ⌃D quit"
+        short = "⏎ send · / commands"
         room = W - 2 - (len(status) + 2 if status else 0)
         hint = dim(full if len(full) <= room else short if len(short) <= room else "")
     gap = max(1, W - 2 - _vlen(hint) - len(status)) if status else 0
@@ -467,7 +467,7 @@ def render_frame(st: State, cols: int, rows_avail: int = 30, model: str = "auto"
 
 
 def echo_lines(text: str, spans: Sequence[Tuple[int, int]], atts: Sequence[att_mod.Attachment], cols: int, color: bool = True) -> List[str]:
-    """Cómo queda el mensaje enviado en el historial de la terminal."""
+    """How the sent message looks in the terminal history."""
     area = max(10, box_width(cols) - len(PROMPT))
     rows, _ = layout(text, 0, area, spans)
     marker = f"{_rgb(_lerp(0.5), True)}{PROMPT}{RESET}" if color else PROMPT
@@ -477,7 +477,7 @@ def echo_lines(text: str, spans: Sequence[Tuple[int, int]], atts: Sequence[att_m
     return out
 
 
-# ---------- historial en disco ----------
+# ---------- history on disk ----------
 
 def load_history(path: Path) -> List[str]:
     try:
@@ -504,7 +504,7 @@ def save_history(path: Path, text: str) -> None:
         pass
 
 
-# ---------- terminal real ----------
+# ---------- real terminal ----------
 
 def supported() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty() and os.environ.get("TERM", "") not in ("", "dumb") and shutil.get_terminal_size((80, 24)).columns >= 40
@@ -516,10 +516,10 @@ class LineEditor:
         self.commands, self.model, self.status = list(commands), model, status
         self.history_path, self.color = history_path, color
         self.history = load_history(history_path) if history_path else []
-        self._rows = 0  # filas del último frame y fila del cursor, para borrarlo al redibujar
+        self._rows = 0  # rows of the last frame and cursor row, to erase it on redraw
         self._crow = 0
 
-    # --- salida ---
+    # --- output ---
     def _write(self, s: str) -> None:
         sys.stdout.write(s)
         sys.stdout.flush()
@@ -538,9 +538,9 @@ class LineEditor:
         self._write((f"\033[{up}A" if up else "") + f"\r\033[{fr.cursor[1] + 1}G")
         self._rows, self._crow = len(fr.lines), fr.cursor[0]
 
-    # --- lectura ---
+    # --- reading ---
     def read(self) -> str:
-        """Devuelve el mensaje. Lanza EOFError con Ctrl-D (campo vacío) o Ctrl-C dos veces."""
+        """Returns the message. Raises EOFError on Ctrl-D (empty field) or Ctrl-C twice."""
         import termios
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
@@ -551,7 +551,7 @@ class LineEditor:
         st, parser = State(self.history, self.commands, att_mod.safe_cwd()), Parser()
         try:
             termios.tcsetattr(fd, termios.TCSADRAIN, new)
-            self._write("\033[?2004h")  # paste con corchetes: así llegan los archivos arrastrados
+            self._write("\033[?2004h")  # bracketed paste: this is how dragged files arrive
             self._draw(st)
             while True:
                 ready = select.select([fd], [], [], 0.05 if parser.buf else None)[0]

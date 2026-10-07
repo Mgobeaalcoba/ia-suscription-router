@@ -1,8 +1,8 @@
-"""Markdown interpretado en la terminal, como se ve un README en GitHub: sin los signos (#, **, `, ```, >, |),
-con estilos ANSI, viñetas, tablas alineadas y bloques de código con fondo y colores. Sin dependencias.
+"""Markdown rendered in the terminal, the way a README looks on GitHub: without the markup characters (#, **, `, ```, >, |),
+with ANSI styles, bullets, aligned tables and code blocks with background and colors. No dependencies.
 
-Sin color (pipe, NO_COLOR, tests) devuelve el texto tal cual. Es un renderizador por líneas, no un parser
-completo: cubre lo que suelen devolver los modelos (títulos, listas, citas, código, tablas, énfasis, links).
+Without color (pipe, NO_COLOR, tests) it returns the text as is. It is a line-based renderer, not a full
+parser: it covers what models usually return (headings, lists, quotes, code, tables, emphasis, links).
 """
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ STRIKE, STRIKE_OFF = "\033[9m", "\033[29m"
 DIM = "\033[2m"
 FG_OFF = "\033[39m"
 CYAN, YELLOW, BLUE, MAGENTA, GREEN, GRAY = "\033[36m", "\033[33m", "\033[34m", "\033[35m", "\033[32m", "\033[90m"
-CODE_BG, CODE_BG_OFF = "\033[48;5;236m", "\033[49m"      # bloque de código
-SPAN_ON, SPAN_OFF = "\033[38;5;216m\033[48;5;238m", "\033[39m\033[49m"  # `código en línea`
+CODE_BG, CODE_BG_OFF = "\033[48;5;236m", "\033[49m"      # code block
+SPAN_ON, SPAN_OFF = "\033[38;5;216m\033[48;5;238m", "\033[39m\033[49m"  # `inline code`
 
-_ANSI = re.compile(r"\033\[[0-9;]*m|\033\][^\033\007]*(?:\033\\|\007)")  # CSI de estilo y links OSC 8
+_ANSI = re.compile(r"\033\[[0-9;]*m|\033\][^\033\007]*(?:\033\\|\007)")  # style CSI and OSC 8 links
 _FENCE = re.compile(r"^(\s*)(`{3,}|~{3,})\s*([\w+#.-]*)\s*$")
 _HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
 _BULLET = re.compile(r"^(\s*)([-*+]|\d+[.)])\s+(.*)$")
@@ -56,14 +56,14 @@ _CODE_TOKEN = re.compile(
 
 
 def _vlen(s: str) -> int:
-    """Largo visible (sin secuencias ANSI)."""
+    """Visible length (without ANSI sequences)."""
     return len(_ANSI.sub("", s))
 
 
-# ---------- texto en línea ----------
+# ---------- inline text ----------
 
 def _emphasis(s: str) -> str:
-    s = _ESCAPE.sub(lambda m: chr(0xE000 + ord(m.group(1))), s)  # \* y similares: se protegen y se restauran al final
+    s = _ESCAPE.sub(lambda m: chr(0xE000 + ord(m.group(1))), s)  # \* and similar: protected and restored at the end
     s = _AUTOLINK.sub(lambda m: f"{UNDER}{BLUE}{m.group(1)}{FG_OFF}{UNDER_OFF}", s)
 
     def link(m):
@@ -87,17 +87,17 @@ def inline(s: str) -> str:
 
 
 def _styled(style: str, off: str, text: str) -> str:
-    """Aplica `style` a todo el texto aunque adentro haya estilos anidados que lo apaguen."""
+    """Applies `style` to all the text even if nested styles inside would turn it off."""
     return style + text.replace(off, off + style) + off
 
 
-# ---------- código ----------
+# ---------- code ----------
 
 def _highlight(line: str, lang: str) -> str:
     comment: Optional[str] = "#" if lang in _HASH_COMMENT else "//" if lang in _SLASH_COMMENT else "--" if lang == "sql" else None
     head, tail = line, ""
     if comment:
-        # el comentario empieza en el primer marcador que no esté dentro de un string
+        # the comment starts at the first marker that is not inside a string
         pos, quote = 0, None
         while pos < len(line):
             ch = line[pos]
@@ -132,7 +132,7 @@ def _code_block(lines: List[str], lang: str, width: int) -> List[str]:
     return out
 
 
-# ---------- tablas ----------
+# ---------- tables ----------
 
 def _cells(line: str) -> List[str]:
     line = line.strip()
@@ -168,11 +168,11 @@ def _table(rows: List[str]) -> List[str]:
     return out
 
 
-# ---------- ajuste de líneas ----------
+# ---------- line wrapping ----------
 
 def wrap(s: str, width: int, first: str = "", rest: str = "") -> List[str]:
-    """Ajusta por palabras a `width` columnas visibles (los códigos ANSI no cuentan). `first`/`rest` son los prefijos
-    de la primera línea y de las siguientes (sangría francesa en listas y citas)."""
+    """Wraps by words to `width` visible columns (ANSI codes do not count). `first`/`rest` are the prefixes
+    of the first line and of the following ones (hanging indent in lists and quotes)."""
     words = s.split(" ")
     lines, cur, cur_len = [], first, _vlen(first)
     fresh = True
@@ -188,12 +188,12 @@ def wrap(s: str, width: int, first: str = "", rest: str = "") -> List[str]:
     return lines
 
 
-# ---------- documento ----------
+# ---------- document ----------
 
 def render(text: str, color: bool = True, width: Optional[int] = None) -> str:
     if not color or not text:
         return text
-    width = (width or shutil.get_terminal_size((100, 24)).columns) - 1  # un margen para no depender del auto-wrap de la terminal
+    width = (width or shutil.get_terminal_size((100, 24)).columns) - 1  # a margin so we do not depend on the terminal's auto-wrap
     lines, out, i = text.split("\n"), [], 0
     while i < len(lines):
         line = lines[i]
@@ -203,7 +203,7 @@ def render(text: str, color: bool = True, width: Optional[int] = None) -> str:
             while i < len(lines) and not (lines[i].strip().startswith(ch * n) and not lines[i].strip().strip(ch)):
                 code.append(lines[i])
                 i += 1
-            out += _code_block(code, lang, width)  # un bloque sin cerrar se muestra igual (típico de una respuesta cortada)
+            out += _code_block(code, lang, width)  # an unclosed block is shown anyway (typical of a cut-off response)
             i += 1
             continue
         if _TABLE.match(line):

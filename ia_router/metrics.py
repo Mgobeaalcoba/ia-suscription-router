@@ -1,20 +1,20 @@
-"""Métricas objetivas que alimentan el ruteo. Es la única fuente de verdad: no hay estimaciones a mano salvo como último recurso.
+"""Objective metrics that feed the routing. It is the single source of truth: there are no hand estimates except as a last resort.
 
-  Arena (arena.ai)              PRECISIÓN y precio de lista. Elo por categoría (preferencia humana en comparaciones a ciegas, con
-                                control de estilo e intervalo de confianza). Páginas públicas de arena.ai/leaderboard (su robots.txt
-                                las permite); mismo dato que el dataset CC BY 4.0 `lmarena-ai/leaderboard-dataset`.
-  Artificial Analysis (opcional) VELOCIDAD (tokens/s), precio y benchmarks con respuesta correcta (índices de coding y math, GPQA,
-                                HLE…). API con clave gratuita en ARTIFICIAL_ANALYSIS_API_KEY (ver `.env.example`); pide atribución.
+  Arena (arena.ai)              ACCURACY and list price. Elo per category (human preference in blind comparisons, with
+                                style control and confidence interval). Public pages of arena.ai/leaderboard (its robots.txt
+                                allows them); same data as the CC BY 4.0 dataset `lmarena-ai/leaderboard-dataset`.
+  Artificial Analysis (optional) SPEED (tokens/s), price and correct-answer benchmarks (coding and math indexes, GPQA,
+                                HLE…). API with a free key in ARTIFICIAL_ANALYSIS_API_KEY (see `.env.example`); it asks for attribution.
 
-Esta versión del software trae EMBEBIDA la última foto de Arena (`data/arena.json`, regenerada con `tools/update_snapshot.py`),
-así que rutea con métricas desde el primer uso, sin red. `metrics refresh` descarga una más nueva a ~/.ia-router/metrics.json;
-siempre manda la más reciente. Nada se consulta solo: actualizar es una acción del usuario.
+This version of the software EMBEDS the latest Arena snapshot (`data/arena.json`, regenerated with `tools/update_snapshot.py`),
+so it routes with metrics from the first use, with no network. `metrics refresh` downloads a newer one to ~/.ia-router/metrics.json;
+the most recent one always wins. Nothing is queried on its own: updating is a user action.
 
-Reglas para no engañarse:
-  - se empareja por el id REAL del modelo que usa cada CLI y su nivel de esfuerzo (-high, -max…); si Arena no publica ese nivel se
-    usa el más cercano y se marca como aproximado;
-  - una dimensión solo cuenta si cubre a TODOS los modelos (no se mezclan escalas); si no, esa dimensión no pesa;
-  - las diferencias de Elo dentro del margen de error no premian a nadie.
+Rules to avoid fooling yourself:
+  - matching is by the REAL id of the model each CLI uses and its effort level (-high, -max…); if Arena does not publish that level the
+    closest one is used and it is marked as approximate;
+  - a dimension only counts if it covers ALL the models (scales are never mixed); otherwise that dimension carries no weight;
+  - Elo differences within the margin of error reward nobody.
 """
 from __future__ import annotations
 
@@ -31,16 +31,16 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from . import state
 
-ARENA_PAGE = "https://arena.ai/leaderboard"  # las páginas por categoría son /leaderboard/text/<categoría>
+ARENA_PAGE = "https://arena.ai/leaderboard"  # the per-category pages are /leaderboard/text/<category>
 AA_URL = "https://artificialanalysis.ai/api/v2/data/llms/models"
 SNAPSHOT = Path(__file__).resolve().parent / "data" / "arena.json"
 STALE_DAYS = 7
 EFFORTS = ("minimal", "none", "low", "medium", "high", "xhigh", "max")
-EFFORT_PREFERENCE = ("medium", "high", "xhigh", "max", "low", "minimal", "none")  # si no sabemos el esfuerzo del CLI
-NOISE = {"thinking", "reasoning", "non", "adaptive", "effort", "preview", "default", "fallback"}   # palabras de relleno en los nombres de los portales
+EFFORT_PREFERENCE = ("medium", "high", "xhigh", "max", "low", "minimal", "none")  # if we do not know the CLI's effort
+NOISE = {"thinking", "reasoning", "non", "adaptive", "effort", "preview", "default", "fallback"}   # filler words in the portals' names
 ATTRIBUTION = {"arena": "Arena (arena.ai), dataset leaderboard-dataset, CC BY 4.0", "aa": "Artificial Analysis (artificialanalysis.ai)"}
 
-# categoría del router -> [(subconjunto de Arena, categoría de Arena)]; se promedian las que cubren a todos los modelos
+# router category -> [(Arena subset, Arena category)]; the ones covering all models are averaged
 ARENA_MAP: Dict[str, List[Tuple[str, str]]] = {
     "general": [("text", "overall")],
     "quick": [("text", "overall")],
@@ -54,33 +54,33 @@ ARENA_MAP: Dict[str, List[Tuple[str, str]]] = {
     "long_context": [("text", "longer_query")],
     "multimodal": [("vision", "overall")],
 }
-# categoría del router -> campos de evaluación de Artificial Analysis (benchmarks con respuesta correcta). Un campo solo cuenta si TODOS tus
-# modelos lo tienen: la API real no publica todos los índices para todos los modelos (probado con tus tres), por eso hay varios candidatos.
+# router category -> Artificial Analysis evaluation fields (correct-answer benchmarks). A field only counts if ALL your
+# models have it: the real API does not publish every index for every model (tested with three models), hence several candidates.
 AA_MAP: Dict[str, List[str]] = {
     "general": ["artificial_analysis_intelligence_index"],
     "analysis": ["artificial_analysis_intelligence_index", "hle"],            # hle = Humanity's Last Exam
     "research": ["artificial_analysis_intelligence_index"],
     "coding": ["artificial_analysis_coding_index", "scicode", "terminalbench_v4_0"],
-    "debugging": ["artificial_analysis_coding_index", "terminalbench_v4_0"],  # terminalbench = tareas de terminal con agente
+    "debugging": ["artificial_analysis_coding_index", "terminalbench_v4_0"],  # terminalbench = agentic terminal tasks
     "data": ["artificial_analysis_coding_index", "artificial_analysis_math_index"],
     "math": ["artificial_analysis_math_index", "aime_25"],
-    "writing": ["ifbench"],                                                    # seguimiento de instrucciones
-    "long_context": ["lcr"],                                                   # razonamiento sobre contexto largo
+    "writing": ["ifbench"],                                                    # instruction following
+    "long_context": ["lcr"],                                                   # long-context reasoning
 }
 
 
-# ---------- red ----------
+# ---------- network ----------
 
 class HttpError(OSError):
     def __init__(self, status: int, url: str, body: str = "") -> None:
-        super().__init__(f"HTTP {status} al pedir {url.split('?')[0]}")
+        super().__init__(f"HTTP {status} requesting {url.split('?')[0]}")
         self.status, self.body = status, body
 
 
 def http_get(url: str, headers: Optional[Dict[str, str]] = None, timeout: float = 40) -> str:
-    """GET con curl (usa los certificados del sistema; el Python de python.org en macOS a veces no los tiene)
-    y, si no hay curl, urllib. Las cabeceras (p. ej. la API key) viajan por stdin de curl, no por argv.
-    Devuelve el cuerpo si el estado es 2xx; si no, lanza HttpError con el estado (429 = límite de pedidos)."""
+    """GET with curl (uses the system certificates; python.org's Python on macOS sometimes lacks them)
+    and, if there is no curl, urllib. Headers (e.g. the API key) travel through curl's stdin, not argv.
+    Returns the body if the status is 2xx; otherwise raises HttpError with the status (429 = rate limit)."""
     cfg = "".join(f'header = "{k}: {v}"\n' for k, v in (headers or {}).items())
     try:
         p = subprocess.run(["curl", "-sL", "-m", str(int(timeout)), "-w", "\n%{http_code}", "--config", "-", url],
@@ -93,7 +93,7 @@ def http_get(url: str, headers: Optional[Dict[str, str]] = None, timeout: float 
             e.close()
             raise HttpError(e.code, url) from None
     if p.returncode != 0:
-        raise OSError(f"curl falló con código {p.returncode} al pedir {url.split('?')[0]}")
+        raise OSError(f"curl failed with code {p.returncode} requesting {url.split('?')[0]}")
     body, _, code = p.stdout.rpartition("\n")
     status = int(code) if code.isdigit() else 0
     if not 200 <= status < 300:
@@ -103,7 +103,7 @@ def http_get(url: str, headers: Optional[Dict[str, str]] = None, timeout: float 
 
 def get_with_retry(get: Callable[..., str], url: str, headers: Optional[Dict[str, str]] = None, tries: int = 4, sleep: Callable[[float], None] = time.sleep,
                    timeout: Optional[float] = None) -> str:
-    """Reintenta con espera creciente ante 429 (límite de pedidos), 5xx y cortes de conexión; los demás errores 4xx no se reintentan."""
+    """Retries with growing waits on 429 (rate limit), 5xx and connection drops; other 4xx errors are not retried."""
     for attempt in range(tries):
         try:
             if timeout:
@@ -117,10 +117,10 @@ def get_with_retry(get: Callable[..., str], url: str, headers: Optional[Dict[str
             if attempt == tries - 1:
                 raise
             sleep(2 * (attempt + 1))
-    raise OSError("sin respuesta")
+    raise OSError("no response")
 
 
-# ---------- nombres ----------
+# ---------- names ----------
 
 def norm(name: str) -> str:
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", (name or "").lower())).strip("-")
@@ -136,7 +136,7 @@ def split_effort(name: str) -> Tuple[str, Optional[str]]:
 
 
 def pick_variant(entries: List[Tuple[str, Optional[str]]], wanted: Optional[str]) -> Optional[Tuple[str, Optional[str], bool]]:
-    """Entre las variantes (nombre, esfuerzo) de una misma familia: (nombre, esfuerzo, coincide_exacto)."""
+    """Among the variants (name, effort) of the same family: (name, effort, exact_match)."""
     if not entries:
         return None
     if wanted:
@@ -144,7 +144,7 @@ def pick_variant(entries: List[Tuple[str, Optional[str]]], wanted: Optional[str]
             if e == wanted:
                 return n, e, True
         order = {e: i for i, e in enumerate(EFFORTS)}
-        near = min(entries, key=lambda x: (abs(order.get(x[1], 3) - order.get(wanted, 3)), order.get(x[1], 3)))  # empate: menor esfuerzo
+        near = min(entries, key=lambda x: (abs(order.get(x[1], 3) - order.get(wanted, 3)), order.get(x[1], 3)))  # tie: lower effort
         return near[0], near[1], False
     for pref in (None, *EFFORT_PREFERENCE):
         for n, e in entries:
@@ -153,10 +153,10 @@ def pick_variant(entries: List[Tuple[str, Optional[str]]], wanted: Optional[str]
     return entries[0][0], entries[0][1], False
 
 
-# ---------- Arena: páginas públicas ----------
+# ---------- Arena: public pages ----------
 
 def arena_pages() -> List[Tuple[str, str, str]]:
-    """(subconjunto, categoría, URL) de las páginas de arena.ai que alimentan ARENA_MAP, sin repetir."""
+    """(subset, category, URL) of the arena.ai pages that feed ARENA_MAP, without repeats."""
     pages, seen = [], set()
     for pairs in ARENA_MAP.values():
         for sub, cat in pairs:
@@ -172,7 +172,7 @@ def arena_pages() -> List[Tuple[str, str, str]]:
 
 
 def parse_leaderboard(html: str) -> List[Dict]:
-    """Entradas del leaderboard que arena.ai embebe en el HTML (datos de Next.js): [{modelDisplayName, rating, ratingUpper, …}]."""
+    """Leaderboard entries that arena.ai embeds in the HTML (Next.js data): [{modelDisplayName, rating, ratingUpper, …}]."""
     chunks = re.findall(r'self\.__next_f\.push\(\[1,"(.*?)"\]\)</script>', html, re.S)
     try:
         txt = "".join(json.loads('"' + c + '"') for c in chunks)
@@ -180,16 +180,16 @@ def parse_leaderboard(html: str) -> List[Dict]:
         i = txt.index('"entries":[', m.start()) + len('"entries":')
         entries, _ = json.JSONDecoder().raw_decode(txt[i:])
     except (ValueError, AttributeError) as exc:
-        raise ValueError("arena.ai cambió el formato de la página: no encuentro la tabla del leaderboard") from exc
+        raise ValueError("arena.ai changed the page format: I cannot find the leaderboard table") from exc
     if not isinstance(entries, list) or not entries or "rating" not in entries[0]:
-        raise ValueError("la tabla del leaderboard de arena.ai no tiene el formato esperado")
+        raise ValueError("the arena.ai leaderboard table does not have the expected format")
     return entries
 
 
 def fetch_arena(pages: Optional[List[Tuple[str, str, str]]] = None, get: Callable[..., str] = http_get, say: Callable[[str], None] = lambda s: None,
                 sleep: Callable[[float], None] = time.sleep) -> Dict[str, List[list]]:
-    """{"texto/coding": [[modelo, rating, inferior, superior, votos, precio_in, precio_out], …], …} leyendo las páginas de arena.ai:
-    una por categoría (~11 pedidos de 2-3 MB), de a uno y con pausa. Si una falla se avisa y se sigue con las demás."""
+    """{"text/coding": [[model, rating, lower, upper, votes, price_in, price_out], …], …} reading the arena.ai pages:
+    one per category (~11 requests of 2-3 MB), one at a time and with a pause. If one fails it is reported and the rest continue."""
     out: Dict[str, List[list]] = {}
     failed = 0
     pages = pages if pages is not None else arena_pages()
@@ -204,14 +204,14 @@ def fetch_arena(pages: Optional[List[Tuple[str, str, str]]] = None, get: Callabl
             continue
         out[f"{sub}/{cat}"] = [[e["modelDisplayName"], e["rating"], e.get("ratingLower"), e.get("ratingUpper"), e.get("votes"),
                                 e.get("inputPricePerMillion"), e.get("outputPricePerMillion")] for e in entries if "modelDisplayName" in e]
-        say(f"Arena · {sub}/{cat}: {len(entries)} modelos")
+        say(f"Arena · {sub}/{cat}: {len(entries)} models")
     if pages and failed == len(pages):
-        raise OSError("no pude leer ninguna página de arena.ai")
+        raise OSError("could not read any arena.ai page")
     return out
 
 
 def rows_from_pages(pages: Dict[str, List[list]]) -> Dict[str, List[Dict]]:
-    """Formato compacto -> filas {subconjunto: [{model_name, rating, rating_lower, rating_upper, vote_count, category, price_in, price_out}]}."""
+    """Compact format -> rows {subset: [{model_name, rating, rating_lower, rating_upper, vote_count, category, price_in, price_out}]}."""
     out: Dict[str, List[Dict]] = {}
     for key, rows in pages.items():
         sub, _, cat = key.partition("/")
@@ -223,8 +223,8 @@ def rows_from_pages(pages: Dict[str, List[list]]) -> Dict[str, List[Dict]]:
 
 def match_arena(rows_by_subset: Dict[str, List[Dict]], model_ids: Dict[str, Optional[str]], overrides: Optional[Dict[str, str]] = None,
                 published: Optional[str] = None) -> Dict[str, Dict]:
-    """{modelo: {"name", "effort", "exact", "published", "variants", "price": {"in","out"}, "ratings": {subconjunto: {categoría: {...}}}}}
-    para los modelos con id conocido. Cada subconjunto elige su propia variante de esfuerzo (la que coincide, o la más cercana)."""
+    """{model: {"name", "effort", "exact", "published", "variants", "price": {"in","out"}, "ratings": {subset: {category: {...}}}}}
+    for the models with a known id. Each subset picks its own effort variant (the matching one, or the closest)."""
     overrides = overrides or {}
     index: Dict[str, Dict[str, List[Tuple[str, Optional[str]]]]] = {}
     for sub, rows in rows_by_subset.items():
@@ -264,17 +264,17 @@ def match_arena(rows_by_subset: Dict[str, List[Dict]], model_ids: Dict[str, Opti
     return out
 
 
-# ---------- Artificial Analysis: API con clave gratuita ----------
+# ---------- Artificial Analysis: API with a free key ----------
 
 def aa_key() -> Optional[str]:
     return os.environ.get("ARTIFICIAL_ANALYSIS_API_KEY", "").strip() or None
 
 
 def fetch_aa(key: str, get: Callable[..., str] = http_get, sleep: Callable[[float], None] = time.sleep) -> List[Dict]:
-    """Lista compacta de modelos de Artificial Analysis: nombre, velocidad (tokens/s), latencia, precios y evaluaciones."""
+    """Compact list of Artificial Analysis models: name, speed (tokens/s), latency, prices and evaluations."""
     d = json.loads(get_with_retry(get, AA_URL, {"x-api-key": key}, tries=2, sleep=sleep))
     if not isinstance(d, dict) or not isinstance(d.get("data"), list):
-        raise ValueError("respuesta inesperada de Artificial Analysis")
+        raise ValueError("unexpected response from Artificial Analysis")
     out = []
     for m in d["data"]:
         p = m.get("pricing") or {}
@@ -310,7 +310,7 @@ def match_aa(models: List[Dict], model_ids: Dict[str, Optional[str]], overrides:
     return out
 
 
-# ---------- datos activos: foto incluida + caché del usuario ----------
+# ---------- active data: bundled snapshot + user cache ----------
 
 def cache_path() -> Path:
     return state.home() / "metrics.json"
@@ -320,7 +320,7 @@ CACHE_KEYS = ("pages", "arena_at", "aa", "aa_at")
 
 
 def load_cache() -> Dict:
-    """La caché del usuario. Ignora claves de otros formatos (un metrics.json de versiones anteriores tenía otras)."""
+    """The user's cache. Ignores keys from other formats (a metrics.json from earlier versions had others)."""
     try:
         d = json.loads(cache_path().read_text(encoding="utf-8"))
         return {k: d[k] for k in CACHE_KEYS if k in d} if isinstance(d, dict) else {}
@@ -344,13 +344,13 @@ def bundled() -> Dict:
 
 
 def active() -> Dict:
-    """Los datos que rigen: la foto de Arena más nueva entre la incluida en el software y la que bajó el usuario, y la de
-    Artificial Analysis si la bajó. {"pages", "arena_at", "arena_origin", "aa", "aa_at"}."""
+    """The data in force: the newest Arena snapshot between the one bundled in the software and the one the user downloaded, and the
+    Artificial Analysis one if downloaded. {"pages", "arena_at", "arena_origin", "aa", "aa_at"}."""
     b, c = bundled(), load_cache()
     use_cache = bool(c.get("pages")) and (c.get("arena_at") or "") >= (b.get("fetched_at") or "")
     src = c if use_cache else b
     return {"pages": src.get("pages") or {}, "arena_at": (c.get("arena_at") if use_cache else b.get("fetched_at")),
-            "arena_origin": "actualizada en tu máquina" if use_cache else "incluida en esta versión",
+            "arena_origin": "updated on your machine" if use_cache else "bundled with this version",
             "aa": c.get("aa"), "aa_at": c.get("aa_at")}
 
 
@@ -369,16 +369,16 @@ def is_stale(data: Dict, days: float = STALE_DAYS) -> bool:
 
 
 def status_line(data: Optional[Dict] = None) -> str:
-    """'Arena 2026-10-05 (incluida) · Artificial Analysis 2026-10-05' para el encabezado."""
+    """'Arena 2026-10-05 (bundled) · Artificial Analysis 2026-10-05' for the header."""
     d = data or active()
-    arena = f"Arena {(d.get('arena_at') or '?')[:10]} ({'actualizada' if 'actualizada' in d.get('arena_origin', '') else 'incluida'})" if d.get("pages") else "sin métricas"
+    arena = f"Arena {(d.get('arena_at') or '?')[:10]} ({'updated' if 'updated' in d.get('arena_origin', '') else 'bundled'})" if d.get("pages") else "no metrics"
     return arena + (f" · Artificial Analysis {d['aa_at'][:10]}" if d.get("aa") else "")
 
 
-# ---------- ids reales de los modelos ----------
+# ---------- real model ids ----------
 
 def known_model_ids(names: List[str]) -> Dict[str, Optional[str]]:
-    """Id real del modelo que usa cada CLI: el último que vimos responder (registrado al usarlo o en la sonda). No se adivina."""
+    """Real id of the model each CLI uses: the last one we saw answer (recorded on use or in the probe). It is never guessed."""
     seen = state.seen_ids()
     ids: Dict[str, Optional[str]] = {n: seen.get(n) for n in names}
     try:
@@ -391,11 +391,11 @@ def known_model_ids(names: List[str]) -> Dict[str, Optional[str]]:
     return ids
 
 
-# ---------- de datos a valores 0-10 ----------
+# ---------- from data to 0-10 values ----------
 
 def elo_scores(entries: Dict[str, Tuple[float, float]]) -> Dict[str, float]:
-    """{modelo: (rating, sigma)} -> 0..10. 10 = empata o gana al mejor de tus modelos; una diferencia que cae dentro del
-    margen de error no cuenta; el resto se traduce a probabilidad de victoria de Elo (100 puntos ≈ 64%) y se escala ×2."""
+    """{model: (rating, sigma)} -> 0..10. 10 = ties or beats the best of your models; a difference that falls within the
+    margin of error does not count; the rest is translated into an Elo win probability (100 points ≈ 64%) and scaled ×2."""
     best = max(entries, key=lambda m: entries[m][0])
     out = {}
     for m, (r, s) in entries.items():
@@ -411,7 +411,7 @@ def _sigma(c: Dict) -> float:
 
 
 def precision_values(models: List[str], arena: Dict[str, Dict], aa: Dict[str, Dict]) -> Dict[str, Dict[str, Tuple[float, str]]]:
-    """{categoría: {modelo: (0-10, fuente)}}. Una fuente solo cuenta para una categoría si cubre a TODOS los modelos."""
+    """{category: {model: (0-10, source)}}. A source only counts for a category if it covers ALL the models."""
     out: Dict[str, Dict[str, Tuple[float, str]]] = {}
     arena_ok = len(models) >= 2 and all(m in arena for m in models)
     aa_ok = len(models) >= 2 and all(m in aa for m in models)
@@ -437,13 +437,13 @@ def precision_values(models: List[str], arena: Dict[str, Dict], aa: Dict[str, Di
 
 
 def _log_value(ratio: float) -> float:
-    """10 para el mejor y 2 puntos menos cada vez que otro es el doble de lento o de caro (escala logarítmica). Una escala proporcional
-    tiene mucho más rango que el Elo (4× de precio = 2,5 puntos): el modelo barato ganaría hasta con 'precisión' como prioridad."""
+    """10 for the best and 2 points less each time another is twice as slow or as expensive (logarithmic scale). A proportional scale
+    has much more range than Elo (4× the price = 2.5 points): the cheap model would win even with 'accuracy' as the priority."""
     return round(max(0.0, 10 - 2 * math.log2(max(ratio, 1.0))), 2)
 
 
 def speed_values(models: List[str], aa: Dict[str, Dict]) -> Dict[str, Tuple[float, str]]:
-    """Velocidad de generación publicada por Artificial Analysis (tokens/s), relativa al más rápido de tus modelos."""
+    """Generation speed published by Artificial Analysis (tokens/s), relative to the fastest of your models."""
     tps = {m: (aa.get(m) or {}).get("tps") for m in models}
     if len(models) < 2 or not all(isinstance(v, (int, float)) and v > 0 for v in tps.values()):
         return {}
@@ -456,8 +456,8 @@ def _blended(pin: Optional[float], pout: Optional[float]) -> Optional[float]:
 
 
 def cost_values(models: List[str], arena: Dict[str, Dict], aa: Dict[str, Dict]) -> Dict[str, Tuple[float, str]]:
-    """Precio de lista por millón de tokens (3 de entrada : 1 de salida), relativo al más barato de tus modelos (escala logarítmica). Es un proxy del
-    consumo de cuota: con una suscripción no pagás por token, pero cuanto más caro el modelo, más rápido se agota."""
+    """List price per million tokens (3 input : 1 output), relative to the cheapest of your models (logarithmic scale). It is a proxy for
+    quota consumption: with a subscription you do not pay per token, but the more expensive the model, the faster it runs out."""
     for source, tag in (({m: (aa.get(m) or {}).get("price_blended") or _blended((aa.get(m) or {}).get("price_in"), (aa.get(m) or {}).get("price_out")) for m in models}, "AA"),
                         ({m: _blended(((arena.get(m) or {}).get("price") or {}).get("in"), ((arena.get(m) or {}).get("price") or {}).get("out")) for m in models}, "Arena")):
         if len(models) >= 2 and all(isinstance(v, (int, float)) and v > 0 for v in source.values()):
@@ -466,13 +466,13 @@ def cost_values(models: List[str], arena: Dict[str, Dict], aa: Dict[str, Dict]) 
     return {}
 
 
-# ---------- emparejamiento con tus modelos (memoizado) ----------
+# ---------- matching with your models (memoized) ----------
 
 _memo: Dict[tuple, Tuple[Dict, Dict]] = {}
 
 
 def matches(models: List[str], ids: Dict[str, Optional[str]], overrides: Dict[str, Dict[str, str]], data: Dict) -> Tuple[Dict[str, Dict], Dict[str, Dict]]:
-    """(arena, aa): entradas encontradas para tus modelos con los datos activos."""
+    """(arena, aa): entries found for your models with the active data."""
     key = (data.get("arena_at"), data.get("aa_at"), tuple(sorted((m, ids.get(m)) for m in models)), json.dumps(overrides, sort_keys=True))
     if key not in _memo:
         use = {m: ids.get(m) for m in models}
@@ -483,32 +483,32 @@ def matches(models: List[str], ids: Dict[str, Optional[str]], overrides: Dict[st
     return _memo[key]
 
 
-# ---------- actualizar ----------
+# ---------- update ----------
 
 def refresh(cfg: Dict, say: Callable[[str], None] = print, get: Callable[..., str] = http_get, key: Optional[str] = None, force: bool = False,
             sleep: Callable[[float], None] = time.sleep) -> Dict:
-    """Descarga Arena (y Artificial Analysis si hay clave) y lo guarda en ~/.ia-router/metrics.json. No repite el pedido si los datos
-    del usuario tienen menos de 12 horas (los leaderboards se publican de a días), salvo force."""
+    """Downloads Arena (and Artificial Analysis if there is a key) and saves it to ~/.ia-router/metrics.json. It does not repeat the request if the
+    user's data is less than 12 hours old (leaderboards are published every few days), unless force."""
     cache = load_cache()
     key = key or aa_key()
     age = age_days(cache.get("arena_at"))
     fresh = cache.get("pages") and age is not None and age < 0.5
     if fresh and not force and (cache.get("aa") or not key):
-        say(f"Tus métricas tienen {age * 24:.1f} h: no vuelvo a consultar (usá --force para insistir).")
+        say(f"Your metrics are {age * 24:.1f} h old: not querying again (use --force to insist).")
         return cache
     if not fresh or force:
-        say("Leyendo los leaderboards de arena.ai (una página por categoría, ~11 pedidos de 2-3 MB, alrededor de un minuto)…")
+        say("Reading the arena.ai leaderboards (one page per category, ~11 requests of 2-3 MB, about a minute)…")
         cache["pages"] = fetch_arena(get=get, say=say, sleep=sleep)
         cache["arena_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     if key:
         try:
-            say("Consultando Artificial Analysis (velocidad, precio y benchmarks)…")
+            say("Querying Artificial Analysis (speed, price and benchmarks)…")
             cache["aa"], cache["aa_at"] = fetch_aa(key, get, sleep), time.strftime("%Y-%m-%dT%H:%M:%S")
-            say(f"Artificial Analysis: {len(cache['aa'])} modelos")
-        except Exception as exc:  # clave inválida, cuota diaria, red caída: no rompe lo demás
-            say(f"Artificial Analysis: no se pudo consultar ({str(exc)[:120]})")
+            say(f"Artificial Analysis: {len(cache['aa'])} models")
+        except Exception as exc:  # invalid key, daily quota, network down: does not break the rest
+            say(f"Artificial Analysis: could not be queried ({str(exc)[:120]})")
     else:
-        say("Artificial Analysis: sin clave (opcional, aporta velocidad). Ver .env.example.")
+        say("Artificial Analysis: no key (optional, brings speed). See .env.example.")
     save_cache(cache)
     _memo.clear()
     return cache

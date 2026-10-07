@@ -7,7 +7,7 @@ os.environ["PATH"] = str(ROOT / "tests" / "fake_bin") + os.pathsep + os.environ[
 
 from ia_router import adapters, attachments as att, chat, core, editor as E, render  # noqa: E402
 
-CMDS = [E.Command("/help", "ayuda"), E.Command("/manifest", "ver"), E.Command("/model", "fijar"), E.Command("/models", "estado")]
+CMDS = [E.Command("/help", "help"), E.Command("/manifest", "view"), E.Command("/model", "pin"), E.Command("/models", "status")]
 
 
 def feed(st, *events):
@@ -29,7 +29,7 @@ class ParserTests(unittest.TestCase):
         return out
 
     def test_text_is_coalesced_and_enter_is_key(self):
-        self.assertEqual(self.parse("hola\r"), [("text", "hola"), ("key", "enter")])
+        self.assertEqual(self.parse("hello\r"), [("text", "hello"), ("key", "enter")])
 
     def test_arrows_home_end_delete(self):
         self.assertEqual(self.parse("\x1b[A\x1b[B\x1b[C\x1b[D\x1b[H\x1b[F\x1b[3~"),
@@ -45,7 +45,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(self.parse("\x1b[200~/tmp/a b\nc\x1b[201~x"), [("paste", "/tmp/a b\nc"), ("text", "x")])
 
     def test_paste_split_across_reads(self):
-        self.assertEqual(self.parse("\x1b[20", "0~hola ", "mundo\x1b[2", "01~"), [("paste", "hola mundo")])
+        self.assertEqual(self.parse("\x1b[20", "0~hello ", "world\x1b[2", "01~"), [("paste", "hello world")])
 
     def test_lone_escape_needs_flush(self):
         p = E.Parser()
@@ -67,7 +67,7 @@ class StateTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = self.tmp.name
-        self.png = Path(self.dir) / "foto con espacios.png"
+        self.png = Path(self.dir) / "photo with spaces.png"
         self.png.write_bytes(b"\x89PNG")
 
     def tearDown(self):
@@ -80,42 +80,42 @@ class StateTests(unittest.TestCase):
         return s
 
     def test_typing_and_editing_in_the_middle(self):
-        s = self.st("hola mundo")
+        s = self.st("hello world")
         feed(s, *keys("left", "left", "left", "left", "left", "left"), ("text", ","))
-        self.assertEqual(s.text, "hola, mundo")
+        self.assertEqual(s.text, "hello, world")
         feed(s, ("key", "backspace"))
-        self.assertEqual(s.text, "hola mundo")
+        self.assertEqual(s.text, "hello world")
         feed(s, *keys("delete"))
-        self.assertEqual(s.text, "holamundo")
+        self.assertEqual(s.text, "helloworld")
 
     def test_word_motion_and_kills(self):
-        s = self.st("uno dos tres")
+        s = self.st("one two three")
         feed(s, ("key", "word_left"))
         self.assertEqual(s.cur, 8)
         feed(s, ("key", "kill_word"))
-        self.assertEqual(s.text, "uno tres")
+        self.assertEqual(s.text, "one three")
         feed(s, ("key", "kill_bol"))
-        self.assertEqual((s.text, s.cur), ("tres", 0))
+        self.assertEqual((s.text, s.cur), ("three", 0))
         s = self.st("abc def")
         feed(s, *keys("home", "kill_eol"))
         self.assertEqual(s.text, "")
 
     def test_backslash_enter_makes_a_newline(self):
-        s = self.st("línea 1\\")
+        s = self.st("line 1\\")
         self.assertIsNone(feed(s, ("key", "enter")))
-        feed(s, ("text", "línea 2"))
-        self.assertEqual(s.text, "línea 1\nlínea 2")
+        feed(s, ("text", "line 2"))
+        self.assertEqual(s.text, "line 1\nline 2")
 
     def test_enter_submits_text(self):
-        self.assertEqual(feed(self.st("hola"), ("key", "enter")), ("submit", "hola"))
+        self.assertEqual(feed(self.st("hello"), ("key", "enter")), ("submit", "hello"))
 
     def test_history_with_draft(self):
-        s = E.State(history=["uno", "dos"], cwd=self.dir)
+        s = E.State(history=["one", "two"], cwd=self.dir)
         feed(s, ("text", "borrador"))
         feed(s, ("key", "up"))
-        self.assertEqual(s.text, "dos")
+        self.assertEqual(s.text, "two")
         feed(s, ("key", "up"))
-        self.assertEqual(s.text, "uno")
+        self.assertEqual(s.text, "one")
         feed(s, *keys("down", "down"))
         self.assertEqual(s.text, "borrador")
 
@@ -151,8 +151,8 @@ class StateTests(unittest.TestCase):
 
     def test_normal_paste_is_untouched_and_crlf_fixed(self):
         s = self.st()
-        feed(s, ("paste", "hola\r\nmundo /no/existe"))
-        self.assertEqual(s.text, "hola\nmundo /no/existe")
+        feed(s, ("paste", "hello\r\nworld /no/exist"))
+        self.assertEqual(s.text, "hello\nworld /no/exist")
 
     def test_eof_and_double_interrupt(self):
         self.assertEqual(feed(self.st(), ("key", "eof")), ("eof",))
@@ -176,15 +176,15 @@ class FrameTests(unittest.TestCase):
         return s, E.render_frame(s, cols, rows, "auto", "manager claude", color)
 
     def test_box_geometry(self):
-        _, fr = self.frame("hola")
+        _, fr = self.frame("hello")
         box = fr.lines[:3]
         self.assertTrue(box[0].startswith("╭") and box[0].endswith("╮") and box[2].startswith("╰"))
         self.assertEqual(len({render._vlen(l) for l in box}), 1)
-        self.assertEqual(fr.cursor, (1, 4 + 4))
+        self.assertEqual(fr.cursor, (1, 4 + 5))
 
     def test_placeholder_when_empty_and_cursor_at_start(self):
         _, fr = self.frame("")
-        self.assertIn("arrastrá archivos", fr.lines[1])
+        self.assertIn("drag files", fr.lines[1])
         self.assertEqual(fr.cursor, (1, 4))
 
     def test_long_text_wraps_and_cursor_follows(self):
@@ -221,36 +221,36 @@ class FrameTests(unittest.TestCase):
             s = E.State(cwd=d)
             s.text, s.cur = str(f), len(str(f))
             fr = E.render_frame(s, 100, 30, "auto", "", False)
-            self.assertTrue(any("⎘ a.txt · texto" in l for l in fr.lines))
+            self.assertTrue(any("⎘ a.txt · text" in l for l in fr.lines))
 
     def test_palette_and_hints_rendered(self):
         _, fr = self.frame("/mo")
         text = "\n".join(fr.lines)
         self.assertIn("▸ /model", text)
-        self.assertIn("nueva línea", text)
+        self.assertIn("new line", text)
         s = E.State(); s.armed = True
-        self.assertIn("Ctrl-C otra vez", "\n".join(E.render_frame(s, 100, 30, "auto", "", False).lines))
+        self.assertIn("Ctrl-C again", "\n".join(E.render_frame(s, 100, 30, "auto", "", False).lines))
 
     def test_color_frame_has_gradient_border_and_path_highlight(self):
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "a.txt"
             f.write_text("x")
             s = E.State(cwd=d)
-            s.text = f"mirá {f}"
+            s.text = f"look at {f}"
             s.cur = len(s.text)
             fr = E.render_frame(s, 100, 30, "auto", "", True)
             self.assertIn("38;2;217;119;87", fr.lines[0])
             self.assertIn(E.UNDER, fr.lines[1])
 
     def test_echo_lines(self):
-        out = E.echo_lines("hola\nmundo", [], [], 80, color=False)
-        self.assertEqual(out, ["❯ hola", "  mundo"])
+        out = E.echo_lines("hello\nworld", [], [], 80, color=False)
+        self.assertEqual(out, ["❯ hello", "  world"])
 
 
 class WrapTests(unittest.TestCase):
     def test_wraps_on_words_with_hanging_indent(self):
-        lines = render.wrap("uno dos tres cuatro cinco", 12, "• ", "  ")
-        self.assertEqual(lines, ["• uno dos", "  tres", "  cuatro", "  cinco"])
+        lines = render.wrap("one two three four five", 9, "• ", "  ")
+        self.assertEqual(lines, ["• one two", "  three", "  four", "  five"])
 
     def test_ansi_does_not_count_as_width(self):
         word = f"{render.BOLD}negrita{render.BOLD_OFF}"
@@ -265,7 +265,7 @@ class WrapTests(unittest.TestCase):
         for l in plain.splitlines():
             if not l.startswith(" c") and "ccc" not in l:
                 self.assertLessEqual(len(l), 39, l)
-        self.assertIn("  item", plain)  # continuación alineada al texto de la viñeta
+        self.assertIn("  item", plain)  # continuation aligned with the bullet text
         self.assertGreaterEqual(plain.count("▎"), 2)
 
 
@@ -273,8 +273,8 @@ class AttachmentTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = Path(self.tmp.name)
-        self.txt = self.d / "nota con espacios.txt"
-        self.txt.write_text("hola")
+        self.txt = self.d / "note with spaces.txt"
+        self.txt.write_text("hello")
         self.png = self.d / "img.png"
         self.png.write_bytes(b"\x89PNG")
         self.bin = self.d / "datos.bin"
@@ -289,11 +289,11 @@ class AttachmentTests(unittest.TestCase):
 
     def test_find_escaped_quoted_and_file_url_without_duplicates(self):
         esc = str(self.txt).replace(" ", "\\ ")
-        found = att.find(f'mirá {esc} y "{self.txt}" y file://{self.png} fin')
-        self.assertEqual([a.name for a in found], ["nota con espacios.txt", "img.png"])
+        found = att.find(f'look at {esc} y "{self.txt}" y file://{self.png} fin')
+        self.assertEqual([a.name for a in found], ["note with spaces.txt", "img.png"])
 
     def test_plain_words_are_never_paths(self):
-        self.assertEqual(att.find("img.png datos.bin hola", cwd=str(self.d)), [])
+        self.assertEqual(att.find("img.png data.bin hello", cwd=str(self.d)), [])
         self.assertEqual([a.name for a in att.find("./img.png", cwd=str(self.d))], ["img.png"])
 
     def test_deleted_cwd_does_not_crash(self):
@@ -303,7 +303,7 @@ class AttachmentTests(unittest.TestCase):
         os.rmdir(gone)
         try:
             self.assertEqual(att.safe_cwd(), os.path.expanduser("~"))
-            self.assertEqual(att.find("hola"), [])
+            self.assertEqual(att.find("hello"), [])
         finally:
             os.chdir(old)
 
@@ -313,7 +313,7 @@ class AttachmentTests(unittest.TestCase):
 
     def test_classify(self):
         kinds = {a.name: a.kind for a in att.find(" ".join(att.quote(str(p)) for p in (self.txt, self.png, self.bin, self.d)))}
-        self.assertEqual(kinds["nota con espacios.txt"], "text")
+        self.assertEqual(kinds["note with spaces.txt"], "text")
         self.assertEqual(kinds["img.png"], "image")
         self.assertEqual(kinds["datos.bin"], "binary")
         self.assertEqual(kinds[self.d.name], "dir")
@@ -326,7 +326,7 @@ class AttachmentTests(unittest.TestCase):
     def test_normalize_paste(self):
         self.assertEqual(att.normalize_paste(str(self.txt).replace(" ", "\\ ")), f'"{self.txt}" ')
         self.assertEqual(att.normalize_paste(f"{self.png} {self.bin}"), f"{self.png} {self.bin} ")
-        self.assertEqual(att.normalize_paste("hola mundo"), "hola mundo")
+        self.assertEqual(att.normalize_paste("hello world"), "hello world")
         self.assertEqual(att.normalize_paste(f"{self.png} y más"), f"{self.png} y más")
 
     def test_spans_cover_whole_token(self):
@@ -336,7 +336,7 @@ class AttachmentTests(unittest.TestCase):
 
     def test_labels_and_sizes(self):
         self.assertEqual(att.human_size(2048), "2.0 KB")
-        self.assertEqual(att.find(str(self.png))[0].label(), "img.png · imagen · 4 B")
+        self.assertEqual(att.find(str(self.png))[0].label(), "img.png · image · 4 B")
 
 
 class CoreAttachmentTests(unittest.TestCase):
@@ -361,17 +361,17 @@ class CoreAttachmentTests(unittest.TestCase):
         self.assertIn("multimodal", res["decision"]["weights"])
         row = next(r for r in res["decision"]["ranking"] if r["name"] == "antigravity")
         self.assertFalse(row["usable"])
-        self.assertIn("no abre archivos", row["why"])
+        self.assertIn("cannot open files", row["why"])
 
     def test_pinned_model_that_cannot_open_files_is_an_error(self):
         with self.assertRaises(ValueError):
-            core.ask("mirá", self.cfg, model="antigravity", attachments=att.find(str(self.png)))
+            core.ask("look at", self.cfg, model="antigravity", attachments=att.find(str(self.png)))
 
     def test_text_attachment_is_inlined_and_does_not_restrict_models(self):
-        plain = core.ask("resumí esto", self.cfg, model="antigravity")
-        with_file = core.ask("resumí esto", self.cfg, model="antigravity", attachments=att.find(str(self.txt)))
+        plain = core.ask("summarize this", self.cfg, model="antigravity")
+        with_file = core.ask("summarize this", self.cfg, model="antigravity", attachments=att.find(str(self.txt)))
         self.assertTrue(with_file["ok"])
-        n = lambda r: int(re.search(r"recibi (\d+)", r["output"]).group(1))
+        n = lambda r: int(re.search(r"received (\d+)", r["output"]).group(1))
         self.assertGreater(n(with_file), n(plain) + 900)
 
     def test_reference_block_lists_non_text_files(self):
@@ -391,23 +391,23 @@ class CoreAttachmentTests(unittest.TestCase):
         c.pinned = "claude"
         c.handle(str(self.png))
         text = "\n".join(out)
-        self.assertNotIn("No conozco", text)
-        self.assertIn("⎘ x.png · imagen", text)
+        self.assertNotIn("Unknown command", text)
+        self.assertIn("⎘ x.png · image", text)
         self.assertIn("claude", text)
 
     def test_chat_unknown_slash_is_still_a_command(self):
         out = []
         chat.Chat(read=lambda p: "", write=out.append).handle("/nada")
-        self.assertIn("No conozco /nada", "\n".join(out))
+        self.assertIn("Unknown command /nada", "\n".join(out))
 
 
-@unittest.skipUnless(hasattr(os, "fork") and sys.platform != "win32", "necesita pty")
+@unittest.skipUnless(hasattr(os, "fork") and sys.platform != "win32", "needs pty")
 class PtySmokeTests(unittest.TestCase):
-    """El editor real sobre un pseudo-terminal: teclas -> resultado devuelto por read()."""
+    """The real editor over a pseudo-terminal: keys -> result returned by read()."""
 
     def run_editor(self, steps, timeout=10):
         code = ("import sys; sys.path.insert(0, %r)\nfrom ia_router import editor as E\n"
-                "ed = E.LineEditor([E.Command('/help','ayuda')], color=False)\n"
+                "ed = E.LineEditor([E.Command('/help','help')], color=False)\n"
                 "try:\n    r = ed.read()\n    print('RESULT=' + repr(r))\nexcept EOFError:\n    print('EOF')\n") % str(ROOT)
         pid, fd = pty.fork()
         if pid == 0:
@@ -442,18 +442,18 @@ class PtySmokeTests(unittest.TestCase):
         return buf.decode(errors="replace")
 
     def test_type_edit_and_submit(self):
-        out = self.run_editor(["hola mundx", "\x7f", "o", "\r"])
-        self.assertIn("RESULT='hola mundo'", out)
+        out = self.run_editor(["hello worlx", "\x7f", "d", "\r"])
+        self.assertIn("RESULT='hello world'", out)
         self.assertIn("╭", out)
 
     def test_dragged_file_arrives_as_clean_path_and_multiline(self):
         with tempfile.TemporaryDirectory() as d:
-            f = Path(d) / "mi foto.png"
+            f = Path(d) / "my photo.png"
             f.write_bytes(b"\x89PNG")
             esc = str(f).replace(" ", "\\ ")
             out = self.run_editor(["\x1b[200~" + esc + "\x1b[201~", "qué es?", "\x1b\r", "otra", "\r"])
             self.assertIn(f"RESULT='\"{f}\" qué es?\\notra'", out)
-            self.assertIn("⎘ mi foto.png · imagen", out)
+            self.assertIn("⎘ my photo.png · image", out)
 
     def test_ctrl_d_on_empty_raises_eof(self):
         self.assertIn("EOF", self.run_editor(["\x04"]))

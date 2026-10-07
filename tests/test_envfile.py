@@ -13,22 +13,22 @@ class ParseTests(unittest.TestCase):
         text = """
 # comentario
 ARTIFICIAL_ANALYSIS_API_KEY=abc123
-export OTRA="con comillas"
-SIMPLE='comillas simples'
-CON_COMENTARIO=valor # esto se ignora
+export OTHER="with quotes"
+SIMPLE='single quotes'
+WITH_COMMENT=value # this is ignored
 VACIA=
-  ESPACIOS  =  recortado
-sin_igual
-1INVALIDA=x
-CON-GUION=x
+  SPACES  =  trimmed
+no_equals
+1INVALID=x
+WITH-DASH=x
 URL=https://x.io/a?b=c=d
 """
-        self.assertEqual(envfile.parse(text), {"ARTIFICIAL_ANALYSIS_API_KEY": "abc123", "OTRA": "con comillas", "SIMPLE": "comillas simples",
-                                               "CON_COMENTARIO": "valor", "ESPACIOS": "recortado", "URL": "https://x.io/a?b=c=d"})
+        self.assertEqual(envfile.parse(text), {"ARTIFICIAL_ANALYSIS_API_KEY": "abc123", "OTHER": "with quotes", "SIMPLE": "single quotes",
+                                               "WITH_COMMENT": "value", "SPACES": "trimmed", "URL": "https://x.io/a?b=c=d"})
 
     def test_empty_and_garbage(self):
         self.assertEqual(envfile.parse(""), {})
-        self.assertEqual(envfile.parse("# solo comentarios\n\n"), {})
+        self.assertEqual(envfile.parse("# comments only\n\n"), {})
 
 
 class LoadTests(unittest.TestCase):
@@ -49,11 +49,11 @@ class LoadTests(unittest.TestCase):
         return p
 
     def test_loads_into_the_environment_without_overriding(self):
-        os.environ["T_ENV_A"] = "del entorno"
-        added = envfile.load([self.write(".env", "T_ENV_A=del archivo\nT_ENV_B=nuevo\n")])
-        self.assertEqual(os.environ["T_ENV_A"], "del entorno")           # lo ya definido manda
-        self.assertEqual(os.environ["T_ENV_B"], "nuevo")
-        self.assertEqual(added, {"T_ENV_B": "nuevo"})
+        os.environ["T_ENV_A"] = "from the environment"
+        added = envfile.load([self.write(".env", "T_ENV_A=from the file\nT_ENV_B=new\n")])
+        self.assertEqual(os.environ["T_ENV_A"], "from the environment")           # what is already defined wins
+        self.assertEqual(os.environ["T_ENV_B"], "new")
+        self.assertEqual(added, {"T_ENV_B": "new"})
 
     def test_first_file_wins_and_missing_files_are_ignored(self):
         a, b = self.write("a.env", "T_ENV_C=primero\n"), self.write("b.env", "T_ENV_C=segundo\n")
@@ -62,13 +62,13 @@ class LoadTests(unittest.TestCase):
 
     def test_default_locations_are_the_repo_env_and_the_state_folder(self):
         from unittest import mock
-        repo, home = self.write("repo.env", "T_ENV_A=del repo\n"), Path(self.tmp.name) / "home"
+        repo, home = self.write("repo.env", "T_ENV_A=from the repo\n"), Path(self.tmp.name) / "home"
         home.mkdir()
-        (home / ".env").write_text("T_ENV_B=del estado\nT_ENV_A=ignorado\n")
+        (home / ".env").write_text("T_ENV_B=from the state\nT_ENV_A=ignored\n")
         os.environ["ROUTER_HOME"] = str(home)
         with mock.patch.object(envfile, "REPO_ENV", repo):
             envfile.load()
-        self.assertEqual((os.environ["T_ENV_A"], os.environ["T_ENV_B"]), ("del repo", "del estado"))
+        self.assertEqual((os.environ["T_ENV_A"], os.environ["T_ENV_B"]), ("from the repo", "from the state"))
 
     def test_the_cli_loads_the_env_file_before_anything_else(self):
         from unittest import mock
@@ -100,7 +100,7 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertIn(".env", (ROOT / ".gitignore").read_text().splitlines())
         example = (ROOT / ".env.example").read_text()
         self.assertIn("ARTIFICIAL_ANALYSIS_API_KEY=", example)
-        self.assertEqual(envfile.parse(example), {})                      # el ejemplo no trae ninguna clave: todas las variables vacías o comentadas
+        self.assertEqual(envfile.parse(example), {})                      # the example carries no key: all variables empty or commented out
         self.assertIn("artificialanalysis.ai", example)
 
     def test_the_real_env_file_is_not_tracked(self):

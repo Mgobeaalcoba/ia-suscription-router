@@ -37,7 +37,7 @@ class NameTests(unittest.TestCase):
             self.assertEqual(M.split_effort(name), exp, name)
 
     def test_real_artificial_analysis_names(self):
-        # nombres tal como los publica la API real de Artificial Analysis
+        # names as published by the real Artificial Analysis API
         cases = {"Claude Sonnet 5.5 (Max, Default Fallback)": ("claude-sonnet-5-5", "max"), "Claude Sonnet 5.5 (Medium, Default Fallback)": ("claude-sonnet-5-5", "medium"),
                  "GPT-6.1 Sol (Medium)": ("gpt-6-1-sol", "medium"), "GPT-6.1 Sol (Xhigh)": ("gpt-6-1-sol", "xhigh"), "Gemini 3.8 Flash (High)": ("gemini-3-8-flash", "high"),
                  "Claude Sonnet 5 (Max)": ("claude-sonnet-5", "max")}
@@ -49,8 +49,8 @@ class NameTests(unittest.TestCase):
         aa = [{"name": f"Claude Sonnet 5.5 ({e}, Default Fallback)", "slug": f"claude-sonnet-5-5-{e.lower()}", "tps": 100.0 + i, "evals": {}} for i, e in enumerate(["Max", "Xhigh", "High", "Medium", "Low"])]
         aa.append({"name": "Claude Sonnet 5 (Max)", "slug": "claude-sonnet-5", "tps": 0, "evals": {}})
         m = M.match_aa(aa, {"claude": "claude-sonnet-5-5"})
-        self.assertEqual(m["claude"]["slug"], "claude-sonnet-5-5-medium")        # sin esfuerzo conocido: el habitual
-        self.assertFalse(m["claude"]["exact"])                                     # y se marca aproximado
+        self.assertEqual(m["claude"]["slug"], "claude-sonnet-5-5-medium")        # no known effort: the usual one
+        self.assertFalse(m["claude"]["exact"])                                     # and it is marked approximate
         self.assertEqual(M.match_aa(aa, {"claude": "claude-sonnet-5.5-high"})["claude"]["slug"], "claude-sonnet-5-5-high")
 
     def test_versions_do_not_collide(self):
@@ -59,9 +59,9 @@ class NameTests(unittest.TestCase):
     def test_pick_variant(self):
         v = [("m-low", "low"), ("m-high", "high"), ("m-max", "max")]
         self.assertEqual(M.pick_variant(v, "high"), ("m-high", "high", True))
-        self.assertEqual(M.pick_variant(v, "xhigh"), ("m-high", "high", False))    # empate de cercanía: el de menor esfuerzo; marcada aproximada
+        self.assertEqual(M.pick_variant(v, "xhigh"), ("m-high", "high", False))    # tie in closeness: the one with the lower effort; marked approximate
         self.assertEqual(M.pick_variant(v, "none"), ("m-low", "low", False))
-        self.assertEqual(M.pick_variant(v, None)[:2], ("m-high", "high"))          # sin dato: el nivel más habitual
+        self.assertEqual(M.pick_variant(v, None)[:2], ("m-high", "high"))          # no data: the most usual level
         self.assertEqual(M.pick_variant([("m", None), ("m-high", "high")], None), ("m", None, True))
         self.assertIsNone(M.pick_variant([], "high"))
 
@@ -86,7 +86,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         _Handler.seen.append((self.path, self.headers.get("x-api-key")))
-        status, body = (429, b"slow down") if self.path.startswith("/limited") else (200, b'{"hola": "mundo"}') if self.path.startswith("/ok") else (401, b'{"error":"API key is required"}')
+        status, body = (429, b"slow down") if self.path.startswith("/limited") else (200, b'{"hello": "world"}') if self.path.startswith("/ok") else (401, b'{"error":"API key is required"}')
         self.send_response(status)
         self.end_headers()
         self.wfile.write(body)
@@ -109,7 +109,7 @@ class HttpTests(unittest.TestCase):
 
     def test_ok_and_header_sent(self):
         _Handler.seen.clear()
-        self.assertEqual(json.loads(M.http_get(self.base + "/ok", {"x-api-key": "SECRETO"})), {"hola": "mundo"})
+        self.assertEqual(json.loads(M.http_get(self.base + "/ok", {"x-api-key": "SECRETO"})), {"hello": "world"})
         self.assertEqual(_Handler.seen[-1][1], "SECRETO")
 
     def test_api_key_never_in_process_arguments(self):
@@ -130,7 +130,7 @@ class HttpTests(unittest.TestCase):
 
     def test_falls_back_to_urllib_without_curl(self):
         with mock.patch.object(M.subprocess, "run", side_effect=FileNotFoundError):
-            self.assertEqual(json.loads(M.http_get(self.base + "/ok")), {"hola": "mundo"})
+            self.assertEqual(json.loads(M.http_get(self.base + "/ok")), {"hello": "world"})
             with self.assertRaises(M.HttpError):
                 M.http_get(self.base + "/limited")
 
@@ -181,7 +181,7 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(waits.count(1.0), len(calls) - 1)
         self.assertIn("text/coding", out)
         row = next(r for r in out["text/coding"] if r[0] == "claude-sonnet-5.5-xhigh")
-        self.assertEqual((row[1], row[4], row[5], row[6]), (1520, 1000, 2, 10))   # rating, votos, precios
+        self.assertEqual((row[1], row[4], row[5], row[6]), (1520, 1000, 2, 10))   # rating, votes, prices
 
     def test_a_failing_page_is_reported_and_the_rest_continue(self):
         msgs = []
@@ -192,7 +192,7 @@ class FetchTests(unittest.TestCase):
 
     def test_empty_page_is_a_warning_not_a_crash(self):
         msgs = []
-        out = M.fetch_arena(get=F.fake_arena_get(F.sample_pages())[0], say=msgs.append, sleep=lambda s: None)   # search está vacío en el fixture
+        out = M.fetch_arena(get=F.fake_arena_get(F.sample_pages())[0], say=msgs.append, sleep=lambda s: None)   # search is empty in the fixture
         self.assertTrue(any("search" in m and "⚠" in m for m in msgs))
         self.assertNotIn("search/overall", out)
 
@@ -209,7 +209,7 @@ class FetchTests(unittest.TestCase):
         for html in ("<html>nada</html>", "<script>self.__next_f.push([1,\"{}\"])</script>", F.page_html([])):
             with self.assertRaises(ValueError) as cm:
                 M.parse_leaderboard(html)
-            self.assertIn("formato", str(cm.exception))
+            self.assertIn("format", str(cm.exception))
 
     def test_pages_cover_the_whole_category_map(self):
         pages = {(s, c): u for s, c, u in M.arena_pages()}
@@ -221,8 +221,8 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(pages[("webdev", "overall")], "https://arena.ai/leaderboard/code/webdev")
 
     def test_parses_escapes_and_unicode(self):
-        html = F.page_html([['modelo-ñ "x"', 1500.5, 1490, 1510, 10, None, None]])
-        self.assertEqual(M.parse_leaderboard(html)[0]["modelDisplayName"], 'modelo-ñ "x"')
+        html = F.page_html([['modèl-ñ "x"', 1500.5, 1490, 1510, 10, None, None]])
+        self.assertEqual(M.parse_leaderboard(html)[0]["modelDisplayName"], 'modèl-ñ "x"')
 
 
 class MatchTests(unittest.TestCase):
@@ -235,7 +235,7 @@ class MatchTests(unittest.TestCase):
         self.assertFalse(m["claude"]["exact"])
         self.assertEqual(m["antigravity"]["name"], "gemini-3.8-flash-high")
         self.assertTrue(m["antigravity"]["exact"])
-        self.assertEqual(m["codex"]["variants"]["text"]["name"], "gpt-6.1-sol-high")   # sin esfuerzo conocido: el nivel habitual
+        self.assertEqual(m["codex"]["variants"]["text"]["name"], "gpt-6.1-sol-high")   # no known effort: the usual level
         self.assertEqual(m["claude"]["ratings"]["text"]["coding"]["rating"], 1520)
         self.assertEqual(m["claude"]["published"], "2026-10-02")
 
@@ -266,8 +266,8 @@ class DimensionTests(unittest.TestCase):
     def test_precision_only_for_categories_everyone_covers(self):
         pv = M.precision_values(self.NAMES, self.arena(), {})
         self.assertIn("coding", pv)
-        self.assertNotIn("math", pv)         # claude no tiene math en Arena: ningún modelo lo usa
-        self.assertNotIn("research", pv)     # la página de búsqueda está vacía
+        self.assertNotIn("math", pv)         # claude has no math in Arena: no model uses it
+        self.assertNotIn("research", pv)     # the search page is empty
         self.assertTrue(pv["coding"]["claude"][1].startswith("Arena text/coding"))
         self.assertIn("webdev", pv["coding"]["claude"][1])
         self.assertLess(pv["coding"]["antigravity"][0], pv["coding"]["claude"][0])
@@ -285,12 +285,12 @@ class DimensionTests(unittest.TestCase):
         pv = M.precision_values(self.NAMES, {}, aa)
         self.assertEqual(pv["coding"]["codex"][0], 10.0)
         self.assertAlmostEqual(pv["coding"]["claude"][0], 9.09, places=2)
-        self.assertIn("math", pv)                                              # AA sí cubre math
+        self.assertIn("math", pv)                                              # AA does cover math
         both = M.precision_values(self.NAMES, self.arena(), aa)
         self.assertIn("Arena", both["coding"]["claude"][1])
         self.assertIn("AA coding_index", both["coding"]["claude"][1])
 
-    REAL = [  # forma de los datos reales de la API para estos modelos: faltan los índices de coding y math; hay otros benchmarks
+    REAL = [  # shape of the real API data for these models: the coding and math indexes are missing; there are other benchmarks
         {"name": "Claude Sonnet 5.5 (Medium, Default Fallback)", "slug": "c", "tps": 89.0, "evals": {"artificial_analysis_intelligence_index": 40.8, "hle": 0.398, "scicode": 0.529, "lcr": 0.763, "terminalbench_v4_0": 0.298}},
         {"name": "GPT-6.1 Sol (Medium)", "slug": "g", "tps": 49.0, "evals": {"artificial_analysis_intelligence_index": 47.8, "hle": 0.499, "scicode": 0.532, "lcr": 0.833, "terminalbench_v4_0": 0.48}},
         {"name": "Gemini 3.8 Flash (High)", "slug": "f", "tps": 238.0, "evals": {"artificial_analysis_intelligence_index": 40.9, "artificial_analysis_coding_index": 76.3, "hle": 0.478, "scicode": 0.566, "lcr": 0.813, "terminalbench_v4_0": 0.197}},
@@ -304,16 +304,16 @@ class DimensionTests(unittest.TestCase):
         self.assertIn("hle", pv["analysis"]["claude"][1])
         self.assertIn("scicode", pv["coding"]["claude"][1])
         self.assertIn("terminalbench_v4_0", pv["debugging"]["antigravity"][1])
-        self.assertNotIn("coding_index", pv["coding"]["claude"][1])           # solo gemini lo tiene: no cubre a todos
-        self.assertNotIn("math", pv)                                          # ningún benchmark de math cubre a los tres
-        self.assertLess(pv["debugging"]["antigravity"][0], pv["debugging"]["codex"][0] - 3)   # 0,197 vs 0,48 en terminal-bench
+        self.assertNotIn("coding_index", pv["coding"]["claude"][1])           # only gemini has it: it does not cover everyone
+        self.assertNotIn("math", pv)                                          # no math benchmark covers all three
+        self.assertLess(pv["debugging"]["antigravity"][0], pv["debugging"]["codex"][0] - 3)   # 0.197 vs 0.48 on terminal-bench
 
     def test_speed_relative_to_the_fastest_needs_everyone(self):
         aa = M.match_aa(F.aa_models(), F.IDS)
         sv = M.speed_values(self.NAMES, aa)
-        self.assertEqual(sv["antigravity"][0], 10.0)                       # 200 tok/s: el más rápido
-        self.assertAlmostEqual(sv["claude"][0], 7.36, places=2)             # 80 tok/s: 2,5× más lento = 1,32 duplicaciones
-        self.assertAlmostEqual(sv["codex"][0], 5.36, places=2)             # 40 tok/s: 5× más lento
+        self.assertEqual(sv["antigravity"][0], 10.0)                       # 200 tok/s: the fastest
+        self.assertAlmostEqual(sv["claude"][0], 7.36, places=2)             # 80 tok/s: 2.5× slower = 1.32 doublings
+        self.assertAlmostEqual(sv["codex"][0], 5.36, places=2)             # 40 tok/s: 5× slower
         aa.pop("codex")
         self.assertEqual(M.speed_values(self.NAMES, aa), {})
         self.assertEqual(M.speed_values(self.NAMES, {}), {})
@@ -322,11 +322,11 @@ class DimensionTests(unittest.TestCase):
         aa = M.match_aa(F.aa_models(), F.IDS)
         cv = M.cost_values(self.NAMES, self.arena(), aa)
         self.assertEqual(cv["antigravity"][0], 10.0)
-        self.assertEqual(cv["claude"][0], 6.0)                              # 4× más caro = 2 duplicaciones = −4 puntos
+        self.assertEqual(cv["claude"][0], 6.0)                              # 4× more expensive = 2 doublings = −4 points
         self.assertTrue(cv["claude"][1].startswith("AA $"))
         arena_only = M.cost_values(self.NAMES, self.arena(), {})
         self.assertTrue(arena_only["claude"][1].startswith("Arena $"))
-        self.assertEqual(M.cost_values(self.NAMES, self.arena(no_price=("gpt-6.1-sol-high", "gpt-6.1-sol-max")), {}), {})   # Arena no publica el precio de codex
+        self.assertEqual(M.cost_values(self.NAMES, self.arena(no_price=("gpt-6.1-sol-high", "gpt-6.1-sol-max")), {}), {})   # Arena does not publish codex's price
 
 
 class LogScaleTests(unittest.TestCase):
@@ -335,10 +335,10 @@ class LogScaleTests(unittest.TestCase):
         self.assertEqual(M._log_value(2), 8.0)
         self.assertEqual(M._log_value(4), 6.0)
         self.assertEqual(M._log_value(1000), 0.0)
-        self.assertEqual(M._log_value(0.5), 10.0)                           # nunca por encima de 10
+        self.assertEqual(M._log_value(0.5), 10.0)                           # never above 10
 
     def test_a_big_price_gap_cannot_beat_a_real_precision_gap_under_precision_priority(self):
-        # el defecto que corrige la escala logarítmica: con la proporcional, 4× de precio valía 7,5 puntos
+        # the defect the logarithmic scale fixes: with the proportional one, 4× the price was worth 7.5 points
         self.assertGreater(M._log_value(4), 5)
 
 
@@ -347,49 +347,49 @@ class ActiveDataTests(Home):
         real = json.loads((ROOT / "ia_router" / "data" / "arena.json").read_text(encoding="utf-8"))
         self.assertRegex(real["fetched_at"], r"^\d{4}-\d{2}-\d{2}T")
         for sub, cat, _ in M.arena_pages():
-            self.assertTrue(real["pages"].get(f"{sub}/{cat}"), f"falta {sub}/{cat} en la foto incluida")
+            self.assertTrue(real["pages"].get(f"{sub}/{cat}"), f"{sub}/{cat} is missing from the bundled snapshot")
         self.assertIn("CC BY 4.0", real["attribution"])
         self.assertGreaterEqual(len(real["pages"]["text/overall"][0]), 7)
 
     def test_without_cache_the_bundled_snapshot_rules(self):
         d = M.active()
         self.assertEqual(d["arena_at"], "2026-10-02T00:00:00")
-        self.assertEqual(d["arena_origin"], "incluida en esta versión")
+        self.assertEqual(d["arena_origin"], "bundled with this version")
         self.assertIsNone(d["aa"])
 
     def test_a_newer_cache_wins_and_an_older_one_loses(self):
         M.save_cache({"pages": {"text/overall": [["m", 1, 1, 1, 1, None, None]]}, "arena_at": "2026-10-09T00:00:00"})
-        self.assertEqual(M.active()["arena_origin"], "actualizada en tu máquina")
+        self.assertEqual(M.active()["arena_origin"], "updated on your machine")
         M.save_cache({"pages": {"text/overall": [["m", 1, 1, 1, 1, None, None]]}, "arena_at": "2026-01-01T00:00:00"})
-        self.assertEqual(M.active()["arena_origin"], "incluida en esta versión")
+        self.assertEqual(M.active()["arena_origin"], "bundled with this version")
 
     def test_a_legacy_metrics_file_is_ignored_and_replaced_cleanly(self):
         M.cache_path().write_text(json.dumps({"models": {"claude": {"categories": {}}}, "pages": {"text/overall": [["m", 1, 1, 1, 1, None, None]]}, "arena_at": "2026-10-09T00:00:00"}))
-        self.assertEqual(set(M.load_cache()), {"pages", "arena_at"})          # "models" (formato viejo) no pasa
+        self.assertEqual(set(M.load_cache()), {"pages", "arena_at"})          # "models" (old format) does not pass
         M.cache_path().write_text(json.dumps({"models": {"claude": {}}}))
         self.assertEqual(M.load_cache(), {})
-        self.assertEqual(M.active()["arena_origin"], "incluida en esta versión")
+        self.assertEqual(M.active()["arena_origin"], "bundled with this version")
         M.refresh(self.cfg, lambda s: None, F.fake_arena_get(F.sample_pages())[0], sleep=lambda s: None)
         self.assertNotIn("models", json.loads(M.cache_path().read_text()))
 
     def test_missing_snapshot_does_not_crash(self):
         self.snap.unlink()
         self.assertEqual(M.active()["pages"], {})
-        self.assertEqual(M.status_line(), "sin métricas")
+        self.assertEqual(M.status_line(), "no metrics")
 
     def test_staleness_and_status_line(self):
         recent = {"arena_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "pages": {"a": []}}
         self.assertFalse(M.is_stale(recent))
         self.assertTrue(M.is_stale({"arena_at": "2020-01-01T00:00:00"}))
         self.assertTrue(M.is_stale({}))
-        self.assertIn("Arena 2026-10-02 (incluida)", M.status_line())
+        self.assertIn("Arena 2026-10-02 (bundled)", M.status_line())
         with_aa = dict(M.active(), aa=[{}], aa_at="2026-10-03T00:00:00")
         self.assertIn("Artificial Analysis 2026-10-03", M.status_line(with_aa))
 
     def test_known_ids_come_from_seen_then_the_log(self):
         self.assertEqual(M.known_model_ids(["claude"]), {"claude": None})
         state.remember_model_id("claude", "claude-sonnet-5-5")
-        state.remember_model_id("codex", None)                         # no se guarda lo vacío
+        state.remember_model_id("codex", None)                         # empty values are not saved
         (Path(self.tmp.name) / "log.jsonl").write_text(json.dumps({"model": "x", "model_id": "m-9"}) + "\n")
         self.assertEqual(M.known_model_ids(["claude", "codex", "x"]), {"claude": "claude-sonnet-5-5", "codex": None, "x": "m-9"})
         self.assertEqual(state.seen_ids(), {"claude": "claude-sonnet-5-5"})
@@ -411,7 +411,7 @@ class RefreshTests(Home):
         c = M.refresh(self.cfg, out.append, self.get[0], sleep=lambda s: None)
         self.assertIn("text/coding", c["pages"])
         self.assertTrue(any("arena.ai" in m for m in out))
-        self.assertEqual(M.active()["arena_origin"], "actualizada en tu máquina")
+        self.assertEqual(M.active()["arena_origin"], "updated on your machine")
         self.assertTrue(M.cache_path().exists())
 
     def test_fresh_data_is_not_requested_again_unless_forced(self):
@@ -420,7 +420,7 @@ class RefreshTests(Home):
         n = len(self.get[1])
         again = M.refresh(self.cfg, out.append, self.get[0], sleep=lambda s: None)
         self.assertEqual(len(self.get[1]), n)
-        self.assertIn("no vuelvo a consultar", out[-1])
+        self.assertIn("not querying again", out[-1])
         self.assertTrue(again["pages"])
         M.refresh(self.cfg, out.append, self.get[0], force=True, sleep=lambda s: None)
         self.assertGreater(len(self.get[1]), n)
@@ -428,7 +428,7 @@ class RefreshTests(Home):
     def test_without_aa_key_it_says_so(self):
         out = []
         M.refresh(self.cfg, out.append, self.get[0], sleep=lambda s: None)
-        self.assertTrue(any("sin clave" in m and ".env.example" in m for m in out))
+        self.assertTrue(any("no key" in m and ".env.example" in m for m in out))
         self.assertIsNone(M.load_cache().get("aa"))
 
     def test_with_aa_key_it_adds_speed_and_price_data(self):
@@ -453,7 +453,7 @@ class RefreshTests(Home):
         M.refresh(self.cfg, lambda s: None, self.get[0], sleep=lambda s: None)
         n = len(self.get[1])
         def get(url, headers=None, timeout=None):
-            assert "artificialanalysis" in url, "no debía volver a pedir Arena"
+            assert "artificialanalysis" in url, "should not have requested Arena again"
             return F.aa_api_payload()
         M.refresh(self.cfg, lambda s: None, get, key="K", sleep=lambda s: None)
         self.assertEqual(len(self.get[1]), n)
@@ -466,12 +466,12 @@ class RefreshTests(Home):
             return self.get[0](url, headers, timeout)
         out = []
         M.refresh(self.cfg, out.append, get, key="MALA", sleep=lambda s: None)
-        self.assertTrue(any("no se pudo consultar" in m for m in out))
+        self.assertTrue(any("could not be queried" in m for m in out))
         self.assertTrue(M.load_cache()["pages"])
 
     def test_unexpected_aa_payload_is_reported(self):
         with self.assertRaises(ValueError):
-            M.fetch_aa("K", lambda url, headers=None, timeout=None: json.dumps({"hola": 1}), sleep=lambda s: None)
+            M.fetch_aa("K", lambda url, headers=None, timeout=None: json.dumps({"hello": 1}), sleep=lambda s: None)
 
     def test_total_failure_raises_and_keeps_the_previous_data(self):
         M.save_cache({"pages": {"text/overall": [["m", 1, 1, 1, 1, None, None]]}, "arena_at": "2020-01-01T00:00:00"})

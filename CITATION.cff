@@ -1,13 +1,13 @@
 cff-version: 1.2.0
-message: "Si usás ia-router en tu trabajo, citalo así."
+message: "If you use ia-router in your work, please cite it as below."
 title: "ia-router"
-abstract: "Router que reparte tareas entre los CLIs oficiales de IA (claude, codex, agy) con métricas objetivas de Arena y Artificial Analysis."
+abstract: "Router that splits tasks across the official AI CLIs (claude, codex, agy) using objective metrics from Arena and Artificial Analysis."
 type: software
 authors:
   - alias: "Mgobeaalcoba"
     website: "https://github.com/Mgobeaalcoba"
-version: "0.2.1"
-date-released: "2026-10-05"
+version: "0.3.0"
+date-released: "2026-10-07"
 license: Apache-2.0
 url: "https://www.mgatc.com/recursos/ia-router/"
 repository-code: "https://github.com/Mgobeaalcoba/ia-suscription-router"

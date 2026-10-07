@@ -1,7 +1,7 @@
-"""Lector mínimo de archivos `.env` (sin dependencias): líneas CLAVE=valor, comentarios con #, comillas opcionales.
+"""Minimal `.env` file reader (no dependencies): KEY=value lines, comments with #, optional quotes.
 
-Nunca pisa una variable que ya esté definida en el entorno. Se busca `.env` en la carpeta del repo y en ~/.ia-router/.
-El `.env` real está en .gitignore: nunca se versiona; lo que se versiona es `.env.example`.
+It never overrides a variable that is already defined in the environment. `.env` is looked up in the repo folder and in ~/.ia-router/.
+The real `.env` is in .gitignore: it is never versioned; what is versioned is `.env.example`.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def parse(text: str) -> Dict[str, str]:
 
 
 def load(paths: Optional[Iterable[Path]] = None) -> Dict[str, str]:
-    """Carga los .env en os.environ (sin pisar lo ya definido). Devuelve lo que agregó."""
+    """Loads the .env files into os.environ (without overriding what is already defined). Returns what it added."""
     added: Dict[str, str] = {}
     for p in paths if paths is not None else (REPO_ENV, state.home() / ".env"):
         try:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Regenera la foto de Arena que viene incluida en el software (ia_router/data/arena.json). Es para quien MANTIENE el repo:
-correlo antes de publicar una versión. Los usuarios actualizan sus métricas con `python3 cli.py metrics refresh`.
+"""Regenerates the Arena snapshot bundled with the software (ia_router/data/arena.json). It is for whoever MAINTAINS the repo:
+run it before publishing a version. Users update their metrics with `python3 cli.py metrics refresh`.
 
-Lee las páginas públicas de arena.ai (~11 pedidos, alrededor de un minuto). Los datos de Arena son CC BY 4.0: se conserva la atribución.
+It reads the public arena.ai pages (~11 requests, about a minute). Arena data is CC BY 4.0: attribution is kept.
 """
 import json
 import sys
@@ -18,13 +18,13 @@ from ia_router import metrics  # noqa: E402
 def main() -> int:
     pages = metrics.fetch_arena(say=print)
     if len(pages) < len(metrics.arena_pages()):
-        print("Faltaron páginas: no se actualiza la foto incluida.", file=sys.stderr)
+        print("Some pages are missing: the bundled snapshot is not updated.", file=sys.stderr)
         return 1
     data = {"fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "source": "https://arena.ai/leaderboard",
             "attribution": metrics.ATTRIBUTION["arena"], "pages": pages}
     metrics.SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
     metrics.SNAPSHOT.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"Escribí {metrics.SNAPSHOT} ({metrics.SNAPSHOT.stat().st_size // 1024} KB, {sum(len(v) for v in pages.values())} filas)")
+    print(f"Wrote {metrics.SNAPSHOT} ({metrics.SNAPSHOT.stat().st_size // 1024} KB, {sum(len(v) for v in pages.values())} rows)")
     return 0
 
 

@@ -15,7 +15,7 @@ NAMES = ["claude", "codex", "antigravity"]
 
 
 class Home(unittest.TestCase):
-    """Estado aislado, la foto de Arena de juguete en lugar de la real, y (opcional) los ids de los modelos ya aprendidos."""
+    """Isolated state, the toy Arena snapshot instead of the real one, and (optionally) the ids of the already learned models."""
     learn_ids = True
 
     def setUp(self):
@@ -54,8 +54,8 @@ class WeightTests(unittest.TestCase):
         self.assertGreater(S.QUICK_WEIGHTS["speed"], S.DEFAULT_WEIGHTS["speed"])
         p = {"priorities": {"coding": "speed", "quick": "precision"}}
         self.assertEqual(S.weights_for(p, "coding"), S.PRESETS["speed"])
-        self.assertEqual(S.weights_for(p, "debugging"), S.PRESETS["speed"])          # mismo grupo
-        self.assertEqual(S.weights_for(p, "writing"), S.DEFAULT_WEIGHTS)             # sin respuesta: por defecto
+        self.assertEqual(S.weights_for(p, "debugging"), S.PRESETS["speed"])          # same group
+        self.assertEqual(S.weights_for(p, "writing"), S.DEFAULT_WEIGHTS)             # no answer: default
         self.assertEqual(S.weights_for(p, "quick"), S.PRESETS["precision"])
         self.assertEqual(S.group_of("research"), "analysis")
         self.assertIsNone(S.group_of("multimodal"))
@@ -85,21 +85,21 @@ class BuildTests(Home):
         self.assertFalse(cfg.get("_scored"))
         self.assertEqual(cfg["models"], json.loads((ROOT / "ia_router" / "data" / "models.json").read_text())["models"])
         self.assertEqual(S.build(cfg)["missing_ids"], NAMES)
-        self.assertIn("Todavía no hay métricas", S.render_table(cfg))
+        self.assertIn("There are no metrics covering your models yet", S.render_table(cfg))
 
     def test_with_ids_the_scores_come_from_the_metrics(self):
         cfg = core.load_config()
         self.assertTrue(cfg["_scored"])
         d = cfg["models"]["claude"]["_scoring"]["coding"]
-        self.assertEqual(d["basis"], "métricas")
+        self.assertEqual(d["basis"], "metrics")
         self.assertTrue(d["srcs"]["precision"].startswith("Arena text/coding"))
         self.assertEqual(cfg["models"]["claude"]["strengths"]["coding"], d["score"])
-        self.assertEqual(cfg["models"]["claude"]["_prior_strengths"]["coding"], 9)    # la estimación a mano queda guardada
-        self.assertEqual(cfg["models"]["claude"]["_scoring"]["math"]["basis"], "estimado")   # Arena no cubre math para claude
+        self.assertEqual(cfg["models"]["claude"]["_prior_strengths"]["coding"], 9)    # the hand estimate is kept
+        self.assertEqual(cfg["models"]["claude"]["_scoring"]["math"]["basis"], "estimated")   # Arena does not cover math for claude
 
     def test_dimensions_without_data_do_not_weigh(self):
         b = S.build(self.cfg)
-        self.assertEqual(b["available"], {"speed": False, "cost": True})          # los precios de Arena cubren a todos; la velocidad no
+        self.assertEqual(b["available"], {"speed": False, "cost": True})          # Arena's prices cover everyone; speed does not
         d = b["table"]["claude"]["coding"]
         self.assertIsNone(d["values"]["speed"])
         self.assertAlmostEqual(sum(d["weights"].values()), 1.0, places=2)
@@ -125,16 +125,16 @@ class BuildTests(Home):
         self.with_aa()
         S.save_profile({"priorities": {"coding": "precision"}})
         cfg = core.load_config()
-        self.assertEqual(self.best("coding", cfg), "claude")                   # el más preciso (aunque no sea el más rápido ni el más barato)
+        self.assertEqual(self.best("coding", cfg), "claude")                   # the most accurate (even if it is not the fastest or the cheapest)
         for choice in ("speed", "cost"):
             S.save_profile({"priorities": {"coding": choice}})
-            self.assertEqual(self.best("coding", core.load_config()), "antigravity", choice)   # el más rápido y el más barato
+            self.assertEqual(self.best("coding", core.load_config()), "antigravity", choice)   # the fastest and the cheapest
         S.save_profile({"priorities": {"coding": "precision"}})
         self.assertEqual(self.best("writing", core.load_config()), self.best("writing", core.load_config(apply_scoring=True)))
         S.save_profile({})
         default_writing = self.best("writing", core.load_config())
         S.save_profile({"priorities": {"coding": "speed"}})
-        self.assertEqual(self.best("writing", core.load_config()), default_writing)   # otra categoría: intacta
+        self.assertEqual(self.best("writing", core.load_config()), default_writing)   # another category: untouched
 
     def test_precision_priority_picks_the_most_precise_even_when_another_is_cheaper_and_faster(self):
         self.with_aa()
@@ -144,16 +144,16 @@ class BuildTests(Home):
             d = {n: cfg["models"][n]["_scoring"][cat] for n in NAMES}
             top = max(d[n]["values"]["precision"] for n in NAMES)
             winner = self.best(cat, cfg)
-            self.assertNotEqual(winner, "antigravity", cat)                       # es el más rápido y el más barato, pero claramente menos preciso…
+            self.assertNotEqual(winner, "antigravity", cat)                       # it is the fastest and the cheapest, but clearly less accurate…
             self.assertGreater(d["antigravity"]["values"]["speed"], d[winner]["values"]["speed"])
             self.assertGreater(d["antigravity"]["values"]["cost"], d[winner]["values"]["cost"])
-            self.assertGreater(top - d["antigravity"]["values"]["precision"], 1.0)  # …(más de 1 punto de diferencia)
-            self.assertGreaterEqual(d[winner]["values"]["precision"], top - 0.5, cat)   # y el ganador está entre los más precisos
+            self.assertGreater(top - d["antigravity"]["values"]["precision"], 1.0)  # …(more than 1 point of difference)
+            self.assertGreaterEqual(d[winner]["values"]["precision"], top - 0.5, cat)   # and the winner is among the most accurate
 
     def test_router_uses_the_scores(self):
         self.with_aa()
         S.save_profile({"priorities": {"coding": "speed"}})
-        d = core.route("Arreglá este bug en mi función Python", core.load_config())
+        d = core.route("Fix this bug in my Python function", core.load_config())
         self.assertEqual(d["chosen"], "antigravity")
         self.assertTrue(d["metrics"])
 
@@ -182,44 +182,44 @@ class PresentationTests(Home):
         self.assertIn("coding", table.splitlines()[2] + table)
         self.assertRegex(table, r"coding\s+[\d.]+\*?\s")
         self.assertRegex(table, r"math\s+.*e")
-        self.assertIn("velocidad: falta tu clave de Artificial Analysis (.env)", table)
-        self.assertIn("Atribución: Arena", table)
-        self.assertIn("Dimensiones con datos: precisión, costo", table)
+        self.assertIn("speed: your Artificial Analysis key is missing (.env)", table)
+        self.assertIn("Attribution: Arena", table)
+        self.assertIn("Dimensions with data: accuracy, cost", table)
 
     def test_table_with_aa_mentions_speed_and_attribution(self):
         self.with_aa()
         table = S.render_table(core.load_config())
-        self.assertIn("precisión, velocidad, costo", table)
-        self.assertNotIn("falta tu clave", table)
+        self.assertIn("accuracy, speed, cost", table)
+        self.assertNotIn("key is missing", table)
         self.assertIn("Artificial Analysis (artificialanalysis.ai)", table)
 
     def test_explain_shows_weights_and_sources(self):
         self.with_aa()
         text = S.explain(core.load_config(), "coding")
-        self.assertIn("Σ peso × valor", text)
-        self.assertIn("velocidad", text)
+        self.assertIn("Σ weight × value", text)
+        self.assertIn("speed", text)
         self.assertIn("AA", text)
-        self.assertIn("Sin desglose", S.explain(core.load_config(), "inexistente"))
+        self.assertIn("No breakdown", S.explain(core.load_config(), "inexistente"))
 
     def test_describe_sources(self):
         text = S.describe_sources(core.load_config())
         self.assertIn("claude-sonnet-5-5", text)
         self.assertIn("claude-sonnet-5.5-xhigh", text)
-        self.assertIn("⚠", text)                                   # variante de esfuerzo aproximada
+        self.assertIn("⚠", text)                                   # approximate effort variant
         self.assertIn("gemini-3.8-flash-high", text)
-        self.assertIn("Artificial Analysis no está activo", text)
-        self.assertNotIn("⚠ aproximado: tu CLI", text)
+        self.assertIn("Artificial Analysis is not active", text)
+        self.assertNotIn("⚠ approximate: your CLI", text)
         self.assertIn("CC BY 4.0", text)
         self.with_aa()
         active = S.describe_sources(core.load_config())
-        self.assertNotIn("no está activo", active)
+        self.assertNotIn("is not active", active)
         self.assertIn("Artificial Analysis → Claude Sonnet 5.5", active)
-        self.assertIn("⚠ aproximado: tu CLI no informa su nivel de esfuerzo", active)    # claude y codex no informan esfuerzo; gemini sí
+        self.assertIn("⚠ approximate: your CLI does not report its effort level", active)    # claude and codex do not report effort; gemini does
 
     def test_describe_sources_reports_unknown_models(self):
         os.remove(Path(self.tmp.name) / "models_seen.json")
         M._memo.clear()
-        self.assertIn("desconocido", S.describe_sources(core.load_config(apply_scoring=False)))
+        self.assertIn("unknown", S.describe_sources(core.load_config(apply_scoring=False)))
 
 
 class DiffTests(unittest.TestCase):
@@ -231,7 +231,7 @@ class DiffTests(unittest.TestCase):
         new = self.table(claude={"coding": 9.9, "writing": 9.1}, codex={"coding": 9.4, "writing": 8.0})
         out = S.diff_tables(old, new)
         self.assertEqual(len(out), 1)
-        self.assertIn("coding: ahora elige claude (antes codex)", out[0])
+        self.assertIn("coding: now picks claude (was codex)", out[0])
         self.assertIn("claude 9.0→9.9", out[0])
 
     def test_reports_big_moves_without_a_new_winner(self):
@@ -248,35 +248,35 @@ class DiffTests(unittest.TestCase):
 class RefreshReportTests(Home):
     def new_data(self):
         pages = F.sample_pages()
-        for key in ("text/coding", "text/overall"):   # el ranking de código se da vuelta
+        for key in ("text/coding", "text/overall"):   # the code ranking flips
             pages[key] = [[r[0], 1000 + (2000 - r[1]), r[2], r[3], r[4], r[5], r[6]] if r[0].startswith("gpt") else r for r in pages[key]]
         return pages
 
     def fake_refresh(self, cfg, say=print, get=None, key=None, force=False, sleep=None):
         M.save_cache({"pages": self.new_data(), "arena_at": "2026-10-09T00:00:00"})
-        say("Leyendo los leaderboards de arena.ai…")
+        say("Reading the arena.ai leaderboards…")
 
     def test_report_shows_each_step_and_what_changed(self):
         out = []
         with mock.patch.object(M, "refresh", self.fake_refresh):
             self.assertTrue(S.refresh_and_report(self.cfg, out.append))
         text = "\n".join(out)
-        self.assertIn("Leyendo los leaderboards", text)
-        self.assertIn("Métricas al día: Arena 2026-10-09 (actualizada)", text)
-        self.assertIn("Qué cambió en el ruteo", text)
-        self.assertIn("ahora elige", text)
+        self.assertIn("Reading the arena.ai leaderboards", text)
+        self.assertIn("Metrics up to date: Arena 2026-10-09 (updated)", text)
+        self.assertIn("What changed in the routing", text)
+        self.assertIn("now picks", text)
 
     def test_report_says_when_nothing_changes(self):
         out = []
         with mock.patch.object(M, "refresh", lambda *a, **k: None):
             S.refresh_and_report(self.cfg, out.append)
-        self.assertIn("El ruteo no cambia con estos datos.", "\n".join(out))
+        self.assertIn("The routing does not change with this data.", "\n".join(out))
 
     def test_failure_keeps_the_previous_metrics_and_says_so(self):
         out = []
         with mock.patch.object(M, "refresh", side_effect=OSError("sin red")):
             self.assertFalse(S.refresh_and_report(self.cfg, out.append))
-        self.assertIn("Sigo con las que tenías", out[-1])
+        self.assertIn("Continuing with the ones you had", out[-1])
         self.assertIn("sin red", out[-1])
 
     def test_no_diff_without_known_model_ids(self):
@@ -290,7 +290,7 @@ class RefreshReportTests(Home):
         out = []
         get = F.fake_arena_get(self.new_data())[0]
         self.assertTrue(S.refresh_and_report(self.cfg, out.append, get=get, sleep=lambda s: None))
-        self.assertEqual(M.active()["arena_origin"], "actualizada en tu máquina")
+        self.assertEqual(M.active()["arena_origin"], "updated on your machine")
 
 
 class PrioritiesTests(Home):
@@ -308,23 +308,23 @@ class PrioritiesTests(Home):
 
     def test_full_flow_saves_the_answers(self):
         self.with_aa()
-        choose, calls = self.scripted([2, 0, 3, 1, 0, 0])      # código→velocidad, escritura→precisión, análisis→costo, mate→equilibrado, rápidas→precisión, guardar
+        choose, calls = self.scripted([2, 0, 3, 1, 0, 0])      # code→speed, writing→accuracy, analysis→cost, math→balanced, quick→accuracy, save
         out = []
         p = priorities.run(core.load_config(apply_scoring=False), choose, out.append, color=False)
         self.assertEqual(p["priorities"], {"coding": "speed", "writing": "precision", "analysis": "cost", "math": "balanced", "quick": "precision"})
         self.assertEqual(S.load_profile()["priorities"], p["priorities"])
         self.assertEqual([c["step"] for c in calls], ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6"])
-        self.assertEqual(calls[0]["labels"], ["Precisión", "Equilibrado", "Velocidad", "Costo"])
-        self.assertIn("Así queda el ruteo", "\n".join(out))
-        self.assertIn("Guardado", out[-1])
-        self.assertEqual(self.best("coding"), "antigravity")   # el cambio rige de inmediato
+        self.assertEqual(calls[0]["labels"], ["Accuracy", "Balanced", "Speed", "Cost"])
+        self.assertIn("This is the routing", "\n".join(out))
+        self.assertIn("Saved", out[-1])
+        self.assertEqual(self.best("coding"), "antigravity")   # the change takes effect immediately
 
     def test_speed_is_not_offered_without_data_and_the_reason_is_shown(self):
         choose, calls = self.scripted([None])
         priorities.run(self.cfg, choose, lambda s: None, color=False)
-        self.assertNotIn("Velocidad", calls[0]["labels"])
-        self.assertIn("Costo", calls[0]["labels"])            # los precios de Arena sí cubren a todos
-        self.assertIn("falta tu clave de Artificial Analysis", calls[0]["subtitle"])
+        self.assertNotIn("Speed", calls[0]["labels"])
+        self.assertIn("Cost", calls[0]["labels"])            # Arena's prices do cover everyone
+        self.assertIn("your Artificial Analysis key is missing", calls[0]["subtitle"])
 
     def test_both_missing_reasons_are_shown(self):
         self.with_aa()
@@ -333,9 +333,9 @@ class PrioritiesTests(Home):
         M._memo.clear()
         choose, calls = self.scripted([None])
         priorities.run(self.cfg, choose, lambda s: None, color=False)
-        self.assertIn("ningún portal publica el precio", calls[0]["subtitle"])
-        self.assertIn("Velocidad", calls[0]["labels"])
-        self.assertNotIn("Costo", calls[0]["labels"])
+        self.assertIn("no portal publishes the price", calls[0]["subtitle"])
+        self.assertIn("Speed", calls[0]["labels"])
+        self.assertNotIn("Cost", calls[0]["labels"])
 
     def test_with_only_precision_there_is_nothing_to_ask_and_it_says_why(self):
         self.snap.write_text(json.dumps(F.snapshot(no_price=("gpt-6.1-sol-high", "gpt-6.1-sol-max"))))
@@ -344,7 +344,7 @@ class PrioritiesTests(Home):
         choose = mock.Mock()
         self.assertIsNone(priorities.run(self.cfg, choose, out.append, color=False))
         choose.assert_not_called()
-        self.assertIn("nada que priorizar", "\n".join(out))
+        self.assertIn("nothing to prioritize", "\n".join(out))
         self.assertIn(".env.example", "\n".join(out))
         self.assertFalse(S.profile_path().exists())
 
@@ -354,14 +354,14 @@ class PrioritiesTests(Home):
         self.assertEqual(S.load_profile(), {})
         choose, calls = self.scripted([0, 0, 0, 0, 0, 1])
         self.assertIsNone(priorities.run(self.cfg, choose, lambda s: None, color=False))
-        self.assertEqual(calls[-1]["labels"], ["Guardar", "Descartar"])
+        self.assertEqual(calls[-1]["labels"], ["Save", "Discard"])
         self.assertFalse(S.profile_path().exists())
 
     def test_previous_answers_are_preselected(self):
         S.save_profile({"priorities": {"coding": "cost", "writing": "balanced"}})
         choose, calls = self.scripted([None])
         priorities.run(self.cfg, choose, lambda s: None, color=False)
-        self.assertEqual(calls[0]["default"], calls[0]["labels"].index("Costo"))
+        self.assertEqual(calls[0]["default"], calls[0]["labels"].index("Cost"))
         choose, calls = self.scripted([0, None])
         priorities.run(self.cfg, choose, lambda s: None, color=False)
         self.assertEqual(calls[1]["default"], 1)

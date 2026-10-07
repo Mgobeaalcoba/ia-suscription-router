@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Genera capturas PNG de la terminal (para el sitio y el README) a partir de la salida REAL de ia-router: el encabezado, el cuadro de
-entrada, el puntaje, el ruteo y las preguntas de prioridades. Convierte los códigos ANSI a HTML y usa Chrome headless para renderizar
-con fuentes reales. Solo para mantenedores; no es parte del paquete.
+"""Generates PNG screenshots of the terminal (for the site and the README) from the REAL output of ia-router: the header, the input
+box, the scores, the routing and the priority questions. It converts ANSI codes to HTML and uses headless Chrome to render
+with real fonts. For maintainers only; it is not part of the package.
 
-    python3 tools/render_screenshots.py [carpeta_de_salida]      (por defecto docs/img)
+    python3 tools/render_screenshots.py [output_folder]      (default docs/img)
 
-Usa tu estado real (~/.ia-router): las capturas muestran tus modelos y las métricas que tengas. No gasta cuota.
+It uses your real state (~/.ia-router): the screenshots show your models and whatever metrics you have. It spends no quota.
 """
 import html
 import os
@@ -40,7 +40,7 @@ def xterm256(n: int) -> str:
 
 
 def ansi_to_html(text: str) -> str:
-    """Una línea (o varias) con códigos SGR -> HTML con <span style>. Ignora hipervínculos OSC 8."""
+    """One line (or several) with SGR codes -> HTML with <span style>. Ignores OSC 8 hyperlinks."""
     text = OSC.sub("", text)
     out, pos = [], 0
     st = {"fg": None, "bg": None, "b": False, "d": False, "i": False, "u": False, "s": False}
@@ -118,7 +118,7 @@ pre{margin:0;padding:18px 22px 22px;color:#c9d1d9;font:15px/1.38 "SF Mono",Menlo
 
 
 def wrap_lines(lines, cols):
-    """Parte las líneas de texto plano que exceden el ancho (las que traen códigos ANSI se dejan: son cajas ya medidas)."""
+    """Splits the plain-text lines that exceed the width (the ones with ANSI codes are left alone: they are already measured boxes)."""
     import textwrap
     out = []
     for l in lines:
@@ -129,7 +129,7 @@ def wrap_lines(lines, cols):
 def shot(lines, out: Path, title: str, cols: int = 100) -> None:
     lines = wrap_lines(lines, cols)
     body = "\n".join(ansi_to_html(l) for l in lines)
-    char_w = 9.0   # ancho de celda de SF Mono 15px
+    char_w = 9.0   # cell width of SF Mono 15px
     w = int(cols * char_w + 44)
     h = int(len(lines) * 15 * 1.38 + 36 + 18 + 22 + 56)
     with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as f:
@@ -154,25 +154,25 @@ def main() -> int:
     ok = {n: adapters.is_available(n, cfg["models"][n]) for n in names}
     COLS = 100
 
-    # 1) encabezado + cuadro de entrada
-    head = banner.render(__version__, metrics.status_line(), names, ok, "~/proyectos/mi-app", color=True, width=COLS).split("\n")
+    # 1) header + input box
+    head = banner.render(__version__, metrics.status_line(), names, ok, "~/projects/my-app", color=True, width=COLS).split("\n")
     st = editor.State(commands=[], cwd=None)
-    frame = editor.render_frame(st, COLS, 40, "auto", "métricas " + (metrics.active().get("arena_at") or "?")[:10], True).lines
+    frame = editor.render_frame(st, COLS, 40, "auto", "metrics " + (metrics.active().get("arena_at") or "?")[:10], True).lines
     shot(head + frame, out / "ia-router-header.png", "ia-router", COLS)
 
-    # 2) puntaje con precisión, velocidad y costo
+    # 2) score with accuracy, speed and cost
     prompt = editor.echo_lines("/scores", [], [], COLS, True)
     shot(prompt + [""] + scoring.render_table(cfg).split("\n"), out / "ia-router-scores.png", "ia-router · /scores", COLS)
 
-    # 3) ruteo explicado
-    task = "Arreglá este bug en mi función Python, falla el test"
-    shot(editor.echo_lines(task, [], [], COLS, True) + ["", "\033[2m… ruteando\033[0m"] + core.format_ranking(core.route(task, cfg)).split("\n"),
-         out / "ia-router-ruteo.png", "ia-router · una tarea", COLS)
+    # 3) explained routing
+    task = "Fix this bug in my Python function, the test fails"
+    shot(editor.echo_lines(task, [], [], COLS, True) + ["", "\033[2m… routing\033[0m"] + core.format_ranking(core.route(task, cfg)).split("\n"),
+         out / "ia-router-ruteo.png", "ia-router · a task", COLS)
 
-    # 4) preguntas de prioridades
+    # 4) priority questions
     keys = ["precision", "balanced", "speed", "cost"]
     opts = [select.Option(scoring.PRESET_LABELS[k], priorities.OPTION_TEXT[k]) for k in keys]
-    lines = editor.echo_lines("/priorities", [], [], COLS, True) + select.render_lines("Para código y debugging, ¿qué priorizás?", opts, 2, "", True, "1/6", COLS)
+    lines = editor.echo_lines("/priorities", [], [], COLS, True) + select.render_lines("For code and debugging, what do you prioritize?", opts, 2, "", True, "1/6", COLS)
     shot(lines, out / "ia-router-prioridades.png", "ia-router · /priorities", COLS)
     return 0
 

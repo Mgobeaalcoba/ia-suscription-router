@@ -1,9 +1,9 @@
-"""Modo conversacional: abrís `ia-router` y hablás. Cada mensaje es una tarea (se rutea al mejor modelo según las métricas y se
-ejecuta) o una consulta sobre el estado. Al iniciar, el chat ofrece actualizar las métricas (mostrando cada paso) y, una sola vez,
-hacerte las preguntas sobre qué priorizás en cada tipo de tarea.
+"""Conversational mode: you open `ia-router` and talk. Each message is either a task (routed to the best model according to the
+metrics and run) or a query about the state. On startup the chat offers to update the metrics (showing every step) and, only once,
+to ask you what you prioritize for each kind of task.
 
-Los CLIs no tienen memoria entre llamadas, así que el chat antepone un resumen de los últimos turnos a cada tarea. La
-interpretación de intención es por reglas (rápida, sin gastar cuota). Los comandos con "/" siempre funcionan como atajos.
+The CLIs have no memory between calls, so the chat prepends a summary of the last turns to each task. Intent detection is
+rule-based (fast, spends no quota). Commands starting with "/" always work as shortcuts.
 """
 from __future__ import annotations
 
@@ -20,37 +20,37 @@ HISTORY_TURNS = 6
 HISTORY_ANSWER_CHARS = 1500
 HISTORY_TOTAL_CHARS = 8000
 
-HELP = """Hablame normal: cada mensaje es una tarea y se rutea al mejor modelo según las métricas. Para ver o fijar cosas:
+HELP = """Just talk normally: each message is a task and is routed to the best model according to the metrics. To view or pin things:
 
-  /models [probe]    estado de los CLIs y qué modelo usa cada uno (probe = consulta mínima real)
-  /scores [cat]      puntaje por modelo y categoría; con una categoría, el desglose
-  /metrics [refresh] de dónde salen los datos; refresh = actualizarlos (force = aunque sean recientes)
-  /priorities        preguntas: qué priorizás en cada tipo de tarea (precisión, velocidad, costo)
-  /model X           fijar un modelo (X = claude|codex|... o auto)      /stats   éxito, latencia y tokens
-  /explain on|off    mostrar la tabla de ruteo en cada mensaje          /md on|off   markdown interpretado o crudo
-  /ask texto         forzar "es una tarea"                              /clear   olvidar la conversación
-  /help              esta ayuda                                         /exit    salir"""
+  /models [probe]    status of the CLIs and which model each one uses (probe = real minimal query)
+  /scores [cat]      score per model and category; with a category, the breakdown
+  /metrics [refresh] where the data comes from; refresh = update it (force = even if recent)
+  /priorities        questions: what you prioritize for each kind of task (accuracy, speed, cost)
+  /model X           pin a model (X = claude|codex|... or auto)         /stats   success, latency and tokens
+  /explain on|off    show the routing table on every message            /md on|off   rendered or raw markdown
+  /ask text          force "this is a task"                             /clear   forget the conversation
+  /help              this help                                          /exit    quit"""
 
 COMMANDS = [
-    editor_mod.Command("/help", "ver los atajos"), editor_mod.Command("/models", "estado de los CLIs y qué modelo usa cada uno"),
-    editor_mod.Command("/scores", "puntaje por modelo y categoría"), editor_mod.Command("/metrics", "de dónde salen los datos; refresh = actualizarlos"),
-    editor_mod.Command("/priorities", "qué priorizás en cada tipo de tarea (preguntas)"), editor_mod.Command("/model", "fijar un modelo o auto"),
-    editor_mod.Command("/stats", "éxito, latencia y tokens por modelo"), editor_mod.Command("/explain", "mostrar la tabla de ruteo (on|off)"),
-    editor_mod.Command("/md", "markdown interpretado o crudo (on|off)"), editor_mod.Command("/ask", "forzar: es una tarea"),
-    editor_mod.Command("/clear", "olvidar la conversación"), editor_mod.Command("/exit", "salir"),
+    editor_mod.Command("/help", "show the shortcuts"), editor_mod.Command("/models", "status of the CLIs and which model each one uses"),
+    editor_mod.Command("/scores", "score per model and category"), editor_mod.Command("/metrics", "where the data comes from; refresh = update it"),
+    editor_mod.Command("/priorities", "what you prioritize for each kind of task (questions)"), editor_mod.Command("/model", "pin a model or auto"),
+    editor_mod.Command("/stats", "success, latency and tokens per model"), editor_mod.Command("/explain", "show the routing table (on|off)"),
+    editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/ask", "force: this is a task"),
+    editor_mod.Command("/clear", "forget the conversation"), editor_mod.Command("/exit", "quit"),
 ]
 
-# ---------- interpretación de mensajes ----------
+# ---------- message interpretation ----------
 
 _SHOW = [
-    (r"estad[ií]sticas?|\bstats\b", "stats"),
-    (r"qu[eé] modelos|cu[aá]les modelos|modelos disponibles|qu[eé] clis", "models"),
-    (r"\bpuntajes?\b|c[oó]mo (rutea|decide|elige)|\branking\b", "scores"),
+    (r"estad[ií]sticas?|\bstats\b|^(?:show|see|list)(?: me)?(?: the| my)? (?:stats|statistics)\b", "stats"),
+    (r"qu[eé] modelos|cu[aá]les modelos|modelos disponibles|qu[eé] clis|\b(?:which|what) (?:models|clis)\b|\bavailable models\b", "models"),
+    (r"\bpuntajes?\b|c[oó]mo (rutea|decide|elige)|\branking\b|^(?:show|see|list)(?: me)?(?: the)? (?:scores|ranking)\b|\bhow (?:do|does) (?:you|it|the router) (?:route|decide|choose)\b", "scores"),
 ]
 
 
 def detect_intent(text: str) -> str:
-    """Devuelve 'stats'|'models'|'scores' (consulta) o 'task'. Un mensaje largo, con saltos de línea o con código es siempre una tarea."""
+    """Returns 'stats'|'models'|'scores' (a query) or 'task'. A long message, one with line breaks or with code is always a task."""
     t = text.strip()
     low = t.lower()
     if len(t) > 400 or "\n" in t or "```" in t:
@@ -62,19 +62,19 @@ def detect_intent(text: str) -> str:
 
 
 def build_preamble(history: List[Tuple[str, str, str]]) -> str:
-    """Resumen de los últimos turnos (usuario, modelo, respuesta) para anteponer a la próxima tarea."""
+    """Summary of the last turns (user, model, answer) to prepend to the next task."""
     if not history:
         return ""
     lines: List[str] = []
     for user, model, answer in history[-HISTORY_TURNS:]:
         a = answer if len(answer) <= HISTORY_ANSWER_CHARS else answer[:HISTORY_ANSWER_CHARS] + " […]"
-        lines.append(f"Usuario: {user}\nAsistente ({model}): {a}")
+        lines.append(f"User: {user}\nAssistant ({model}): {a}")
     body = "\n\n".join(lines)
     body = body[-HISTORY_TOTAL_CHARS:]
-    return f"[Conversación previa, solo como contexto]\n{body}\n[Fin del contexto]\n\nMensaje actual del usuario:\n"
+    return f"[Previous conversation, for context only]\n{body}\n[End of context]\n\nUser's current message:\n"
 
 
-# ---------- sesión ----------
+# ---------- session ----------
 
 class Chat:
     def __init__(self, read: Callable[[str], str] = input, write: Callable[[str], None] = print, color: bool = False,
@@ -85,7 +85,7 @@ class Chat:
         self.explain = False
         self.markdown = True
 
-    # --- utilidades ---
+    # --- utilities ---
     def dim(self, s: str) -> str:
         return f"\033[2m{s}\033[0m" if self.color else s
 
@@ -94,21 +94,21 @@ class Chat:
 
     def ask_yes(self, question: str, default: bool = True) -> bool:
         try:
-            ans = self.read(f"{question} [{'S/n' if default else 's/N'}]: ").strip().lower()
+            ans = self.read(f"{question} [{'Y/n' if default else 'y/N'}]: ").strip().lower()
         except EOFError:
             return default
         return default if not ans else ans in ("s", "si", "sí", "y", "yes")
 
-    # --- entrada principal ---
+    # --- main entry ---
     def handle(self, text: str) -> bool:
-        """Procesa un mensaje. Devuelve False si hay que salir."""
+        """Processes a message. Returns False if it is time to quit."""
         text = text.strip()
         if not text:
             return True
         first = attachments.tokens(text)[0][2]
-        if text.startswith("/") and not attachments.resolve(first):  # "/Users/x/foto.png" es un archivo, no un comando
+        if text.startswith("/") and not attachments.resolve(first):  # "/Users/x/photo.png" is a file, not a command
             return self.command(text)
-        if text.lower() in ("exit", "salir", "quit", "chau"):
+        if text.lower() in ("exit", "salir", "quit", "bye", "chau"):
             return False
         intent = detect_intent(text)
         if intent in ("stats", "models", "scores"):
@@ -116,14 +116,14 @@ class Chat:
         self.run_task(text)
         return True
 
-    # --- tarea ---
+    # --- task ---
     def run_task(self, text: str, files: Optional[List[str]] = None) -> None:
         cfg = core.load_config()
         atts = attachments.find(text)
-        if atts and self.editor is None:  # con el editor, los adjuntos ya se mostraron al enviar
+        if atts and self.editor is None:  # with the editor, attachments were already shown on send
             for a in atts:
                 self.say(self.dim(f"⎘ {a.label()}"))
-        self.say(self.dim("… ruteando"))
+        self.say(self.dim("… routing"))
         try:
             res = core.ask(text, cfg, model=self.pinned, context_files=files, attachments=atts,
                            preamble=build_preamble(self.history), route_text=self.route_text(text))
@@ -134,31 +134,31 @@ class Chat:
         if self.explain:
             self.say(core.format_ranking(dec))
         for w in res.get("warnings", []):
-            self.say(f"aviso: {w}")
+            self.say(f"warning: {w}")
         if not res["ok"]:
-            trace = "; ".join(f"{a['model']}: {(a['error'] or 'ok')[:60]}" for a in res["attempts"]) or "sin intentos"
-            self.say(f"No pude resolverlo: {res.get('error')} ({trace}). Probá /models o /models probe.")
+            trace = "; ".join(f"{a['model']}: {(a['error'] or 'ok')[:60]}" for a in res["attempts"]) or "no attempts"
+            self.say(f"Could not resolve it: {res.get('error')} ({trace}). Try /models or /models probe.")
             return
         used = res["model_used"]
         why = ", ".join(f"{c}×{w:g}" for c, w in dec["weights"].items()) or "general"
         secs = sum(a["seconds"] for a in res["attempts"])
-        fb = f" · fallback tras {', '.join(a['model'] for a in res['attempts'][:-1])}" if len(res["attempts"]) > 1 else ""
+        fb = f" · fallback after {', '.join(a['model'] for a in res['attempts'][:-1])}" if len(res["attempts"]) > 1 else ""
         self.say(self.dim(f"── {core.format_usage(res)} · {why} · {secs:.1f}s{fb}"))
         self.say(render.render(res["output"], color=self.color and self.markdown) + "\n")
         self.history.append((text, used, res["output"]))
 
     def route_text(self, text: str) -> Optional[str]:
-        """Un seguimiento corto sin tema propio ("ahora hacela recursiva") hereda el del mensaje anterior."""
+        """A short follow-up with no topic of its own ("now make it recursive") inherits the previous message's."""
         if self.history and set(router.detect(text)) <= {"quick"}:
             return self.history[-1][0] + "\n" + text
         return None
 
-    # --- comandos ---
+    # --- commands ---
     def command(self, line: str) -> bool:
         cmd, _, arg = line[1:].partition(" ")
         cmd, arg = cmd.lower(), arg.strip()
         cfg = core.load_config()
-        if cmd in ("exit", "quit", "salir"):
+        if cmd in ("exit", "quit", "quit"):
             return False
         if cmd == "help":
             self.say(HELP)
@@ -166,19 +166,19 @@ class Chat:
             self.models(cfg, probe=(arg == "probe"))
         elif cmd == "stats":
             st = state.stats()
-            self.say("\n".join([f"{n:<12} corridas={m['runs']} éxito={m['ok_rate']:.0%} medio={m['avg_seconds']}s rate_limits={m['rate_limits']} tokens in/out={m['tokens_in']}/{m['tokens_out']}" for n, m in st.items()]) or "Sin historial todavía.")
+            self.say("\n".join([f"{n:<12} runs={m['runs']} success={m['ok_rate']:.0%} avg={m['avg_seconds']}s rate_limits={m['rate_limits']} tokens in/out={m['tokens_in']}/{m['tokens_out']}" for n, m in st.items()]) or "No history yet.")
         elif cmd == "model":
             if arg in ("auto", *cfg["models"]):
                 self.pinned = arg
-                self.say(f"Modelo: {'automático (rutea por métricas)' if arg == 'auto' else 'fijado en ' + arg}.")
+                self.say(f"Model: {'automatic (routes by metrics)' if arg == 'auto' else 'pinned to ' + arg}.")
             else:
-                self.say(f"Uso: /model auto|{'|'.join(cfg['models'])}")
+                self.say(f"Usage: /model auto|{'|'.join(cfg['models'])}")
         elif cmd == "explain":
             self.explain = arg != "off"
-            self.say(f"Tabla de ruteo: {'visible' if self.explain else 'oculta'}.")
+            self.say(f"Routing table: {'visible' if self.explain else 'hidden'}.")
         elif cmd == "md":
             self.markdown = arg != "off"
-            self.say(f"Markdown: {'interpretado (como un README en GitHub, sin signos)' if self.markdown else 'texto crudo'}.")
+            self.say(f"Markdown: {'rendered (like a README on GitHub, without markup characters)' if self.markdown else 'raw text'}.")
         elif cmd == "scores":
             self.say(scoring.render_table(cfg, [arg] if arg else None) + (("\n\n" + scoring.explain(cfg, arg)) if arg else ""))
         elif cmd == "metrics":
@@ -191,11 +191,11 @@ class Chat:
                 self.say("\n" + scoring.render_table(core.load_config()))
         elif cmd == "clear":
             self.history.clear()
-            self.say("Conversación olvidada.")
+            self.say("Conversation forgotten.")
         elif cmd == "ask":
-            self.run_task(arg) if arg else self.say("Uso: /ask <tarea>")
+            self.run_task(arg) if arg else self.say("Usage: /ask <task>")
         else:
-            self.say(f"No conozco /{cmd}. Escribí /help.")
+            self.say(f"Unknown command /{cmd}. Type /help.")
         return True
 
     def models(self, cfg: Dict, probe: bool = False) -> None:
@@ -203,50 +203,50 @@ class Chat:
         ids = metrics.known_model_ids(list(cfg["models"]))
         for n, spec in cfg["models"].items():
             extra = f" auth={probed[n]['auth']} {probed[n].get('probe_seconds', '-')}s" if n in probed else ""
-            off = " [desactivado]" if not spec.get("enabled", True) else ""
+            off = " [disabled]" if not spec.get("enabled", True) else ""
             cd = round(state.cooldown_remaining(n))
             mid = (probed.get(n) or {}).get("model_id") or ids.get(n)
-            self.say(f"{n:<12} {'instalado' if adapters.is_available(n, spec) else 'NO instalado':<13} cooldown={cd}s{extra}{off}  modelo: {mid or 'desconocido'}")
+            self.say(f"{n:<12} {'installed' if adapters.is_available(n, spec) else 'NOT installed':<13} cooldown={cd}s{extra}{off}  model: {mid or 'unknown'}")
 
-    # --- inicio de la sesión ---
+    # --- session startup ---
     def startup(self) -> None:
-        """Lo primero que pasa al abrir: saber qué modelo usa cada CLI, ofrecer métricas al día y (una vez) las preguntas de prioridad.
-        Todo lo que gasta algo (una consulta mínima, ~1 minuto de lectura web) se explica y se pregunta antes."""
+        """The first thing that happens on open: learn which model each CLI uses, offer up-to-date metrics and (once) the priority questions.
+        Anything that spends something (a minimal query, ~1 minute of web reading) is explained and asked about first."""
         cfg = core.load_config(apply_scoring=False)
         todo = probe_mod.missing_ids(cfg)
         if todo:
-            self.say(f"Para rutear con métricas necesito saber qué modelo usa cada CLI ({', '.join(todo)}).")
-            self.say(self.dim("Hago una consulta mínima a cada uno (unos 12k tokens de entrada en codex y agy; pocos en claude)."))
-            if self.ask_yes("¿La hago ahora?"):
+            self.say(f"To route by metrics I need to know which model each CLI uses ({', '.join(todo)}).")
+            self.say(self.dim("I make a minimal query to each one (about 12k input tokens on codex and agy; few on claude)."))
+            if self.ask_yes("Run it now?"):
                 probe_mod.detect_ids(cfg, self.say)
             else:
-                self.say("Mientras tanto rige la estimación de models.json. `/models probe` lo detecta cuando quieras.")
+                self.say("Meanwhile the models.json estimate applies. `/models probe` detects it whenever you want.")
         data = metrics.active()
         today = time.strftime("%Y-%m-%d")
         if not data.get("pages"):
-            self.say("No hay métricas incluidas ni descargadas. `/metrics refresh` las baja.")
+            self.say("There are no bundled or downloaded metrics. `/metrics refresh` downloads them.")
         elif metrics.is_stale(data) and state.flags().get("asked_refresh") != today:
             days = int(metrics.age_days(data.get("arena_at")) or 0)
-            self.say(f"Las métricas son del {(data.get('arena_at') or '?')[:10]} (hace {days} días, {data.get('arena_origin')}).")
+            self.say(f"The metrics are from {(data.get('arena_at') or '?')[:10]} ({days} days ago, {data.get('arena_origin')}).")
             state.set_flag("asked_refresh", today)
-            if self.ask_yes("¿Las actualizo? (lee páginas públicas de arena.ai, alrededor de un minuto)"):
+            if self.ask_yes("Update them? (reads public arena.ai pages, about a minute)"):
                 scoring.refresh_and_report(cfg, self.say)
         cfg = core.load_config()
         if not cfg.get("_scored"):
             return
         avail = cfg.get("_available", {})
         if not (avail.get("speed") or avail.get("cost")):
-            if not state.flags().get("hinted_aa"):  # una sola vez: sin más datos las preguntas de prioridad no cambiarían nada
+            if not state.flags().get("hinted_aa"):  # only once: without more data the priority questions would change nothing
                 state.set_flag("hinted_aa", True)
-                self.say(self.dim("Consejo: con tu clave gratuita de Artificial Analysis (ver .env.example) se suman velocidad y costo, y podés priorizarlos por tipo de tarea."))
+                self.say(self.dim("Tip: with your free Artificial Analysis key (see .env.example) speed and cost are added, and you can prioritize them per kind of task."))
             return
         if not scoring.load_profile() and not state.flags().get("asked_priorities"):
             state.set_flag("asked_priorities", True)
-            self.say("\nPuedo ajustar el ruteo a lo que priorizás en cada tipo de tarea (precisión, velocidad o costo): son 6 preguntas.")
-            if self.ask_yes("¿Querés responderlas ahora? (después: /priorities)", default=False):
+            self.say("\nI can tune the routing to what you prioritize for each kind of task (accuracy, speed or cost): it is 6 questions.")
+            if self.ask_yes("Want to answer them now? (later: /priorities)", default=False):
                 priorities.run(cfg, say=self.say, color=self.color)
 
-    # --- bucle ---
+    # --- loop ---
     def banner(self) -> str:
         cfg = core.load_config()
         names = list(cfg["models"])
@@ -256,10 +256,10 @@ class Chat:
 
     def status_line(self) -> str:
         d = metrics.active()
-        return f"métricas {(d.get('arena_at') or '?')[:10]}" if d.get("pages") else "sin métricas"
+        return f"metrics {(d.get('arena_at') or '?')[:10]}" if d.get("pages") else "no metrics"
 
     def prompt(self) -> str:
-        # \001..\002 marcan los códigos de color como no imprimibles para que readline calcule bien el cursor
+        # \001..\002 mark the color codes as non-printing so readline computes the cursor correctly
         return f"\001\033[1;38;2;200;90;160m\002ia ❯\001\033[0m\002 " if self.color else "ia> "
 
     def loop(self) -> int:
@@ -267,7 +267,7 @@ class Chat:
         try:
             self.startup()
         except KeyboardInterrupt:
-            self.say("\n(inicio interrumpido)")
+            self.say("\n(startup interrupted)")
         while True:
             try:
                 line = self.editor.read() if self.editor else self.read(self.prompt())
@@ -275,7 +275,7 @@ class Chat:
                 self.say()
                 return 0
             except KeyboardInterrupt:
-                self.say("\n(Ctrl-C otra vez o /exit para salir)")
+                self.say("\n(Ctrl-C again or /exit to quit)")
                 try:
                     self.read("")
                 except (EOFError, KeyboardInterrupt):
@@ -285,12 +285,12 @@ class Chat:
                 if not self.handle(line):
                     return 0
             except KeyboardInterrupt:
-                self.say("\n(interrumpido)")
+                self.say("\n(interrupted)")
 
 
 def run() -> int:
     try:
-        import readline  # noqa: F401  (edición de línea e historial con flechas)
+        import readline  # noqa: F401  (line editing and arrow-key history)
     except ImportError:
         pass
     color = sys.stdout.isatty() and "NO_COLOR" not in os.environ

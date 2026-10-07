@@ -25,23 +25,23 @@ class SelectTests(unittest.TestCase):
         self.assertEqual(st.apply(("key", "esc")), ("cancel",))
         self.assertEqual(st.apply(("key", "interrupt")), ("cancel",))
         st.apply(("text", "9"))
-        self.assertEqual(st.sel, 1)  # fuera de rango: se ignora
+        self.assertEqual(st.sel, 1)  # out of range: ignored
 
     def test_default_is_clamped(self):
         self.assertEqual(S.SelectState(2, 9).sel, 1)
         self.assertEqual(S.SelectState(2, -3).sel, 0)
 
     def test_render_marks_the_selected_option(self):
-        lines = S.render_lines("¿Qué?", [S.Option("Uno", "a"), S.Option("Dos", "b")], 1, "ayuda", color=False, step="2/5")
+        lines = S.render_lines("What?", [S.Option("One", "a"), S.Option("Two", "b")], 1, "help", color=False, step="2/5")
         text = "\n".join(lines)
         self.assertIn("2/5", text)
-        self.assertIn("> ◉ Dos", text)
-        self.assertIn("  ○ Uno", text.replace("    ", "  "))
-        self.assertIn("confirmar", text)
+        self.assertIn("> ◉ Two", text)
+        self.assertIn("  ○ One", text.replace("    ", "  "))
+        self.assertIn("confirm", text)
 
     def test_summary_line(self):
-        self.assertEqual(S.summary_line("¿Qué?", "Dos", "2/5", color=False), "  ✔ 2/5  ¿Qué? › Dos")
-        self.assertIn("Dos", S.summary_line("¿Qué?", "Dos", "2/5", color=True))
+        self.assertEqual(S.summary_line("What?", "Two", "2/5", color=False), "  ✔ 2/5  What? › Two")
+        self.assertIn("Two", S.summary_line("What?", "Two", "2/5", color=True))
 
     def test_choose_without_a_tty_returns_default(self):
         with mock.patch.object(S, "interactive", return_value=False):
@@ -49,7 +49,7 @@ class SelectTests(unittest.TestCase):
 
     def run_pty(self, keys):
         code = ("import sys; sys.path.insert(0, %r)\nfrom ia_router import select as S\n"
-                "r = S.choose('Pregunta', [S.Option('Uno','a'), S.Option('Dos','b'), S.Option('Tres','c')], color=False)\nprint('RESULT=%%r' %% (r,))\n") % str(ROOT)
+                "r = S.choose('Question', [S.Option('One','a'), S.Option('Two','b'), S.Option('Three','c')], color=False)\nprint('RESULT=%%r' %% (r,))\n") % str(ROOT)
         pid, fd = pty.fork()
         if pid == 0:
             os.environ.update(TERM="xterm-256color", COLUMNS="90", LINES="30")
@@ -83,8 +83,8 @@ class SelectTests(unittest.TestCase):
     def test_pty_arrows_and_enter(self):
         out = self.run_pty(["\x1b[B", "\x1b[B", "\x1b[A", "\r"])
         self.assertIn("RESULT=1", out)
-        self.assertIn("Pregunta", out)
-        self.assertIn("Pregunta › Dos", out)  # la pregunta contestada queda resumida en una línea
+        self.assertIn("Question", out)
+        self.assertIn("Question › Two", out)  # the answered question is left summarized in one line
 
     def test_pty_escape_cancels(self):
         self.assertIn("RESULT=None", self.run_pty(["\x1b"]))

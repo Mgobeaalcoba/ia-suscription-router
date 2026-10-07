@@ -1,8 +1,8 @@
-"""Clasificación de tareas (por reglas) y ranking de modelos.
+"""Task classification (rule-based) and model ranking.
 
-Idea: cada tarea se descompone en categorías con peso (coding, writing, long_context...).
-Cada modelo tiene una puntuación por categoría en models.json. El score de un modelo es
-el promedio ponderado. Los modelos no instalados o en cooldown quedan al final.
+Idea: each task is broken down into weighted categories (coding, writing, long_context...).
+Each model has a score per category in models.json. A model's score is the weighted
+average. Models that are not installed or are in cooldown go last.
 """
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import json
 import re
 from typing import Callable, Dict, List, Optional
 
-# Cada categoría tiene varios patrones (ES/EN). Cuántos patrones distintos matchean
-# (máx. 3) define el peso de la categoría.
+# Each category has several patterns, in Spanish and English on purpose: the router classifies tasks written in either
+# language. How many distinct patterns match (max 3) sets the category weight.
 PATTERNS: Dict[str, List[str]] = {
     "coding": [
         r"c[oó]digo|\bcode\b|funci[oó]n|\bfunction\b|\bclase\b|\bclass\b",
@@ -25,20 +25,20 @@ PATTERNS: Dict[str, List[str]] = {
         r"no funciona|falla\b|fallando|arregl\w+|\bfix\b|rompi\w+",
     ],
     "writing": [
-        r"redact\w+|\bdraft\b|borrador",  # sin "escrib*"/"write": son verbos genéricos que también aparecen en tareas de código
+        r"redact\w+|\bdraft\b|borrador",  # no "escrib*"/"write": generic verbs that also show up in coding tasks
         r"\b(mail|correo|email|art[ií]culo|post|copy|gui[oó]n|syllabus|newsletter)\b",
         r"resum\w+|traduc\w+|\btono\b|reescrib\w+|summar\w+|translat\w+",
     ],
     "analysis": [
         r"analiz\w+|analy[sz]e|compar\w+|evalu\w+|trade-?offs?|pros y contras",
-        r"estrategia|decisi[oó]n|diagn[oó]stic\w+|auditor\w+|arquitectura|dise[ñn]o",
+        r"estrategia|decisi[oó]n|diagn[oó]stic\w+|auditor\w+|arquitectura|dise[ñn]o|strateg\w+|decision|diagnos\w+|audit\w*|architecture|design",
     ],
     "data": [
         r"\b(csv|excel|xlsx|dataset|pandas|dataframe|dashboard|kpi|m[eé]tricas?)\b",
-        r"estad[ií]stic\w+|regresi[oó]n|correlaci[oó]n|series? de tiempo",
+        r"estad[ií]stic\w+|regresi[oó]n|correlaci[oó]n|series? de tiempo|statistic\w+|regression|correlation|time series",
     ],
     "research": [
-        r"investig\w+|research|fuentes|estado del arte|[uú]ltimas novedades|mercado",
+        r"investig\w+|research|fuentes|estado del arte|[uú]ltimas novedades|mercado|sources|state of the art|latest news|market",
         r"\b(benchmark|competencia|competitiv\w+|tendencias?)\b",
     ],
     "math": [
@@ -48,14 +48,14 @@ PATTERNS: Dict[str, List[str]] = {
         r"\b(imagen|im[aá]genes|image|screenshot|captura|foto|pdf|video|audio|diagrama)\b",
     ],
     "long_context": [
-        r"documento largo|todo el repo|codebase completa|libro|transcripci[oó]n|contexto largo",
+        r"documento largo|todo el repo|codebase completa|libro|transcripci[oó]n|contexto largo|long document|whole repo|entire codebase|book|transcript|long context",
     ],
 }
-QUICK_PATTERN = r"r[aá]pido|breve|en una l[ií]nea|tl;?dr|quick|one-liner"
+QUICK_PATTERN = r"r[aá]pido|breve|en una l[ií]nea|tl;?dr|quick|brief|one-?line\w*"
 
 
 def detect(task: str, context_len: int = 0) -> Dict[str, float]:
-    """Devuelve {categoría: peso}. Vacío significa 'general'."""
+    """Returns {category: weight}. Empty means 'general'."""
     weights: Dict[str, float] = {}
     for cat, pats in PATTERNS.items():
         hits = sum(1 for p in pats if re.search(p, task, re.I))
@@ -78,7 +78,7 @@ def rank(
     cooldown: Callable[[str], float],
     prefer: Optional[str] = None,
 ) -> List[dict]:
-    """Ordena los modelos para esta tarea. Los 'usable' van primero."""
+    """Sorts the models for this task. The 'usable' ones go first."""
     out: List[dict] = []
     for name, spec in models.items():
         strengths = spec.get("strengths", {})
@@ -93,7 +93,7 @@ def rank(
             score, why = float(default), f"general→{default}"
         if prefer and prefer == name:
             score += 1.0
-            why += " (+1 preferido)"
+            why += " (+1 preferred)"
         available = is_available(name)
         cd = cooldown(name)
         out.append(

@@ -1,6 +1,6 @@
-"""Estado persistente mínimo: cooldowns por proveedor y log de ejecuciones.
+"""Minimal persistent state: per-provider cooldowns and a run log.
 
-Se guarda en ~/.ia-router (o en $ROUTER_HOME). Sin dependencias externas.
+Stored in ~/.ia-router (or in $ROUTER_HOME). No external dependencies.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def save_state(state: Dict) -> None:
 
 
 def cooldown_remaining(model: str, now: float | None = None) -> float:
-    """Segundos que faltan para que `model` vuelva a estar disponible (0 si ya lo está)."""
+    """Seconds left until `model` is available again (0 if it already is)."""
     now = time.time() if now is None else now
     until = load_state()["cooldowns"].get(model, 0)
     return max(0.0, float(until) - now)
@@ -55,7 +55,7 @@ def reset_cooldowns() -> None:
 
 
 def flags() -> Dict:
-    """Banderas de la sesión de inicio (cuándo se ofreció actualizar, si ya se ofrecieron las preguntas)."""
+    """Startup session flags (when an update was offered, whether the questions were already offered)."""
     try:
         d = json.loads((home() / "startup.json").read_text(encoding="utf-8"))
         return d if isinstance(d, dict) else {}
@@ -78,7 +78,7 @@ def _seen_path() -> Path:
 
 
 def seen_ids() -> Dict[str, str]:
-    """Id real del modelo que respondió por cada CLI, la última vez que lo vimos."""
+    """Real id of the model that answered for each CLI, the last time we saw it."""
     try:
         d = json.loads(_seen_path().read_text(encoding="utf-8"))
         return {k: v for k, v in d.items() if isinstance(v, str)} if isinstance(d, dict) else {}
@@ -101,18 +101,18 @@ def remember_model_id(model: str, model_id: Optional[str]) -> None:
 
 
 def log_event(event: Dict) -> None:
-    """Agrega una línea JSON a log.jsonl. Nunca guarda el prompt completo."""
+    """Appends a JSON line to log.jsonl. It never stores the full prompt."""
     try:
         home().mkdir(parents=True, exist_ok=True)
         event = dict(event, ts=time.strftime("%Y-%m-%dT%H:%M:%S"))
         with open(home() / "log.jsonl", "a", encoding="utf-8") as fh:
             fh.write(json.dumps(event, ensure_ascii=False) + "\n")
     except OSError:
-        pass  # el log es best-effort
+        pass  # the log is best-effort
 
 
 def stats() -> Dict[str, Dict]:
-    """Resumen objetivo por modelo a partir de log.jsonl: corridas, tasa de éxito, latencia media, rate limits."""
+    """Objective per-model summary from log.jsonl: runs, success rate, average latency, rate limits."""
     out: Dict[str, Dict] = {}
     try:
         lines = (home() / "log.jsonl").read_text(encoding="utf-8").splitlines()
@@ -132,7 +132,7 @@ def stats() -> Dict[str, Dict]:
         t = ev.get("tokens") or {}
         m["tokens_in"] += t.get("input", 0)
         m["tokens_out"] += t.get("output", 0)
-        m["token_runs"] += 1 if t else 0  # corridas con tokens registrados (las viejas no los tienen)
+        m["token_runs"] += 1 if t else 0  # runs with recorded tokens (old ones do not have them)
     for m in out.values():
         m["ok_rate"] = round(m["ok"] / m["runs"], 2)
         m["avg_seconds"] = round(m.pop("_secs") / m["runs"], 1)

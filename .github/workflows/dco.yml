@@ -8,11 +8,11 @@ permissions:
 
 jobs:
   dco:
-    name: Commits firmados (DCO)
+    name: Signed-off commits (DCO)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Verificar Signed-off-by en cada commit del pull request
+      - name: Check Signed-off-by on every pull request commit
         run: tools/check_dco.sh "origin/${{ github.base_ref }}" "${{ github.event.pull_request.head.sha }}"

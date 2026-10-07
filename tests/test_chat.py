@@ -16,30 +16,30 @@ class IntentTests(unittest.TestCase):
         self.assertEqual(chat.detect_intent(text), expected, text)
 
     def test_tasks(self):
-        for t in ("Arreglá este bug en mi función Python", "Redactá un mail de seguimiento para un cliente", "Resumí este documento\ncon varias líneas",
-                  "Prefiero que el mail sea corto, redactá uno para Juan", "usá Codex para todo lo de código"):   # ya no hay configuración hablada: todo esto es una tarea
+        for t in ("Fix this bug in my Python function", "Draft a follow-up email for a client", "Summarize this document\nwith several lines",
+                  "I prefer the email to be short, draft one for Juan", "use Codex for everything code related"):   # there is no spoken configuration anymore: all of this is a task
             self.check(t, "task")
 
     def test_queries(self):
-        self.check("qué modelos tengo disponibles", "models")
-        self.check("mostrame las estadísticas", "stats")
-        self.check("mostrame los puntajes", "scores")
-        self.check("¿cómo decide el router?", "scores")
+        self.check("which models do I have available", "models")
+        self.check("show me the stats", "stats")
+        self.check("show me the scores", "scores")
+        self.check("how does the router decide?", "scores")
 
     def test_long_or_code_is_always_a_task(self):
-        self.check("mostrame las estadísticas " + "x" * 400, "task")
-        self.check("qué modelos tengo ```print(1)```", "task")
+        self.check("show me the stats " + "x" * 400, "task")
+        self.check("which models do I have ```print(1)```", "task")
 
 
 class Base(unittest.TestCase):
-    ids = False       # si es True, el estado ya conoce los modelos de cada CLI
-    stale = False     # si es True, la foto incluida es vieja
+    ids = False       # if True, the state already knows each CLI's models
+    stale = False     # if True, the bundled snapshot is old
 
     def setUp(self):
         self._init()
 
     def restart(self, ids=None, stale=None):
-        """Vuelve a armar el estado con otras condiciones, limpiando el anterior."""
+        """Rebuilds the state under other conditions, clearing the previous one."""
         self.tmp.cleanup()
         self.ids = self.ids if ids is None else ids
         self.stale = self.stale if stale is None else stale
@@ -83,51 +83,51 @@ class Base(unittest.TestCase):
 class TaskTests(Base):
     def test_task_is_routed_and_answer_shown(self):
         c = self.chat()
-        self.assertTrue(c.handle("Arreglá este bug en mi función Python, falla el test"))
-        self.assertIn("[fake-codex]", self.text())                  # sin ids conocidos rige la estimación de models.json
+        self.assertTrue(c.handle("Fix this bug in my Python function, the test fails"))
+        self.assertIn("[fake-codex]", self.text())                  # with no known ids the models.json estimate applies
         self.assertIn("codex", self.text().split("──")[1])
         self.assertEqual(len(c.history), 1)
 
     def test_with_metrics_the_task_follows_the_scores(self):
         self.restart(ids=True)
-        S.save_profile({"priorities": {"coding": "cost", "debugging": "cost"}})   # sin AA solo hay costo; el más barato es antigravity
+        S.save_profile({"priorities": {"coding": "cost", "debugging": "cost"}})   # without AA there is only cost; the cheapest is antigravity
         M._memo.clear()
         c = self.chat()
         c.explain = True
-        c.handle("Arreglá este bug en mi función Python, falla el test")
-        self.assertIn("métricas: sí", self.text())
+        c.handle("Fix this bug in my Python function, the test fails")
+        self.assertIn("metrics: yes", self.text())
         self.assertIn("[fake-agy]", self.text())
 
     def test_history_is_prepended_to_next_task(self):
         c = self.chat()
         c.pinned = "codex"
-        c.handle("primera pregunta")
-        c.handle("segunda pregunta")
-        sizes = [int(n) for n in re.findall(r"recibi (\d+) chars", self.text())]
+        c.handle("first question")
+        c.handle("second question")
+        sizes = [int(n) for n in re.findall(r"received (\d+) chars", self.text())]
         self.assertEqual(len(sizes), 2)
-        self.assertGreater(sizes[1], sizes[0] + len("segunda pregunta") - 1)
+        self.assertGreater(sizes[1], sizes[0] + len("second question") - 1)
 
     def test_short_followup_inherits_previous_topic(self):
         c = self.chat()
         c.explain = True
-        c.handle("Escribí una función Python que invierta un string")
+        c.handle("Write a Python function that reverses a string")
         self.out.clear()
-        c.handle("Ahora hacela recursiva")                          # sola iría a 'quick'; hereda 'coding'
+        c.handle("Now make it recursive")                          # on its own it would go to 'quick'; it inherits 'coding'
         self.assertIn("coding×", self.text())
         c.handle("/clear")
-        self.assertIsNone(c.route_text("Ahora hacela recursiva"))
+        self.assertIsNone(c.route_text("Now make it recursive"))
 
     def test_followup_with_own_topic_does_not_inherit(self):
         c = self.chat()
-        c.handle("Escribí una función Python que invierta un string")
-        self.assertIsNone(c.route_text("Redactá un mail de seguimiento para un cliente"))
+        c.handle("Write a Python function that reverses a string")
+        self.assertIsNone(c.route_text("Draft a follow-up email for a client"))
 
     def test_failed_task_reports_error(self):
         os.environ["FAKE_CODEX_MODE"] = "fail"
         c = self.chat()
         c.pinned = "codex"
-        c.handle("hola")
-        self.assertIn("No pude resolverlo", self.text())
+        c.handle("hello")
+        self.assertIn("Could not resolve it", self.text())
         self.assertEqual(c.history, [])
 
     def test_a_path_alone_is_a_task_not_a_command(self):
@@ -136,8 +136,8 @@ class TaskTests(Base):
         c = self.chat()
         c.pinned = "claude"
         c.handle(str(f))
-        self.assertNotIn("No conozco", self.text())
-        self.assertIn("⎘ x.png · imagen", self.text())
+        self.assertNotIn("Unknown command", self.text())
+        self.assertIn("⎘ x.png · image", self.text())
 
 
 class CommandTests(Base):
@@ -152,7 +152,7 @@ class CommandTests(Base):
         c.handle("/model auto")
         self.assertEqual(c.pinned, "auto")
         c.handle("/foo")
-        self.assertIn("No conozco /foo", self.text())
+        self.assertIn("Unknown command /foo", self.text())
         self.assertFalse(c.handle("/exit"))
         self.assertFalse(c.handle("salir"))
 
@@ -160,7 +160,7 @@ class CommandTests(Base):
         c = self.chat()
         for cmd in ("/manifest", "/manager claude", "/setup", "/config x", "/calibrate", "/criteria", "/benchmarks", "/llm on"):
             c.handle(cmd)
-        self.assertEqual(self.text().count("No conozco"), 8)
+        self.assertEqual(self.text().count("Unknown command"), 8)
 
     def test_help_and_palette_list_the_new_commands_only(self):
         names = {c.name for c in chat.COMMANDS}
@@ -172,15 +172,15 @@ class CommandTests(Base):
     def test_scores_and_breakdown(self):
         c = self.chat()
         c.handle("/scores")
-        self.assertIn("categoría", self.text())
+        self.assertIn("category", self.text())
         c.handle("/scores coding")
-        self.assertIn("Σ peso × valor", self.text())
+        self.assertIn("Σ weight × value", self.text())
 
     def test_metrics_shows_where_the_data_comes_from(self):
         c = self.chat()
         c.handle("/metrics")
         self.assertIn("claude-sonnet-5.5-xhigh", self.text())
-        self.assertIn("incluida en esta versión", self.text())
+        self.assertIn("bundled with this version", self.text())
 
     def test_metrics_refresh_goes_through_the_visible_report(self):
         c = self.chat()
@@ -189,30 +189,30 @@ class CommandTests(Base):
             self.assertFalse(ref.call_args.kwargs["force"])
             c.handle("/metrics force")
             self.assertTrue(ref.call_args.kwargs["force"])
-        self.assertIn("modelo del CLI", self.text())
+        self.assertIn("CLI model", self.text())
 
     def test_priorities_runs_the_questionnaire_and_shows_the_new_routing(self):
         c = self.chat()
         with mock.patch.object(priorities, "run", return_value={"priorities": {}}) as run:
             c.handle("/priorities")
             run.assert_called_once()
-        self.assertIn("categoría", self.text())                       # tras guardar muestra la tabla
+        self.assertIn("category", self.text())                       # after saving it shows the table
         self.out.clear()
         with mock.patch.object(priorities, "run", return_value=None):
             c.handle("/priorities")
-        self.assertNotIn("categoría", self.text())
+        self.assertNotIn("category", self.text())
 
     def test_models_lists_the_model_each_cli_uses(self):
         c = self.chat()
         c.handle("/models")
-        self.assertIn("modelo: claude-sonnet-5-5", self.text())
-        self.assertIn("modelo: Gemini 3.8 Flash (High)", self.text())
+        self.assertIn("model: claude-sonnet-5-5", self.text())
+        self.assertIn("model: Gemini 3.8 Flash (High)", self.text())
 
     def test_models_probe_learns_ids(self):
         state.remember_model_id("claude", "viejo")
         c = self.chat()
         c.handle("/models probe")
-        self.assertIn("modelo: claude-fake-1", self.text())
+        self.assertIn("model: claude-fake-1", self.text())
         self.assertEqual(state.seen_ids()["claude"], "claude-fake-1")
 
 
@@ -223,33 +223,33 @@ class StartupTests(Base):
         return c
 
     def test_unknown_models_are_detected_after_asking(self):
-        c = self.run_startup("s", "n")                                # detectar: sí; (si pregunta algo más) no
-        self.assertIn("necesito saber qué modelo usa cada CLI", self.text())
-        self.assertIn("consulta mínima", self.text())
+        c = self.run_startup("s", "n")                                # detect: yes; (if it asks something else) no
+        self.assertIn("I need to know which model each CLI uses", self.text())
+        self.assertIn("minimal query", self.text())
         self.assertEqual(state.seen_ids()["claude"], "claude-fake-1")
 
     def test_declining_detection_spends_nothing(self):
-        with mock.patch.object(probe, "probe", side_effect=AssertionError("no debía consultar")):
+        with mock.patch.object(probe, "probe", side_effect=AssertionError("should not have queried")):
             self.run_startup("n")
-        self.assertIn("rige la estimación de models.json", self.text())
+        self.assertIn("the models.json estimate applies", self.text())
         self.assertEqual(state.seen_ids(), {})
 
     def test_known_models_skip_the_detection_question(self):
         self.restart(ids=True)
         self.run_startup()
-        self.assertNotIn("necesito saber", self.text())
+        self.assertNotIn("I need to know", self.text())
         self.assertEqual(self.inputs, [])
 
     def test_stale_metrics_offer_an_update_once_per_day(self):
         self.restart(ids=True, stale=True)
         with mock.patch.object(S, "refresh_and_report", return_value=True) as ref:
             c = self.run_startup("s")
-            self.assertIn("Las métricas son del 2020-01-01", self.text())
-            self.assertIn("incluida en esta versión", self.text())
+            self.assertIn("The metrics are from 2020-01-01", self.text())
+            self.assertIn("bundled with this version", self.text())
             ref.assert_called_once()
             self.out.clear()
-            self.run_startup()                                         # mismo día: no vuelve a preguntar
-            self.assertNotIn("Las métricas son del", self.text())
+            self.run_startup()                                         # same day: it does not ask again
+            self.assertNotIn("The metrics are from", self.text())
             self.assertEqual(ref.call_count, 1)
 
     def test_declining_the_update_changes_nothing_and_does_not_nag(self):
@@ -266,17 +266,17 @@ class StartupTests(Base):
         with mock.patch.object(S, "refresh_and_report") as ref:
             self.run_startup("n")
             ref.assert_not_called()
-        self.assertNotIn("Las métricas son del", self.text())
+        self.assertNotIn("The metrics are from", self.text())
 
     def test_priorities_are_offered_once_and_default_to_no(self):
         self.restart(ids=True)
         with mock.patch.object(priorities, "run") as run:
             self.run_startup("")                                      # Enter = no
-            self.assertIn("6 preguntas", self.text())
+            self.assertIn("6 questions", self.text())
             run.assert_not_called()
             self.out.clear()
-            self.run_startup()                                        # ya se ofreció: no insiste
-            self.assertNotIn("6 preguntas", self.text())
+            self.run_startup()                                        # already offered: it does not insist
+            self.assertNotIn("6 questions", self.text())
         self.assertTrue(state.flags()["asked_priorities"])
 
     def test_accepting_runs_the_questionnaire(self):
@@ -291,24 +291,24 @@ class StartupTests(Base):
         with mock.patch.object(priorities, "run") as run:
             self.run_startup()
             run.assert_not_called()
-        self.assertNotIn("6 preguntas", self.text())
+        self.assertNotIn("6 questions", self.text())
         os.remove(Path(self.tmp.name) / "models_seen.json")
         os.remove(S.profile_path())
         M._memo.clear()
-        self.run_startup("n")                                          # sin ids: pregunta por detectarlos, pero no por prioridades
-        self.assertNotIn("6 preguntas", self.text())
+        self.run_startup("n")                                          # without ids: it asks to detect them, but not about priorities
+        self.assertNotIn("6 questions", self.text())
 
     def test_without_speed_or_cost_the_questions_are_not_offered_and_a_hint_appears_once(self):
         self.restart(ids=True)
-        self.snap.write_text(json.dumps(F.snapshot(no_price=("gpt-6.1-sol-high", "gpt-6.1-sol-max"))))   # Arena no publica el precio de codex
+        self.snap.write_text(json.dumps(F.snapshot(no_price=("gpt-6.1-sol-high", "gpt-6.1-sol-max"))))   # Arena does not publish codex's price
         M._memo.clear()
         with mock.patch.object(priorities, "run") as run:
             self.run_startup()
-            self.assertIn("Consejo: con tu clave gratuita de Artificial Analysis", self.text())
-            self.assertNotIn("6 preguntas", self.text())
+            self.assertIn("Tip: with your free Artificial Analysis key", self.text())
+            self.assertNotIn("6 questions", self.text())
             self.out.clear()
             self.run_startup()
-            self.assertNotIn("Consejo", self.text())                      # no se repite
+            self.assertNotIn("Consejo", self.text())                      # it is not repeated
             run.assert_not_called()
 
     def test_no_metrics_at_all_is_explained(self):
@@ -316,15 +316,15 @@ class StartupTests(Base):
         self.snap.unlink()
         M._memo.clear()
         self.run_startup()
-        self.assertIn("No hay métricas incluidas ni descargadas", self.text())
+        self.assertIn("There are no bundled or downloaded metrics", self.text())
 
 
 class LoopTests(Base):
     def test_banner_shows_where_the_metrics_come_from(self):
         out = self.chat().banner()
-        self.assertIn("métricas", out)
+        self.assertIn("metrics", out)
         self.assertIn("Arena", out)
-        self.assertIn("(incluida)", out)
+        self.assertIn("(bundled)", out)
         self.assertNotIn("manager", out)
 
     def test_loop_runs_startup_then_exits_on_eof(self):
@@ -334,16 +334,16 @@ class LoopTests(Base):
         self.assertIn("╦═╗╔═╗╦ ╦╔╦╗╔═╗╦═╗", self.text())
 
     def test_status_line_for_the_editor(self):
-        self.assertTrue(self.chat().status_line().startswith("métricas "))
+        self.assertTrue(self.chat().status_line().startswith("metrics "))
         self.snap.unlink()
         M._memo.clear()
-        self.assertEqual(self.chat().status_line(), "sin métricas")
+        self.assertEqual(self.chat().status_line(), "no metrics")
 
     def test_ctrl_c_during_startup_does_not_kill_the_session(self):
         c = self.chat()
         with mock.patch.object(c, "startup", side_effect=KeyboardInterrupt):
             self.assertEqual(c.loop(), 0)
-        self.assertIn("inicio interrumpido", self.text())
+        self.assertIn("startup interrupted", self.text())
 
 
 if __name__ == "__main__":

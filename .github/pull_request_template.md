@@ -1,12 +1,12 @@
-## Qué cambia y por qué
+## What changes and why
 
-<!-- Una o dos frases: el problema y cómo lo resuelve este cambio. -->
+<!-- One or two sentences: the problem and how this change solves it. -->
 
-## Lista de verificación
+## Checklist
 
-- [ ] Los tests pasan: `python3 -m unittest discover -s tests` (y con Python 3.9: `/usr/bin/python3 ...`)
-- [ ] Agregué o actualicé tests para el cambio de comportamiento
-- [ ] No agrego dependencias (solo librería estándar)
-- [ ] No incluyo secretos, `.env` ni datos personales
-- [ ] Actualicé `README.md`, `docs/USO.md` y `AGENTS.md` si cambia un comando, un archivo de estado o una regla
-- [ ] Mis commits están firmados (`git commit -s`, ver [CONTRIBUTING.md](../CONTRIBUTING.md))
+- [ ] Tests pass: `python3 -m unittest discover -s tests` (and with Python 3.9: `/usr/bin/python3 ...`)
+- [ ] I added or updated tests for the behavior change
+- [ ] I am not adding dependencies (standard library only)
+- [ ] I am not including secrets, `.env` or personal data
+- [ ] I updated `README.md`, `docs/USO.md` and `AGENTS.md` if a command, a state file or a rule changes
+- [ ] My commits are signed off (`git commit -s`, see [CONTRIBUTING.md](../CONTRIBUTING.md))

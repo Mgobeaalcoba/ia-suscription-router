@@ -1,128 +1,128 @@
 # AGENTS.md
 
-Guía para agentes de IA (Claude Code, Codex, Antigravity, etc.) y personas que contribuyen a **ia-router**. Leela entera antes de tocar código.
+Guide for AI agents (Claude Code, Codex, Antigravity, etc.) and people who contribute to **ia-router**. Read it entirely before touching code.
 
-## Qué es
+## What it is
 
-Un router en Python que reparte tareas entre los **CLIs oficiales** de IA que el usuario ya paga (`claude`, `codex`, `agy`) con un **único ruteo basado en métricas objetivas** de portales respetados (Arena y, con clave gratuita, Artificial Analysis). El software trae incluida la última foto de Arena; al iniciar ofrece actualizarla con visibilidad y, opcionalmente, pregunta qué prioriza el usuario por tipo de tarea. Se usa como chat (`python3 cli.py`) o con subcomandos. Visión general: [README.md](README.md). Uso detallado: [docs/USO.md](docs/USO.md).
+A Python router that splits tasks across the **official CLIs** of the AI subscriptions the user already pays for (`claude`, `codex`, `agy`) with a **single routing based on objective metrics** from respected portals (Arena and, with a free key, Artificial Analysis). The software ships with the latest Arena snapshot; on startup it offers to update it with visibility and, optionally, asks what the user prioritizes per kind of task. It is used as a chat (`python3 cli.py`) or with subcommands. Overview: [README.md](README.md). Detailed usage: [docs/USAGE.md](docs/USAGE.md).
 
-**Se decidió simplificar a propósito:** no hay manifiesto con "manager" conversacional, ni calibración con pruebas propias, ni configuración por lenguaje natural. No los reintroduzcas sin que el dueño del repo lo pida (siguen en el historial de git).
+**It was deliberately simplified:** there is no conversational "manager" manifest, no calibration with its own tests, and no natural-language configuration. Do not reintroduce them unless the repo owner asks (they remain in the git history).
 
-## Comandos
+## Commands
 
 ```bash
-python3 -m unittest discover -s tests       # toda la suite (~266 tests, ~15 s); debe terminar en OK
-python3 -m unittest tests.test_scoring      # un archivo
-/usr/bin/python3 -m unittest discover -s tests   # en macOS: Python 3.9 del sistema (el mínimo soportado)
-python3 cli.py doctor                        # CLIs instalados y qué modelo usa cada uno (no gasta cuota)
-python3 cli.py scores                        # qué elige el router y por qué
-ROUTER_HOME=/tmp/prueba python3 cli.py ...   # estado aislado: nunca pruebes sobre ~/.ia-router
-python3 tools/update_snapshot.py             # MANTENEDORES: regenera ia_router/data/arena.json antes de publicar una versión
+python3 -m unittest discover -s tests       # the whole suite (269 tests, ~15 s); it must end in OK
+python3 -m unittest tests.test_scoring      # one file
+/usr/bin/python3 -m unittest discover -s tests   # on macOS: system Python 3.9 (the minimum supported)
+python3 cli.py doctor                        # installed CLIs and which model each one uses (spends no quota)
+python3 cli.py scores                        # what the router picks and why
+ROUTER_HOME=/tmp/test python3 cli.py ...     # isolated state: never test against ~/.ia-router
+python3 tools/update_snapshot.py             # MAINTAINERS: regenerates ia_router/data/arena.json before publishing a version
 ```
 
-No hay build ni linter configurados. No agregues dependencias.
+There is no build or linter configured. Do not add dependencies.
 
-## Reglas que no se negocian
+## Rules that are not negotiable
 
-1. **Solo librería estándar.** Cero dependencias externas (ni `rich`, `requests`, `python-dotenv`, `pyarrow`…). Compatible con **Python 3.9**: nada de `match`, `X | Y` evaluado en runtime, `zip(strict=)`. Verificá con `/usr/bin/python3` en macOS.
-2. **Nunca tocar tokens OAuth** ni leer credenciales de los CLIs. Cada CLI usa su propio login.
-3. **Nunca activar flags de "permitir todo"** (`--dangerously-skip-permissions` y similares).
-4. **Secretos: solo `.env` (ignorado por git) o el entorno.** El `.env` real **nunca se versiona ni se imprime**; se versiona `.env.example` (sin claves). La clave de Artificial Analysis viaja por **stdin de `curl`, nunca por argv** (se vería en `ps`; ver `metrics.http_get`). No la loguees. Los tests no deben leer ni escribir el `.env` real (parchean `envfile.REPO_ENV`).
-5. **Los tests no usan red, no llaman a CLIs reales y no tocan `~/.ia-router`.** Usan `tests/fake_bin/*` (CLIs falsos que emulan el JSON real), `ROUTER_HOME` temporal, `tests/fixtures.py` (un leaderboard de juguete) y funciones `get`/`sleep` inyectables.
-6. **La red y la cuota son decisiones del usuario.** Ninguna llamada real a un modelo ni la actualización de métricas se ejecutan solas ni en tests. El chat siempre **pregunta antes** de gastar algo (detectar modelos, actualizar). Si necesitás verificar contra los servicios reales, avisá antes de gastar cuota y usá `ROUTER_HOME` aparte.
-7. **Respetá los servicios públicos:** pedidos de a uno, con pausa, reintentos con espera ante 429 y caché (ver `metrics.py`).
-8. **Textos de cara al usuario en español rioplatense** (vos); identificadores y código como el resto del archivo. Comentarios escasos que explican el *por qué*.
+1. **Standard library only.** Zero external dependencies (no `rich`, `requests`, `python-dotenv`, `pyarrow`…). Compatible with **Python 3.9**: no `match`, no `X | Y` evaluated at runtime, no `zip(strict=)`. Verify with `/usr/bin/python3` on macOS.
+2. **Never touch OAuth tokens** or read the CLIs' credentials. Each CLI uses its own login.
+3. **Never turn on "allow everything" flags** (`--dangerously-skip-permissions` and similar).
+4. **Secrets: only `.env` (ignored by git) or the environment.** The real `.env` is **never versioned or printed**; `.env.example` (without keys) is versioned. The Artificial Analysis key travels through **`curl`'s stdin, never through argv** (it would show up in `ps`; see `metrics.http_get`). Do not log it. Tests must not read or write the real `.env` (they patch `envfile.REPO_ENV`).
+5. **Tests use no network, call no real CLIs and do not touch `~/.ia-router`.** They use `tests/fake_bin/*` (fake CLIs that emulate the real JSON), a temporary `ROUTER_HOME`, `tests/fixtures.py` (a toy leaderboard) and injectable `get`/`sleep` functions.
+6. **Network and quota are the user's decisions.** No real model call nor metrics update runs on its own or in tests. The chat always **asks before** spending anything (detecting models, updating). If you need to verify against the real services, warn before spending quota and use a separate `ROUTER_HOME`.
+7. **Respect public services:** one request at a time, with a pause, retries with a wait on 429, and a cache (see `metrics.py`).
+8. **Everything is in English:** user-facing text, code comments, docs, tests, commit messages and PR descriptions. Identifiers and code follow the rest of the file; comments are sparse and explain the *why*. The only Spanish allowed is the **task-classifier keywords** in `router.PATTERNS`/`QUICK_PATTERN` and the intent patterns in `chat._SHOW`: the router deliberately classifies tasks written in English and in Spanish, so do not remove those. `tests/test_repo.py` (`LanguageTests`) fails if Spanish text slips into the docs or the source.
 
-## Mapa del código
+## Code map
 
-| Módulo | Responsabilidad |
+| Module | Responsibility |
 |---|---|
-| `ia_router/cli.py` (+ `cli.py` atajo) | Subcomandos y entrada (carga `.env` primero). Sin argumentos abre el chat. El comando instalado es `ia-router`. |
-| `ia_router/metrics.py` | **Fuente de verdad de las métricas.** Arena (páginas de arena.ai) y Artificial Analysis (API con clave): descarga con reintentos, foto incluida + caché del usuario (`active()`), emparejamiento por id real y nivel de esfuerzo, y valores 0-10 de precisión, velocidad y costo. |
-| `ia_router/data/arena.json` | Foto de Arena incluida en el software (CC BY 4.0; atribuida en `NOTICE`). La regenera `tools/update_snapshot.py`. |
-| `ia_router/scoring.py` | `puntaje = Σ peso × valor`, perfil de prioridades, tablas explicadas, diferencias al actualizar (`refresh_and_report`). Aplica el puntaje a `strengths`. |
-| `ia_router/priorities.py` · `select.py` | Cuestionario por tipo de tarea y selector ↑/↓ + Enter. |
-| `ia_router/probe.py` | Sonda de los CLIs y detección del **modelo real** de cada uno. |
-| `ia_router/core.py` | `load_config`, `route`, `ask` (fallback, adjuntos, log; registra el id real del modelo). |
-| `ia_router/router.py` | Clasificación por reglas en categorías con peso y ranking. |
-| `ia_router/adapters.py` | `run_cli`: arma el comando (flags de `usage`, `add_dir`), ejecuta sin shell, interpreta el JSON de cada CLI (modelo y tokens), detecta rate limit y falta de login. |
-| `ia_router/chat.py` | Chat: intención por reglas, comandos `/`, **flujo de inicio** (`startup`: detectar modelos, ofrecer actualizar, ofrecer preguntas). |
-| `ia_router/editor.py` | Caja de entrada: `Parser` (bytes → eventos), `State` (edición pura), `render_frame` (dibujo) y `LineEditor` (tty real). |
-| `ia_router/attachments.py` | Rutas arrastradas: reconocer, normalizar, clasificar. |
-| `ia_router/render.py` · `banner.py` | Markdown interpretado (ANSI, sin signos) y encabezado. |
-| `ia_router/envfile.py` | Lector mínimo de `.env` (nunca pisa el entorno). |
-| `ia_router/state.py` | Cooldowns, `log.jsonl`, ids vistos, banderas de inicio. |
-| `ia_router/mcp_server.py` | Servidor MCP stdio. |
+| `ia_router/cli.py` (+ `cli.py` shortcut) | Subcommands and entry point (loads `.env` first). With no arguments it opens the chat. The installed command is `ia-router`. |
+| `ia_router/metrics.py` | **Source of truth for the metrics.** Arena (arena.ai pages) and Artificial Analysis (API with a key): download with retries, bundled snapshot + user cache (`active()`), matching by real id and effort level, and 0-10 values for accuracy, speed and cost. |
+| `ia_router/data/arena.json` | Arena snapshot bundled with the software (CC BY 4.0; attributed in `NOTICE`). Regenerated by `tools/update_snapshot.py`. |
+| `ia_router/scoring.py` | `score = Σ weight × value`, priorities profile, explained tables, differences on update (`refresh_and_report`). Applies the score to `strengths`. |
+| `ia_router/priorities.py` · `select.py` | Per-kind-of-task questionnaire and the ↑/↓ + Enter selector. |
+| `ia_router/probe.py` | CLI probe and detection of each one's **real model**. |
+| `ia_router/core.py` | `load_config`, `route`, `ask` (fallback, attachments, log; records the real model id). |
+| `ia_router/router.py` | Rule-based classification into weighted categories and ranking. |
+| `ia_router/adapters.py` | `run_cli`: builds the command (`usage` flags, `add_dir`), runs without a shell, interprets each CLI's JSON (model and tokens), detects rate limit and missing login. |
+| `ia_router/chat.py` | Chat: rule-based intent, `/` commands, **startup flow** (`startup`: detect models, offer to update, offer the questions). |
+| `ia_router/editor.py` | Input box: `Parser` (bytes → events), `State` (pure editing), `render_frame` (drawing) and `LineEditor` (real tty). |
+| `ia_router/attachments.py` | Dragged paths: recognize, normalize, classify. |
+| `ia_router/render.py` · `banner.py` | Rendered markdown (ANSI, no markup characters) and the header. |
+| `ia_router/envfile.py` | Minimal `.env` reader (never overrides the environment). |
+| `ia_router/state.py` | Cooldowns, `log.jsonl`, seen ids, startup flags. |
+| `ia_router/mcp_server.py` | MCP stdio server. |
 
-Patrón de diseño que conviene mantener: **lógica pura separada del I/O** (p. ej. `State` / `render_frame` / `SelectState` / `metrics.precision_values` no tocan la terminal ni la red y se testean sin ellas).
+Design pattern worth keeping: **pure logic separated from I/O** (e.g. `State` / `render_frame` / `SelectState` / `metrics.precision_values` do not touch the terminal or the network and are tested without them).
 
-## Cómo decide el router
+## How the router decides
 
-Cada modelo recibe, por categoría, un puntaje 0-10 = Σ peso × valor sobre tres dimensiones, **relativas a los modelos del usuario**:
+Each model gets, per category, a 0-10 score = Σ weight × value over three dimensions, **relative to the user's models**:
 
-- **Precisión**: Elo de Arena por categoría (+ índice de AA si hay clave). 10 = empata o gana al mejor; las diferencias dentro del margen de error no premian.
-- **Velocidad** (solo AA) y **costo** (precio por millón de tokens, AA o Arena): escala **logarítmica** (−2 puntos por duplicación frente al mejor). *No la cambies por una proporcional:* tiene mucho más rango que el Elo y el modelo barato ganaría hasta con prioridad "precisión" (hay un test que lo impide).
-- Los pesos salen de `profile.json` (respuestas de `/priorities`: precisión / equilibrado / velocidad / costo) o de los valores por defecto.
+- **Accuracy**: Arena Elo per category (+ the AA index if there is a key). 10 = ties or beats the best; differences within the margin of error do not reward.
+- **Speed** (AA only) and **cost** (price per million tokens, AA or Arena): **logarithmic** scale (−2 points per doubling versus the best). *Do not change it to a proportional one:* it has much more range than Elo and the cheap model would win even with "accuracy" as the priority (a test prevents it).
+- The weights come from `profile.json` (answers of `/priorities`: accuracy / balanced / speed / cost) or from the defaults.
 
-Invariantes:
-- **Una dimensión solo cuenta si hay dato para TODOS los modelos activos**; si no, no pesa y los pesos se renormalizan. Nunca se mezclan escalas.
-- Sin ids de modelo conocidos, o si Arena no cubre una categoría para todos, rige la **estimación de `models.json`** (último recurso, marcada `e`). Sin evidencia, nada se mueve.
-- Se empareja por el **id real** del modelo que usa cada CLI, no por el nombre del CLI. Arena publica variantes por esfuerzo; si no coincide se usa la más cercana y se **marca como aproximada**.
-- Rige la foto de Arena **más reciente** entre la incluida y la descargada por el usuario.
-- Una comparación relativa necesita datos de al menos dos modelos.
+Invariants:
+- **A dimension only counts if there is data for ALL the active models**; otherwise it carries no weight and the weights are renormalized. Scales are never mixed.
+- Without known model ids, or if Arena does not cover a category for all of them, the **`models.json` estimate** applies (last resort, marked `e`). Without evidence, nothing moves.
+- Matching is by the **real id** of the model each CLI uses, not by the CLI name. Arena publishes variants per effort; if there is no match the closest is used and it is **marked as approximate**.
+- The **most recent** Arena snapshot between the bundled one and the one the user downloaded applies.
+- A relative comparison needs data from at least two models.
 
-## Trampas conocidas (ya nos mordieron)
+## Known pitfalls (they have already bitten us)
 
-- **El id real del modelo no siempre está en la salida.** Claude lo da en el JSON; **Codex** solo en el archivo de sesión (`~/.codex/sessions/**/rollout-*`), por eso no se usa `--ephemeral`; **Antigravity** en su log (`--log-file`).
-- **Antigravity (`agy`) en modo no interactivo** no lee el prompt por stdin, no abre archivos por ruta y falla con "permission … auto-denied" si el modelo pide una herramienta. `models.json` lo marca `reads_files: false`.
-- **Claude necesita `--add-dir`** para leer adjuntos fuera de su carpeta de trabajo.
-- **El Python de python.org en macOS no trae certificados SSL:** por eso las descargas usan `curl` y caen a `urllib` solo si no existe.
-- **El dataset de Arena en Hugging Face** (`datasets-server`) devuelve 429 tras ~30 páginas: no uses ese camino; se leen las páginas por categoría de `arena.ai/leaderboard/...` (ver `metrics.arena_pages`). Si el formato de esas páginas cambia, `parse_leaderboard` falla con un error claro.
-- **Arena no publica el precio de todos los modelos** (p. ej. `gpt-6.1-sol`): el costo suele depender de Artificial Analysis.
-- **Artificial Analysis: los campos reales difieren de la documentación.** Se verificó contra la API real (690 modelos): no publica todos los índices (`artificial_analysis_coding_index`, `math_index`) para todos los modelos, pero sí otros benchmarks (`lcr`, `hle`, `scicode`, `terminalbench_v4_0`…). `metrics.AA_MAP` lista varios candidatos por categoría y solo cuentan los que cubren a todos los modelos. Los nombres traen relleno (`Claude Sonnet 5.5 (Max, Default Fallback)`): `metrics.NOISE` lo descarta; si aparece una palabra nueva, agregala ahí con un test.
-- **Promediar tokens** solo sobre corridas que tienen tokens registrados (`token_runs`).
-- **Tests con pty** (`PtySmokeTests`, `test_select`) comparan antes/después y no el estado absoluto del sistema de archivos.
-- `pyte` (emulador de terminal) se usó **a mano** para ver pantallas reales; no es dependencia ni se importa en tests.
+- **The real model id is not always in the output.** Claude gives it in the JSON; **Codex** only in the session file (`~/.codex/sessions/**/rollout-*`), which is why `--ephemeral` is not used; **Antigravity** in its log (`--log-file`).
+- **Antigravity (`agy`) in non-interactive mode** does not read the prompt from stdin, does not open files by path and fails with "permission … auto-denied" if the model asks for a tool. `models.json` marks it `reads_files: false`.
+- **Claude needs `--add-dir`** to read attachments outside its working folder.
+- **python.org's Python on macOS ships without SSL certificates:** that is why downloads use `curl` and fall back to `urllib` only if it does not exist.
+- **Arena's dataset on Hugging Face** (`datasets-server`) returns 429 after ~30 pages: do not use that path; the per-category pages of `arena.ai/leaderboard/...` are read (see `metrics.arena_pages`). If the format of those pages changes, `parse_leaderboard` fails with a clear error.
+- **Arena does not publish the price of every model** (e.g. `gpt-6.1-sol`): cost usually depends on Artificial Analysis.
+- **Artificial Analysis: the real fields differ from the documentation.** It was verified against the real API (690 models): it does not publish every index (`artificial_analysis_coding_index`, `math_index`) for every model, but it does publish other benchmarks (`lcr`, `hle`, `scicode`, `terminalbench_v4_0`…). `metrics.AA_MAP` lists several candidates per category and only those covering all the models count. Names carry filler (`Claude Sonnet 5.5 (Max, Default Fallback)`): `metrics.NOISE` discards it; if a new word shows up, add it there with a test.
+- **Averaging tokens** only over runs that have recorded tokens (`token_runs`).
+- **Pty tests** (`PtySmokeTests`, `test_select`) compare before/after and not the absolute state of the file system.
+- `pyte` (terminal emulator) was used **by hand** to look at real screens; it is not a dependency and it is not imported in tests.
 
-## Cómo extender
+## How to extend
 
-- **Agregar un modelo:** entrada en `models.json` (`cmd`, `usage` con su `parser` en `adapters.parse_usage`, `reads_files`) + `python3 cli.py doctor --probe`. Si su CLI devuelve JSON distinto, sumá un parser y su fixture en `tests/fake_bin`.
-- **Agregar una categoría de tarea:** `router.PATTERNS`, y los mapas `metrics.ARENA_MAP` / `AA_MAP`; si va a tener su propia pregunta, `scoring.GROUPS`.
-- **Agregar una fuente de métricas:** una función `fetch_*` con `get` inyectable, un `match_*` por id real + esfuerzo, y su aporte a `precision_values` / `speed_values` / `cost_values`. Con tests offline, atribución en `metrics.ATTRIBUTION` y su variable en `.env.example`.
-- **Publicar una versión** (público e irreversible: PyPI no permite resubir una versión; solo cuando el dueño lo pida):
-  1. `python3 tools/update_snapshot.py` (regenera la foto de Arena; ~1 minuto), subir `__version__` en `ia_router/__init__.py` y `version`/`date-released` en `CITATION.cff`, agregar la entrada de la versión en `CHANGELOG.md`, y commitear.
-  2. `tools/release.sh` (ensayo: tests, build, `twine check`, comprueba que no vaya `.env` y que `LICENSE`/`NOTICE` estén, e instala el wheel en un venv limpio) y después `tools/release.sh --yes`: sube a PyPI, completa `url` y `sha256` de la fórmula en `Mgobeaalcoba/homebrew-tap` y verifica `pip` y `brew`.
-  3. Credenciales: token de PyPI en `~/.pypirc` (`[pypi]`, `username = __token__`, `password = <token>`, `chmod 600`) o `TWINE_USERNAME`/`TWINE_PASSWORD`. **Nunca en el repo ni en un chat.** El primer token debe ser de "toda la cuenta" (el proyecto todavía no existe); después conviene uno acotado a `ia-router`.
-  4. Recién con el paquete publicado se publica la página del sitio (sus comandos de instalación solo funcionan entonces).
+- **Add a model:** an entry in `models.json` (`cmd`, `usage` with its `parser` in `adapters.parse_usage`, `reads_files`) + `python3 cli.py doctor --probe`. If its CLI returns different JSON, add a parser and its fixture in `tests/fake_bin`.
+- **Add a task category:** `router.PATTERNS` (keywords in English and Spanish), and the `metrics.ARENA_MAP` / `AA_MAP` maps; if it is going to have its own question, `scoring.GROUPS`.
+- **Add a metrics source:** a `fetch_*` function with an injectable `get`, a `match_*` by real id + effort, and its contribution to `precision_values` / `speed_values` / `cost_values`. With offline tests, attribution in `metrics.ATTRIBUTION` and its variable in `.env.example`.
+- **Publish a version** (public and irreversible: PyPI does not allow re-uploading a version; only when the owner asks):
+  1. `python3 tools/update_snapshot.py` (regenerates the Arena snapshot; ~1 minute), bump `__version__` in `ia_router/__init__.py` and `version`/`date-released` in `CITATION.cff`, add the version entry in `CHANGELOG.md`, and commit.
+  2. `tools/release.sh` (dry run: tests, build, `twine check`, checks that no `.env` goes in and that `LICENSE`/`NOTICE` are there, and installs the wheel in a clean venv) and then `tools/release.sh --yes`: uploads to PyPI, fills in `url` and `sha256` of the formula in `Mgobeaalcoba/homebrew-tap` and verifies `pip` and `brew`.
+  3. Credentials: PyPI token in `~/.pypirc` (`[pypi]`, `username = __token__`, `password = <token>`, `chmod 600`) or `TWINE_USERNAME`/`TWINE_PASSWORD`. **Never in the repo or in a chat.** The first token must be "whole account" (the project does not exist yet); afterwards a token scoped to `ia-router` is better.
+  4. Only once the package is published is the website page published (its install commands only work then).
 
-## Licencia
+## License
 
-Apache-2.0 (`LICENSE`) con `NOTICE` de atribución obligatoria al autor y a los datos de terceros (Arena, CC BY 4.0). No quites ni modifiques `NOTICE`/`LICENSE`; si se agrega una fuente de datos de terceros, va en `NOTICE`. `pyproject.toml` declara `license-files` para que viajen dentro del paquete.
+Apache-2.0 (`LICENSE`) with a `NOTICE` of mandatory attribution to the author and to third-party data (Arena, CC BY 4.0). Do not remove or alter the substance of `NOTICE`/`LICENSE`; if a third-party data source is added, it goes in `NOTICE`. `pyproject.toml` declares `license-files` so they travel inside the package.
 
-## Mapa de enlaces (mantenelos conectados)
+## Link map (keep them connected)
 
-El proyecto vive en cinco lugares que se enlazan entre sí. Si cambia una URL o se publica una versión, actualizá **todos** los que correspondan:
+The project lives in five places that link to each other. If a URL changes or a version is published, update **all** the ones that apply:
 
-| Qué | URL canónica | Dónde se referencia |
+| What | Canonical URL | Where it is referenced |
 |---|---|---|
-| Web (nota de venta) | https://www.mgatc.com/recursos/ia-router/ | `README.md`, `docs/USO.md`, `CONTRIBUTING.md`, `CITATION.cff`, `pyproject.toml` (`Homepage`), fórmula y README del tap |
-| PyPI | https://pypi.org/project/ia-router/ | `README.md`, `docs/USO.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, la web, README del tap |
-| Tap de Homebrew | https://github.com/Mgobeaalcoba/homebrew-tap | `README.md`, `docs/USO.md`, `CONTRIBUTING.md`, `pyproject.toml` (`Homebrew`), la web |
-| Código | https://github.com/Mgobeaalcoba/ia-suscription-router | `CITATION.cff`, `pyproject.toml` (`Source`, `Issues`), la web, README del tap |
-| Guía | `docs/USO.md` en GitHub | `README.md`, `pyproject.toml` (`Documentation`), la web |
+| Website (sales page) | https://www.mgatc.com/recursos/ia-router/ (Spanish) · https://www.mgatc.com/en/recursos/ia-router/ (English) | `README.md`, `docs/USAGE.md`, `CONTRIBUTING.md`, `CITATION.cff`, `pyproject.toml` (`Homepage`), the formula and the tap README |
+| PyPI | https://pypi.org/project/ia-router/ | `README.md`, `docs/USAGE.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, the website, the tap README |
+| Homebrew tap | https://github.com/Mgobeaalcoba/homebrew-tap | `README.md`, `docs/USAGE.md`, `CONTRIBUTING.md`, `pyproject.toml` (`Homebrew`), the website |
+| Code | https://github.com/Mgobeaalcoba/ia-suscription-router | `CITATION.cff`, `pyproject.toml` (`Source`, `Issues`), the website, the tap README |
+| Guide | `docs/USAGE.md` on GitHub (`docs/USO.md` is a stub that keeps old links working) | `README.md`, `pyproject.toml` (`Documentation`), the website |
 
-Reglas:
-- **El `README.md` es también la ficha de PyPI**, que no resuelve rutas relativas: sus enlaces deben ser **absolutos** (hay un test que lo exige). Las imágenes también (`raw.githubusercontent.com`).
-- Al publicar una versión: `ia_router/__init__.py`, `CITATION.cff` (`version`) y una entrada `## X.Y.Z` en `CHANGELOG.md` (el script de release lo exige).
-- La web vive en otro repo (`Mgobeaalcoba.github.io`, `apps/web/src/components/recursos/IaRouterPage.tsx` y `apps/web/public/llms.txt`): ahí también hay que reflejar los cambios de instalación o de enlaces.
+Rules:
+- **`README.md` is also the PyPI page**, which does not resolve relative paths: its links must be **absolute** (a test enforces it). Images too (`raw.githubusercontent.com`).
+- When publishing a version: `ia_router/__init__.py`, `CITATION.cff` (`version`) and a `## X.Y.Z` entry in `CHANGELOG.md` (the release script requires it).
+- The website lives in another repo (`Mgobeaalcoba.github.io`, `apps/web/src/components/recursos/IaRouterPage.tsx`, its two routes under `app/recursos/ia-router` and `app/en/recursos/ia-router`, and `apps/web/public/llms.txt`): installation or link changes must be reflected there too, in both languages.
 
-## Documentación (mantenela al día en el mismo cambio)
+## Documentation (keep it up to date in the same change)
 
-- [README.md](README.md): visión general, comandos, `.env`, archivos, límites.
-- [docs/USO.md](docs/USO.md): guía completa. **Las salidas que se muestran deben ser reales**: capturalas, no las inventes.
-- `.env.example`: toda variable nueva va documentada ahí y en la tabla de variables de `docs/USO.md`.
-- Este archivo, si cambia una regla, el mapa o aparece una trampa nueva. Actualizá los conteos (tests, versiones) cuando cambien.
+- [README.md](README.md): overview, commands, `.env`, files, limits.
+- [docs/USAGE.md](docs/USAGE.md): the full guide. **The outputs shown must be real**: capture them, do not invent them.
+- `.env.example`: every new variable is documented there and in the variables table of `docs/USAGE.md`.
+- This file, if a rule or the map changes or a new pitfall appears. Update the counts (tests, versions) when they change.
 
 ## Commits
 
-Mensajes en español con prefijo `feat:`, `fix:`, `docs:` o `test:`, que expliquen el *por qué*. Los pull requests externos requieren commits firmados (`git commit -s`, DCO; `tools/check_dco.sh` lo verifica en CI): ver `CONTRIBUTING.md`. Un cambio coherente por commit. Hacer push o publicar cosas es decisión del dueño del repo.
+Messages in English with a `feat:`, `fix:`, `docs:` or `test:` prefix, explaining the *why*. External pull requests require signed-off commits (`git commit -s`, DCO; `tools/check_dco.sh` verifies it in CI): see `CONTRIBUTING.md`. One coherent change per commit. Pushing or publishing things is the repo owner's decision.

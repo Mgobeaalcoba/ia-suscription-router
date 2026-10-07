@@ -1,4 +1,4 @@
-"""Router de suscripciones de IA con ruteo por métricas objetivas. Sin argumentos abre el chat; también: doctor | route | ask | stats | scores | metrics | priorities | mcp | reset-cooldowns."""
+"""AI subscription router that routes by objective metrics. With no arguments it opens the chat; also: doctor | route | ask | stats | scores | metrics | priorities | mcp | reset-cooldowns."""
 from __future__ import annotations
 
 import argparse
@@ -13,7 +13,7 @@ def _color() -> bool:
 
 
 def cmd_doctor(cfg, args) -> int:
-    print(f"Config: {len(cfg['models'])} modelos | estado en: {state.home()} | métricas: {metrics.status_line()}\n")
+    print(f"Config: {len(cfg['models'])} models | state in: {state.home()} | metrics: {metrics.status_line()}\n")
     probed = probe.probe(cfg) if args.probe else {}
     ids = metrics.known_model_ids(list(cfg["models"]))
     for name, spec in cfg["models"].items():
@@ -23,17 +23,17 @@ def cmd_doctor(cfg, args) -> int:
         if name in probed:
             p = probed[name]
             extra = f"  auth={p['auth']} {p.get('probe_seconds', '-')}s {p.get('version', '')}"
-        flags = "" if spec.get("enabled", True) else " [desactivado en models.json]"
+        flags = "" if spec.get("enabled", True) else " [disabled in models.json]"
         mid = (probed.get(name) or {}).get("model_id") or ids.get(name)
-        print(f"{name:<12} {'instalado' if installed else 'NO instalado':<13} cooldown={round(cd)}s{extra}{flags}  modelo: {mid or 'desconocido'}")
+        print(f"{name:<12} {'installed' if installed else 'NOT installed':<13} cooldown={round(cd)}s{extra}{flags}  model: {mid or 'unknown'}")
         if not installed:
-            print(f"             → instalá el CLI oficial o ajustá 'cmd' en models.json (o ROUTER_CMD_{name.upper()})")
+            print(f"             → install the official CLI or adjust 'cmd' in models.json (or ROUTER_CMD_{name.upper()})")
         elif name in probed and probed[name]["auth"] == "missing":
-            print(f"             → instalado pero SIN autenticar: iniciá sesión o configurá la API key de {name}")
+            print(f"             → installed but NOT authenticated: log in or set the API key for {name}")
         elif name in probed and probed[name]["auth"] == "unknown":
-            print(f"             → la sonda falló: {probed[name].get('probe_error')}")
+            print(f"             → the probe failed: {probed[name].get('probe_error')}")
     if not args.probe:
-        print("\nPara verificar login, latencia y qué modelo usa cada CLI (gasta 1 llamada corta por modelo): cli.py doctor --probe")
+        print("\nTo check login, latency and which model each CLI uses (spends 1 short call per model): cli.py doctor --probe")
     return 0
 
 
@@ -41,7 +41,7 @@ def cmd_route(cfg, args) -> int:
     _, ctx_len, warns = core.build_prompt(args.task, args.context)
     print(core.format_ranking(core.route(args.task, cfg, ctx_len)))
     for w in warns:
-        print("aviso:", w, file=sys.stderr)
+        print("warning:", w, file=sys.stderr)
     return 0
 
 
@@ -53,25 +53,25 @@ def cmd_ask(cfg, args) -> int:
         return 2
     print(core.format_ranking(res["decision"]), file=sys.stderr)
     if res.get("dry_run"):
-        print(f"(dry-run) orden de intento: {res['order']}", file=sys.stderr)
+        print(f"(dry-run) attempt order: {res['order']}", file=sys.stderr)
         return 0
     for a in res["attempts"]:
-        print(f"intento {a['model']}: {'OK' if not a['error'] else a['error'][:80]} ({a['seconds']}s)", file=sys.stderr)
+        print(f"attempt {a['model']}: {'OK' if not a['error'] else a['error'][:80]} ({a['seconds']}s)", file=sys.stderr)
     if res["ok"]:
         print(f"\n[{core.format_usage(res)}]\n{render.render(res['output'], color=_color())}")
         return 0
-    print(f"Falló: {res.get('error')}", file=sys.stderr)
+    print(f"Failed: {res.get('error')}", file=sys.stderr)
     return 1
 
 
 def cmd_stats(cfg, _args) -> int:
     st = state.stats()
     if not st:
-        print("Sin historial todavía (se arma con cada `ask`).")
+        print("No history yet (it builds up with every `ask`).")
         return 0
-    print(f"{'modelo':<12} {'corridas':>8} {'éxito':>6} {'seg. medio':>10} {'rate limits':>11} {'auth':>5} {'tokens in':>10} {'tokens out':>10}")
+    print(f"{'model':<12} {'runs':>8} {'success':>7} {'avg secs':>10} {'rate limits':>11} {'auth':>5} {'tokens in':>10} {'tokens out':>10}")
     for n, m in st.items():
-        print(f"{n:<12} {m['runs']:>8} {m['ok_rate']:>6.0%} {m['avg_seconds']:>10} {m['rate_limits']:>11} {m['auth_errors']:>5} {m['tokens_in']:>10} {m['tokens_out']:>10}")
+        print(f"{n:<12} {m['runs']:>8} {m['ok_rate']:>7.0%} {m['avg_seconds']:>10} {m['rate_limits']:>11} {m['auth_errors']:>5} {m['tokens_in']:>10} {m['tokens_out']:>10}")
     return 0
 
 
@@ -94,35 +94,35 @@ def cmd_metrics(cfg, args) -> int:
 
 def cmd_priorities(cfg, _args) -> int:
     if not sys.stdin.isatty():
-        print("`priorities` necesita una terminal interactiva (usa un selector con las flechas).", file=sys.stderr)
+        print("`priorities` needs an interactive terminal (it uses an arrow-key selector).", file=sys.stderr)
         return 1
     return 0 if priorities.run(cfg, color=_color()) else 1
 
 
 def main() -> int:
-    envfile.load()  # .env (p. ej. ARTIFICIAL_ANALYSIS_API_KEY); nunca pisa lo ya definido en el entorno
+    envfile.load()  # .env (e.g. ARTIFICIAL_ANALYSIS_API_KEY); never overrides what is already set in the environment
     p = argparse.ArgumentParser(prog="ia-router", description=__doc__)
     p.add_argument("--version", action="version", version=f"ia-router {__version__}")
     sub = p.add_subparsers(dest="cmd")
-    sub.add_parser("chat", help="modo conversacional (es lo que se abre sin argumentos)")
-    dp = sub.add_parser("doctor", help="verifica qué CLIs están instalados y qué modelo usa cada uno")
-    dp.add_argument("--probe", action="store_true", help="llamada mínima real a cada CLI: login, latencia, versión y modelo")
+    sub.add_parser("chat", help="conversational mode (what opens with no arguments)")
+    dp = sub.add_parser("doctor", help="check which CLIs are installed and which model each one uses")
+    dp.add_argument("--probe", action="store_true", help="minimal real call to each CLI: login, latency, version and model")
     for name in ("route", "ask"):
-        sp = sub.add_parser(name, help="rutear" if name == "route" else "rutear y ejecutar")
+        sp = sub.add_parser(name, help="route" if name == "route" else "route and run")
         sp.add_argument("task")
-        sp.add_argument("--context", "-c", action="append", default=[], help="archivo de contexto (repetible)")
+        sp.add_argument("--context", "-c", action="append", default=[], help="context file (repeatable)")
         if name == "ask":
             sp.add_argument("--model", "-m", default="auto", help="auto|claude|codex|antigravity")
-            sp.add_argument("--dry-run", action="store_true", help="solo mostrar la decisión")
-    sub.add_parser("stats", help="éxito, latencia, rate limits y tokens por modelo (del log)")
-    sp = sub.add_parser("scores", help="puntaje por modelo y categoría (con desglose si indicás una)")
-    sp.add_argument("category", nargs="?", help="ej: coding")
-    sp = sub.add_parser("metrics", help="de dónde salen las métricas; `refresh` las actualiza (Arena y, con clave, Artificial Analysis)")
+            sp.add_argument("--dry-run", action="store_true", help="only show the decision")
+    sub.add_parser("stats", help="success, latency, rate limits and tokens per model (from the log)")
+    sp = sub.add_parser("scores", help="score per model and category (with a breakdown if you give one)")
+    sp.add_argument("category", nargs="?", help="e.g. coding")
+    sp = sub.add_parser("metrics", help="where the metrics come from; `refresh` updates them (Arena and, with a key, Artificial Analysis)")
     sp.add_argument("action", nargs="?", choices=["show", "refresh"], default="show")
-    sp.add_argument("--force", action="store_true", help="(refresh) consultar aunque tus datos tengan menos de 12 horas")
-    sub.add_parser("priorities", help="preguntas: qué priorizás en cada tipo de tarea (precisión, velocidad o costo)")
-    sub.add_parser("mcp", help="correr el servidor MCP (stdio)")
-    sub.add_parser("reset-cooldowns", help="limpiar cooldowns (rate limit y auth)")
+    sp.add_argument("--force", action="store_true", help="(refresh) query even if your data is less than 12 hours old")
+    sub.add_parser("priorities", help="questions: what you prioritize for each kind of task (accuracy, speed or cost)")
+    sub.add_parser("mcp", help="run the MCP server (stdio)")
+    sub.add_parser("reset-cooldowns", help="clear cooldowns (rate limit and auth)")
     args = p.parse_args()
 
     if args.cmd in (None, "chat"):
@@ -134,7 +134,7 @@ def main() -> int:
         return 0
     if args.cmd == "reset-cooldowns":
         state.reset_cooldowns()
-        print("cooldowns limpiados")
+        print("cooldowns cleared")
         return 0
     cfg = core.load_config()
     return {"doctor": cmd_doctor, "route": cmd_route, "ask": cmd_ask, "stats": cmd_stats, "scores": cmd_scores,

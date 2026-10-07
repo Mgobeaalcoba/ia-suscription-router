@@ -1,13 +1,13 @@
 ---
-name: Proponer una mejora
-about: Una idea para sumar o cambiar
+name: Suggest an improvement
+about: An idea to add or change something
 labels: enhancement
 ---
 
-**Qué problema querés resolver**
+**What problem do you want to solve**
 
-**Cómo imaginás la solución**
+**How you imagine the solution**
 
-**Alternativas que consideraste**
+**Alternatives you considered**
 
-> El proyecto se simplificó a propósito (sin manifiesto, sin calibración propia): leé "Qué conviene hablar antes" en CONTRIBUTING.md.
+> The project was deliberately simplified (no manifest, no custom calibration): read "What is worth discussing first" in CONTRIBUTING.md.

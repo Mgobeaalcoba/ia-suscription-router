@@ -1,9 +1,9 @@
 {
-  "_comment": "Los comandos son plantillas: verificalos con `python3 cli.py doctor --probe`. 'strengths' (0-10) son ESTIMACIONES de último recurso: el ruteo real sale de las métricas (metrics.py). 'usage' = flags que hacen al CLI devolver JSON con modelo y tokens. 'add_dir' = acceso a la carpeta de un adjunto. 'reads_files': false = el CLI no abre archivos por ruta en modo no interactivo (agy): se descarta para imágenes/PDF/binarios adjuntos. 'external' = {\"arena\": nombre-exacto, \"aa\": slug} fuerza con qué entrada de los portales se empareja el modelo. 'antigravity' reemplaza a Gemini CLI (Google lo dio de baja el 18/06/2026).",
+  "_comment": "The commands are templates: verify them with `python3 cli.py doctor --probe`. 'strengths' (0-10) are last-resort ESTIMATES: the real routing comes from the metrics (metrics.py). 'usage' = flags that make the CLI return JSON with the model and tokens. 'add_dir' = access to an attachment's folder. 'reads_files': false = the CLI does not open files by path in non-interactive mode (agy): it is discarded for attached images/PDFs/binaries. 'external' = {\"arena\": exact-name, \"aa\": slug} forces which portal entry the model is matched with. 'antigravity' replaces Gemini CLI (Google discontinued it on 2026-06-18).",
   "cooldown_minutes": 30,
   "models": {
     "claude": {
-      "label": "Claude (CLI oficial: claude)",
+      "label": "Claude (official CLI: claude)",
       "cmd": [
         "claude",
         "-p",
@@ -44,7 +44,7 @@
       }
     },
     "codex": {
-      "label": "OpenAI Codex (CLI oficial: codex exec)",
+      "label": "OpenAI Codex (official CLI: codex exec)",
       "cmd": [
         "codex",
         "exec",
@@ -80,7 +80,7 @@
       }
     },
     "antigravity": {
-      "label": "Google Antigravity (CLI oficial: agy -p)",
+      "label": "Google Antigravity (official CLI: agy -p)",
       "cmd": [
         "agy",
         "-p",

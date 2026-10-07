@@ -1,192 +1,194 @@
 # ia-router
 
-Router que reparte tus tareas entre los **CLIs oficiales** de las IA que ya pagás (`claude`, `codex`, `agy` de Antigravity), **decidiendo con métricas objetivas** de portales respetados y no a ojo.
+A router that splits your tasks across the **official CLIs** of the AI subscriptions you already pay for (`claude`, `codex`, `agy` from Antigravity), **deciding with objective metrics** from respected portals instead of by gut feeling.
 
-Se abre como `claude`: escribís una tarea y se rutea sola al mejor modelo según las métricas. Si querés, respondés unas preguntas sobre qué priorizás en cada tipo de tarea (precisión, velocidad o costo) y el ruteo se rearma.
+It opens like `claude`: you type a task and it is routed on its own to the best model according to the metrics. If you want, you answer a few questions about what you prioritize for each kind of task (accuracy, speed or cost) and the routing is rebuilt.
 
-- **Ya viene con métricas:** el software trae incluida la última foto de [Arena](https://arena.ai/leaderboard); rutea con datos desde el primer uso, sin red.
-- **Actualizar es una acción tuya y se ve:** al iniciar, si las métricas tienen más de 7 días, te ofrece actualizarlas mostrando cada paso y **qué cambió en el ruteo**.
-- **Sin dependencias externas:** solo la librería estándar de Python (3.9 o superior; los tests pasan en 3.9 y 3.14).
-- **No toca tokens OAuth:** cada CLI usa su propio login y su propia suscripción. Nunca se activan flags de "permitir todo".
-- **Por Mgobeaalcoba · [mgatc.com](https://mgatc.com)** — [GitHub](https://github.com/Mgobeaalcoba)
+- **It already ships with metrics:** the software bundles the latest snapshot of [Arena](https://arena.ai/leaderboard); it routes with data from the first use, with no network.
+- **Updating is your action, and it is visible:** on startup, if the metrics are more than 7 days old, it offers to update them, showing every step and **what changed in the routing**.
+- **No external dependencies:** only the Python standard library (3.9 or higher; the tests pass on 3.9 and 3.14).
+- **It never touches OAuth tokens:** each CLI uses its own login and its own subscription. "Allow everything" flags are never turned on.
+- **By Mgobeaalcoba · [mgatc.com](https://mgatc.com)** — [GitHub](https://github.com/Mgobeaalcoba)
 
-> **Guía de uso completa, con ejemplos y solución de problemas: [docs/USO.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USO.md).**
-> Si sos un agente de IA o vas a contribuir: [AGENTS.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/AGENTS.md).
+> **Full usage guide, with examples and troubleshooting: [docs/USAGE.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USAGE.md).**
+> If you are an AI agent or you are going to contribute: [AGENTS.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/AGENTS.md).
 
-![Encabezado de ia-router en la terminal: logo, métricas de Arena y Artificial Analysis, modelos y cuadro de entrada](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-header.png)
+![ia-router header in the terminal: logo, Arena and Artificial Analysis metrics, models and input box](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-header.png)
 
-## Dónde encontrarlo
+## Where to find it
 
 | | |
 |---|---|
-| **Web** | [mgatc.com/recursos/ia-router](https://www.mgatc.com/recursos/ia-router/): qué es, casos de uso e instalación |
+| **Website** | [mgatc.com/en/recursos/ia-router](https://www.mgatc.com/en/recursos/ia-router/): what it is, use cases and installation (also [in Spanish](https://www.mgatc.com/recursos/ia-router/)) |
 | **PyPI** | [pypi.org/project/ia-router](https://pypi.org/project/ia-router/): `pipx install ia-router` |
 | **Homebrew** | [Mgobeaalcoba/homebrew-tap](https://github.com/Mgobeaalcoba/homebrew-tap): `brew install Mgobeaalcoba/tap/ia-router` |
-| **Código** | [github.com/Mgobeaalcoba/ia-suscription-router](https://github.com/Mgobeaalcoba/ia-suscription-router) |
-| **Guía de uso** | [docs/USO.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USO.md) |
-| **Cambios** | [CHANGELOG.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CHANGELOG.md) |
-| **Problemas e ideas** | [Issues](https://github.com/Mgobeaalcoba/ia-suscription-router/issues) |
-| **Licencia** | [Apache-2.0](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/LICENSE) · [NOTICE](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/NOTICE) · [cómo citarlo](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CITATION.cff) |
+| **Code** | [github.com/Mgobeaalcoba/ia-suscription-router](https://github.com/Mgobeaalcoba/ia-suscription-router) |
+| **Usage guide** | [docs/USAGE.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USAGE.md) |
+| **Changes** | [CHANGELOG.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CHANGELOG.md) |
+| **Problems and ideas** | [Issues](https://github.com/Mgobeaalcoba/ia-suscription-router/issues) |
+| **License** | [Apache-2.0](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/LICENSE) · [NOTICE](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/NOTICE) · [how to cite it](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CITATION.cff) |
 
-## Cómo decide
+## How it decides
 
 ```
-tu tarea ──► clasificar ──► puntaje por modelo ──► elegir el mejor ──► ejecutar su CLI
-            (por reglas)    (métricas + tus         (con fallback si    (con tu login
-                             prioridades)            hay rate limit)     y tu cuota)
+your task ──► classify ──► score per model ──► pick the best ──► run its CLI
+             (by rules)    (metrics + your      (with fallback    (with your login
+                            priorities)          on rate limit)    and your quota)
 ```
 
-| Dimensión | De dónde sale |
+| Dimension | Where it comes from |
 |---|---|
-| **Precisión** | **Arena**: Elo por categoría (coding, hard prompts, math, escritura, contexto largo, visión…) con margen de error. Las diferencias dentro del margen no premian a nadie. |
-| **Velocidad** | **Artificial Analysis** (tokens/s). Requiere su clave gratuita. |
-| **Costo** | Precio por millón de tokens (Artificial Analysis o Arena): proxy del consumo de cuota. |
+| **Accuracy** | **Arena**: Elo per category (coding, hard prompts, math, writing, long context, vision…) with a margin of error. Differences within the margin reward nobody. |
+| **Speed** | **Artificial Analysis** (tokens/s). Requires its free key. |
+| **Cost** | Price per million tokens (Artificial Analysis or Arena): a proxy for quota consumption. |
 
-Velocidad y costo van en escala logarítmica (2 puntos menos por cada duplicación frente al mejor de tus modelos). Una dimensión solo cuenta si hay dato para **todos** tus modelos. Detalle en [docs/USO.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USO.md#4-ruteo-por-métricas-objetivas).
+Speed and cost use a logarithmic scale (2 points less for every doubling versus the best of your models). A dimension only counts if there is data for **all** your models. Details in [docs/USAGE.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USAGE.md#4-routing-by-objective-metrics).
 
-## Instalación
+## Installation
 
-Probado en macOS (debería funcionar también en Linux), con Python 3.9 o superior. Hay dos formas de instalarlo, elegí una:
+Tested on macOS (it should also work on Linux), with Python 3.9 or higher. There are two ways to install it, pick one:
 
-### Opción A · Homebrew (macOS)
+### Option A · Homebrew (macOS)
 
 ```bash
 brew install Mgobeaalcoba/tap/ia-router
 ```
 
-Equivale a `brew tap Mgobeaalcoba/tap && brew install ia-router`. Homebrew instala Python si hace falta.
+It is equivalent to `brew tap Mgobeaalcoba/tap && brew install ia-router`. Homebrew installs Python if needed.
 
-### Opción B · pip o pipx (cualquier sistema con Python 3.9+)
-
-```bash
-pipx install ia-router                  # recomendado: lo instala aislado y deja el comando `ia-router` en tu PATH
-python3 -m pip install --user ia-router # alternativa con pip
-```
-
-Si no tenés `pipx`: `brew install pipx && pipx ensurepath` (macOS) o `python3 -m pip install --user pipx && python3 -m pipx ensurepath`. Después abrí una terminal nueva.
-
-### Verificar que quedó bien
+### Option B · pip or pipx (any system with Python 3.9+)
 
 ```bash
-ia-router --version     # ia-router 0.2.0
-ia-router doctor        # qué CLIs tenés instalados y qué modelo usa cada uno (no gasta cuota)
+pipx install ia-router                  # recommended: installs it isolated and puts the `ia-router` command on your PATH
+python3 -m pip install --user ia-router # alternative with pip
 ```
 
-Necesitás **al menos uno** de los CLIs oficiales instalado y logueado (`claude`, `codex` o `agy`); el router no los instala por vos.
+If you do not have `pipx`: `brew install pipx && pipx ensurepath` (macOS) or `python3 -m pip install --user pipx && python3 -m pipx ensurepath`. Then open a new terminal.
 
-### Actualizar y desinstalar
+### Check that it worked
+
+```bash
+ia-router --version     # ia-router 0.3.0
+ia-router doctor        # which CLIs you have installed and which model each one uses (spends no quota)
+```
+
+You need **at least one** of the official CLIs installed and logged in (`claude`, `codex` or `agy`); the router does not install them for you.
+
+### Update and uninstall
 
 | | Homebrew | pipx | pip |
 |---|---|---|---|
-| Actualizar | `brew upgrade ia-router` | `pipx upgrade ia-router` | `python3 -m pip install -U ia-router` |
-| Desinstalar | `brew uninstall ia-router` | `pipx uninstall ia-router` | `python3 -m pip uninstall ia-router` |
+| Update | `brew upgrade ia-router` | `pipx upgrade ia-router` | `python3 -m pip install -U ia-router` |
+| Uninstall | `brew uninstall ia-router` | `pipx uninstall ia-router` | `python3 -m pip uninstall ia-router` |
 
-Desinstalar **no borra tus datos** (`~/.ia-router`: métricas descargadas, prioridades, historial). Para empezar de cero: `rm -r ~/.ia-router`.
+Uninstalling **does not delete your data** (`~/.ia-router`: downloaded metrics, priorities, history). To start from scratch: `rm -r ~/.ia-router`.
 
-Si aparece `ia-router: command not found` después de instalar con pip o pipx, falta el directorio de scripts en tu `PATH` (normalmente `~/.local/bin`): `pipx ensurepath` y abrí una terminal nueva.
+If `ia-router: command not found` shows up after installing with pip or pipx, the scripts directory is missing from your `PATH` (usually `~/.local/bin`): run `pipx ensurepath` and open a new terminal.
 
-Desde el código fuente ([Mgobeaalcoba/ia-suscription-router](https://github.com/Mgobeaalcoba/ia-suscription-router)): `git clone https://github.com/Mgobeaalcoba/ia-suscription-router.git && cd ia-suscription-router && python3 cli.py`.
+From the source code ([Mgobeaalcoba/ia-suscription-router](https://github.com/Mgobeaalcoba/ia-suscription-router)): `git clone https://github.com/Mgobeaalcoba/ia-suscription-router.git && cd ia-suscription-router && python3 cli.py`.
 
-## Primer uso
-
-```bash
-ia-router            # abre el chat
-```
-
-Al abrir te pregunta (y siempre antes de gastar algo): qué modelo usa cada CLI (una consulta mínima a cada uno, solo la primera vez), si querés actualizar las métricas si están viejas, y, una vez, si querés responder las preguntas de prioridades.
-
-```
-ia ❯ Arreglá este bug en mi función Python        ← se rutea sola
-ia ❯ /scores coding                                ← qué elige el router y por qué
-ia ❯ /priorities                                   ← qué priorizás en cada tipo de tarea
-ia ❯ /metrics refresh                              ← actualizar las métricas (con visibilidad)
-```
-
-## Actualizar las métricas y activar velocidad/costo (`.env`)
+## First use
 
 ```bash
-ia-router metrics refresh        # lee ~11 páginas públicas de arena.ai (≈ 1 minuto)
+ia-router            # opens the chat
 ```
 
-Arena aporta la precisión. Para sumar **velocidad y costo** (y poder priorizarlos) usá la API de [Artificial Analysis](https://artificialanalysis.ai/), que tiene un plan **gratuito** (1.000 pedidos por día):
+On open it asks you (always before spending anything): which model each CLI uses (a minimal query to each one, only the first time), whether you want to update the metrics if they are old, and, once, whether you want to answer the priority questions.
+
+```
+ia ❯ Fix this bug in my Python function            ← routed on its own
+ia ❯ /scores coding                                ← what the router picks and why
+ia ❯ /priorities                                   ← what you prioritize for each kind of task
+ia ❯ /metrics refresh                              ← update the metrics (with visibility)
+```
+
+## Update the metrics and turn on speed/cost (`.env`)
 
 ```bash
-mkdir -p ~/.ia-router && cp .env.example ~/.ia-router/.env      # instalado con pip/brew (o `.env` en la carpeta del repo si usás un clon)
-# editá ese archivo y pegá tu clave:   ARTIFICIAL_ANALYSIS_API_KEY=tu_clave
-ia-router metrics refresh        # ahora también trae velocidad, precio y benchmarks
+ia-router metrics refresh        # reads ~11 public arena.ai pages (≈ 1 minute)
 ```
 
-El `.env` **nunca se sube a git** (está en `.gitignore`); `.env.example` sí. Una variable ya definida en tu entorno tiene prioridad sobre el archivo. Artificial Analysis pide atribución: el router la muestra cada vez que usa sus datos.
+Arena provides accuracy. To add **speed and cost** (and be able to prioritize them) use the [Artificial Analysis](https://artificialanalysis.ai/) API, which has a **free** plan (1,000 requests per day):
 
-## Comandos
+```bash
+mkdir -p ~/.ia-router && cp .env.example ~/.ia-router/.env      # installed with pip/brew (or `.env` in the repo folder if you use a clone)
+# edit that file and paste your key:   ARTIFICIAL_ANALYSIS_API_KEY=your_key
+ia-router metrics refresh        # now it also brings speed, price and benchmarks
+```
 
-| Comando | Qué hace |
+The `.env` is **never pushed to git** (it is in `.gitignore`); `.env.example` is. A variable already defined in your environment takes priority over the file. Artificial Analysis asks for attribution: the router shows it every time it uses its data.
+
+## Commands
+
+| Command | What it does |
 |---|---|
-| *(sin argumentos)* / `chat` | Modo conversacional. |
-| `ask "tarea" [-m modelo] [-c archivo] [--dry-run]` | Rutea y ejecuta, con fallback. |
-| `route "tarea"` | Muestra qué modelo elegiría, sin ejecutar. |
-| `scores [categoría]` | Puntaje por modelo y categoría; con una categoría, el desglose. |
-| `metrics [refresh] [--force]` | De dónde salen los datos y con qué entrada se emparejó cada modelo; `refresh` los actualiza. |
-| `priorities` | Preguntas: qué priorizás en cada tipo de tarea. |
-| `doctor [--probe]` | CLIs instalados y qué modelo usa cada uno; con `--probe`, login y latencia reales. |
-| `stats` | Éxito, latencia, rate limits y tokens por modelo. |
-| `mcp` | Servidor MCP (stdio). |
-| `reset-cooldowns` | Limpia cooldowns por rate limit o auth. |
+| *(no arguments)* / `chat` | Conversational mode. |
+| `ask "task" [-m model] [-c file] [--dry-run]` | Routes and runs, with fallback. |
+| `route "task"` | Shows which model it would pick, without running. |
+| `scores [category]` | Score per model and category; with a category, the breakdown. |
+| `metrics [refresh] [--force]` | Where the data comes from and which entry each model was matched with; `refresh` updates it. |
+| `priorities` | Questions: what you prioritize for each kind of task. |
+| `doctor [--probe]` | Installed CLIs and which model each one uses; with `--probe`, real login and latency. |
+| `stats` | Success, latency, rate limits and tokens per model. |
+| `mcp` | MCP server (stdio). |
+| `reset-cooldowns` | Clears rate-limit or auth cooldowns. |
 
-También: caja de entrada propia con historial y varias líneas, **archivos arrastrados** (texto como contexto; imágenes y PDF por ruta), cada respuesta con el **modelo exacto y los tokens**, y markdown interpretado como un README en GitHub.
+Also: its own input box with history and multiple lines, **dragged files** (text as context; images and PDFs by path), every answer with the **exact model and the tokens**, and markdown rendered like a README on GitHub.
 
-## Archivos
+The task classifier understands tasks written in English and in Spanish; the whole interface is in English.
 
-| Archivo | Rol |
+## Files
+
+| File | Role |
 |---|---|
-| `ia_router/cli.py` · `cli.py` | Subcomandos (el comando instalado es `ia-router`); `cli.py` es un atajo desde un clon. |
-| `pyproject.toml` · `packaging/homebrew/` | Paquete para PyPI y plantilla de la fórmula de Homebrew. |
-| `LICENSE` · `NOTICE` · `CITATION.cff` | Apache-2.0, atribución obligatoria y cómo citarlo. |
-| `ia_router/data/models.json` | Modelos: comandos, flags de uso, timeouts y estimaciones de último recurso. |
-| `.env.example` | Variables opcionales (clave de Artificial Analysis). Copiar a `.env`. |
-| `ia_router/metrics.py` | Arena y Artificial Analysis: descarga, emparejamiento por modelo real y valores 0-10. |
-| `ia_router/data/arena.json` | Foto de Arena incluida en el software (CC BY 4.0). |
-| `ia_router/scoring.py` · `priorities.py` | Puntaje por categoría, pesos y cuestionario de prioridades. |
-| `ia_router/core.py` · `router.py` | Orquestación, clasificación y ranking. |
-| `ia_router/adapters.py` · `probe.py` | Ejecución de CLIs (modelo y tokens, rate limit, login) y sonda. |
-| `ia_router/chat.py` · `editor.py` · `select.py` | Chat, caja de entrada y selector de opciones. |
-| `ia_router/attachments.py` · `render.py` · `banner.py` | Archivos arrastrados, markdown interpretado y encabezado. |
-| `ia_router/envfile.py` · `state.py` · `mcp_server.py` | Lector de `.env`, estado y log, servidor MCP. |
-| `tools/update_snapshot.py` | Para quien mantiene el repo: regenera la foto de Arena antes de publicar. |
-| `tests/` | 266 tests y CLIs falsos (`tests/fake_bin`). |
+| `ia_router/cli.py` · `cli.py` | Subcommands (the installed command is `ia-router`); `cli.py` is a shortcut from a clone. |
+| `pyproject.toml` · `packaging/homebrew/` | PyPI package and Homebrew formula template. |
+| `LICENSE` · `NOTICE` · `CITATION.cff` | Apache-2.0, mandatory attribution and how to cite it. |
+| `ia_router/data/models.json` | Models: commands, usage flags, timeouts and last-resort estimates. |
+| `.env.example` | Optional variables (Artificial Analysis key). Copy to `.env`. |
+| `ia_router/metrics.py` | Arena and Artificial Analysis: download, matching by real model and 0-10 values. |
+| `ia_router/data/arena.json` | Arena snapshot bundled with the software (CC BY 4.0). |
+| `ia_router/scoring.py` · `priorities.py` | Score per category, weights and the priorities questionnaire. |
+| `ia_router/core.py` · `router.py` | Orchestration, classification and ranking. |
+| `ia_router/adapters.py` · `probe.py` | CLI execution (model and tokens, rate limit, login) and the probe. |
+| `ia_router/chat.py` · `editor.py` · `select.py` | Chat, input box and option selector. |
+| `ia_router/attachments.py` · `render.py` · `banner.py` | Dragged files, rendered markdown and the header. |
+| `ia_router/envfile.py` · `state.py` · `mcp_server.py` | `.env` reader, state and log, MCP server. |
+| `tools/update_snapshot.py` | For whoever maintains the repo: regenerates the Arena snapshot before publishing. |
+| `tests/` | 269 tests and fake CLIs (`tests/fake_bin`). |
 
-## Usarlo desde Claude Code (MCP)
+## Using it from Claude Code (MCP)
 
 ```bash
 claude mcp add ia-router -- python3 ~/Documents/ia-suscription-router/cli.py mcp
 ```
 
-Herramientas: `route_task`, `ask_model`, `list_models`.
+Tools: `route_task`, `ask_model`, `list_models`.
 
-## Límites conocidos
+## Known limits
 
-| Tema | Detalle |
+| Topic | Detail |
 |---|---|
-| Arena | Mide preferencia humana, no respuestas correctas, y publica variantes por nivel de esfuerzo que pueden no coincidir con el de tu CLI (se marca como aproximado). Lee páginas públicas de arena.ai: si cambian de formato, lo avisa y sigue con lo que tenía. |
-| Modelos de frontera | Las diferencias de precisión suelen caer dentro del margen de error; ahí desempatan velocidad y costo, que requieren la clave de Artificial Analysis. |
-| Artificial Analysis | Verificado contra su API real. No publica todos los índices para todos los modelos: el router usa los benchmarks que cubren a los tuyos. Si tu CLI no informa su nivel de esfuerzo, elige el habitual y lo marca como aproximado. |
-| Costo | Es el precio de lista por token: un proxy del consumo de cuota, no tu cuota real. |
-| Antigravity | `agy -p` no lee el prompt por stdin ni abre archivos por ruta en modo no interactivo, y falla si pide una herramienta que no puede autorizar. |
-| Términos de uso | Pensado para uso personal a ritmo humano. Si lo distribuís a terceros, revisá los términos de cada proveedor (Anthropic exige API key para productos de terceros). |
-| Chat | El historial recordado son los últimos turnos y no se guarda al salir; no hay streaming de respuestas. |
+| Arena | It measures human preference, not correct answers, and publishes variants per effort level that may not match your CLI's (marked as approximate). It reads public arena.ai pages: if their format changes, it says so and continues with what it had. |
+| Frontier models | Accuracy differences usually fall within the margin of error; there speed and cost break the tie, and they require the Artificial Analysis key. |
+| Artificial Analysis | Verified against its real API. It does not publish every index for every model: the router uses the benchmarks that cover yours. If your CLI does not report its effort level, it picks the usual one and marks it as approximate. |
+| Cost | It is the list price per token: a proxy for quota consumption, not your real quota. |
+| Antigravity | `agy -p` does not read the prompt from stdin nor open files by path in non-interactive mode, and it fails if it asks for a tool it cannot authorize. |
+| Terms of use | Meant for personal use at a human pace. If you distribute it to third parties, review each provider's terms (Anthropic requires an API key for third-party products). |
+| Chat | The remembered history is the last few turns and it is not saved on exit; there is no response streaming. |
 
-## Datos de terceros
+## Third-party data
 
-Las métricas se muestran con su atribución: **Arena** ([arena.ai](https://arena.ai), dataset `leaderboard-dataset`, CC BY 4.0) y **[Artificial Analysis](https://artificialanalysis.ai/)**.
+The metrics are shown with their attribution: **Arena** ([arena.ai](https://arena.ai), `leaderboard-dataset` dataset, CC BY 4.0) and **[Artificial Analysis](https://artificialanalysis.ai/)**.
 
-## Contribuir
+## Contributing
 
-Las contribuciones son bienvenidas: leé [CONTRIBUTING.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CONTRIBUTING.md) (entorno, reglas, y firma de commits con el [DCO](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/DCO): `git commit -s`) y [AGENTS.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/AGENTS.md).
+Contributions are welcome: read [CONTRIBUTING.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CONTRIBUTING.md) (environment, rules, and commit sign-off with the [DCO](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/DCO): `git commit -s`) and [AGENTS.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/AGENTS.md).
 
-## Licencia y cómo citar
+## License and how to cite
 
-[Apache License 2.0](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/LICENSE): podés usarlo, modificarlo y redistribuirlo, **conservando el archivo [NOTICE](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/NOTICE) y la atribución a su autor** (sección 4 de la licencia). Los datos de terceros conservan sus propias licencias (ver más arriba).
+[Apache License 2.0](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/LICENSE): you can use, modify and redistribute it, **keeping the [NOTICE](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/NOTICE) file and the attribution to its author** (section 4 of the license). Third-party data keeps its own licenses (see above).
 
-Para citarlo en un trabajo: [CITATION.cff](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CITATION.cff) (GitHub lo muestra como *Cite this repository*).
+To cite it in a work: [CITATION.cff](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/CITATION.cff) (GitHub shows it as *Cite this repository*).
 
-> ia-router, por Mgobeaalcoba (2026). https://www.mgatc.com/recursos/ia-router/
+> ia-router, by Mgobeaalcoba (2026). https://www.mgatc.com/recursos/ia-router/

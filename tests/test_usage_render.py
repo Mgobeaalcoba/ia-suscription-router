@@ -21,7 +21,7 @@ class UsageTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_model(self, name, prompt="hola"):
+    def run_model(self, name, prompt="hello"):
         return adapters.run_cli(name, self.cfg["models"][name], prompt, usage=True)
 
     def test_claude_model_and_tokens_include_cache(self):
@@ -46,7 +46,7 @@ class UsageTests(unittest.TestCase):
 
     def test_antigravity_model_read_from_log_and_temp_file_removed(self):
         leftovers = lambda: {f for f in os.listdir(tempfile.gettempdir()) if f.startswith("ia-router-agy-")}
-        before = leftovers()  # puede haber logs de otras corridas en curso: solo importa que ésta no deje el suyo
+        before = leftovers()  # there may be logs from other runs in progress: all that matters is that this one does not leave its own
         r = self.run_model("antigravity")
         self.assertEqual(r["model_id"], "Fake Flash (High)")
         self.assertEqual(r["tokens"], {"input": 500, "output": 40, "cached": 0, "reasoning": 30})
@@ -56,13 +56,13 @@ class UsageTests(unittest.TestCase):
         self.assertEqual(adapters.parse_usage("agy", '{"status":"SUCCESS","response":"x"}', ["agy", "--model", "m1"])[1]["model"], "m1")
 
     def test_plain_output_falls_back_without_usage(self):
-        os.environ["ROUTER_CMD_CLAUDE"] = '["claude","-p","{prompt}"]'  # comando propio: no se le agregan flags
+        os.environ["ROUTER_CMD_CLAUDE"] = '["claude","-p","{prompt}"]'  # custom command: no flags are added to it
         r = self.run_model("claude")
         self.assertTrue(r["ok"])
         self.assertIsNone(r["tokens"])
 
     def test_garbled_json_keeps_raw_text(self):
-        text, info, err = adapters.parse_usage("claude", "no soy json", ["claude"])
+        text, info, err = adapters.parse_usage("claude", "i am not json", ["claude"])
         self.assertIsNone(text)
 
     def test_json_error_flag_marks_failure(self):
@@ -70,15 +70,15 @@ class UsageTests(unittest.TestCase):
         self.assertTrue(err)
 
     def test_ask_returns_and_logs_usage(self):
-        res = core.ask("Arreglá este bug en Python", self.cfg, model="claude")
+        res = core.ask("Fix this bug in Python", self.cfg, model="claude")
         self.assertEqual(res["model_id"], "claude-fake-1")
-        self.assertEqual(core.format_usage(res), "claude (claude-fake-1) · in 152 (50 caché) · out 7")
+        self.assertEqual(core.format_usage(res), "claude (claude-fake-1) · in 152 (50 cached) · out 7")
         st = state.stats()["claude"]
         self.assertEqual((st["tokens_in"], st["tokens_out"], st["token_runs"]), (152, 7, 1))
 
     def test_fmt_tokens(self):
-        self.assertEqual(adapters.fmt_tokens(None), "tokens n/d")
-        self.assertEqual(adapters.fmt_tokens({"input": 15681, "output": 5, "cached": 13184, "reasoning": 0}), "in 15.7k (13.2k caché) · out 5")
+        self.assertEqual(adapters.fmt_tokens(None), "tokens n/a")
+        self.assertEqual(adapters.fmt_tokens({"input": 15681, "output": 5, "cached": 13184, "reasoning": 0}), "in 15.7k (13.2k cached) · out 5")
 
     def test_ask_yes_survives_eof(self):
         def eof(_):
@@ -90,8 +90,8 @@ class UsageTests(unittest.TestCase):
         out = []
         c = chat.Chat(read=lambda p: "", write=out.append)
         c.pinned = "claude"
-        c.run_task("Resumí esto")
-        self.assertIn("claude (claude-fake-1) · in 152 (50 caché) · out 7", "\n".join(out))
+        c.run_task("Summarize this")
+        self.assertIn("claude (claude-fake-1) · in 152 (50 cached) · out 7", "\n".join(out))
 
 
 class RenderTests(unittest.TestCase):
@@ -99,25 +99,25 @@ class RenderTests(unittest.TestCase):
         return re.sub(r"\033\[[0-9;]*m", "", render.render(s, width=80, **kw))
 
     def test_no_color_returns_text_unchanged(self):
-        t = "# Título\n**negrita** y `código`"
+        t = "# Title\n**bold** and `code`"
         self.assertEqual(render.render(t, color=False), t)
 
     def test_no_markdown_signs_remain(self):
-        t = ("# Título\n\n## Sub\n\nTexto con **negrita**, *itálica*, `código`, ~~tachado~~ y [link](http://x.io).\n"
-             "- item\n> cita\n---\n```python\nx = 1\n```\nfin")
+        t = ("# Title\n\n## Sub\n\nText with **bold**, *italic*, `code`, ~~strikethrough~~ and [link](http://x.io).\n"
+             "- item\n> quote\n---\n```python\nx = 1\n```\nend")
         out = self.plain(t)
         for sign in ("#", "**", "`", "~~", "](", "> "):
             self.assertNotIn(sign, out.replace("# Cada", ""), sign)
-        self.assertIn("Título", out)
-        self.assertIn("negrita", out)
+        self.assertIn("Title", out)
+        self.assertIn("bold", out)
         self.assertIn("• item", out)
-        self.assertIn("▎ cita", out)
+        self.assertIn("▎ quote", out)
         self.assertIn("link (http://x.io)", out)
 
     def test_code_block_hides_fences_keeps_content_and_comments(self):
-        out = self.plain("```python\n# comentario\ngrupos = df.groupby([\"X1\"]).ngroup()\n```")
+        out = self.plain("```python\n# comment\ngroups = df.groupby([\"X1\"]).ngroup()\n```")
         self.assertNotIn("```", out)
-        self.assertIn("# comentario", out)
+        self.assertIn("# comment", out)
         self.assertIn('df.groupby(["X1"]).ngroup()', out)
         self.assertIn("python", out)
 
@@ -132,21 +132,21 @@ class RenderTests(unittest.TestCase):
         self.assertNotIn(render.GRAY + "# b", r)
 
     def test_unclosed_fence_still_renders_code(self):
-        self.assertIn("código", self.plain("```\ncódigo"))
+        self.assertIn("code", self.plain("```\ncode"))
 
     def test_table_is_aligned_box(self):
-        out = self.plain("| Modelo | Tokens |\n|:--|--:|\n| claude | 16.5k |\n| codex | **7** |").splitlines()
-        self.assertEqual(len({len(l) for l in out}), 1)  # todas las filas del mismo ancho
+        out = self.plain("| Model | Tokens |\n|:--|--:|\n| claude | 16.5k |\n| codex | **7** |").splitlines()
+        self.assertEqual(len({len(l) for l in out}), 1)  # all rows the same width
         self.assertTrue(out[0].startswith("┌") and out[-1].startswith("└"))
         self.assertIn("│ claude │  16.5k │", out[3])
         self.assertNotIn("|", "".join(out))
 
     def test_lists_tasks_and_numbers(self):
-        out = self.plain("- a\n  - b\n- [x] ok\n- [ ] no\n1. uno")
-        self.assertEqual(out.splitlines(), ["• a", "  ◦ b", "☑ ok", "☐ no", "1. uno"])
+        out = self.plain("- a\n  - b\n- [x] ok\n- [ ] no\n1. one")
+        self.assertEqual(out.splitlines(), ["• a", "  ◦ b", "☑ ok", "☐ no", "1. one"])
 
     def test_styles_applied(self):
-        self.assertIn(render.BOLD + "hola", render.render("**hola**"))
+        self.assertIn(render.BOLD + "hello", render.render("**hello**"))
         self.assertIn(render.SPAN_ON, render.render("`x`"))
         self.assertTrue(render.render("# T").startswith(render.BOLD))
 
@@ -154,10 +154,10 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(self.plain("`**a**`").strip(), "**a**")
 
     def test_escapes_are_literal(self):
-        self.assertEqual(self.plain(r"\*no\* es literal"), "*no* es literal")
+        self.assertEqual(self.plain(r"\*no\* is literal"), "*no* is literal")
 
     def test_snake_case_and_math_not_italic(self):
-        for t in ("usá mi_variable_larga aquí", "2 * 3 * 4"):
+        for t in ("use my_long_variable here", "2 * 3 * 4"):
             self.assertNotIn(render.ITALIC, render.render(t))
 
     def test_chat_md_toggle(self):
@@ -167,11 +167,11 @@ class RenderTests(unittest.TestCase):
         os.environ["ROUTER_HOME"] = tempfile.mkdtemp()
         os.environ["FAKE_CLAUDE_OUT"] = "**ok**"
         try:
-            c.run_task("hola")
+            c.run_task("hello")
             self.assertIn(render.BOLD + "ok", "\n".join(out))
             out.clear()
             c.command("/md off")
-            c.run_task("hola")
+            c.run_task("hello")
             self.assertIn("**ok**", "\n".join(out))
             self.assertNotIn(render.BOLD, "\n".join(out[1:]))
         finally:
@@ -183,13 +183,13 @@ class BannerTests(unittest.TestCase):
     NAMES = ["claude", "codex", "antigravity"]
 
     def make(self, **kw):
-        args = dict(version="9.9.9", metrics_line="Arena 2026-10-05 (incluida)", models=self.NAMES, installed=self.OK, cwd="/tmp/x", color=False, width=100)
+        args = dict(version="9.9.9", metrics_line="Arena 2026-10-05 (bundled)", models=self.NAMES, installed=self.OK, cwd="/tmp/x", color=False, width=100)
         args.update(kw)
         return banner.render(**args)
 
     def test_plain_banner_has_logo_and_status(self):
         out = self.make()
-        for piece in ("╦═╗╔═╗╦ ╦╔╦╗╔═╗╦═╗", "v9.9.9", "métricas Arena 2026-10-05 (incluida)", "● claude", "● codex", "○ antigravity", "/tmp/x", "/help", "/exit"):
+        for piece in ("╦═╗╔═╗╦ ╦╔╦╗╔═╗╦═╗", "v9.9.9", "metrics", "● claude", "● codex", "○ antigravity", "/tmp/x", "/help", "/exit"):
             self.assertIn(piece, out)
         self.assertNotIn("\033", out)
 
@@ -228,7 +228,7 @@ class BannerTests(unittest.TestCase):
         self.assertIn("by Mgobeaalcoba · mgatc.com", self.make(width=40))
 
     def test_pinned_model_shown(self):
-        self.assertIn("fijado: codex", self.make(pinned="codex"))
+        self.assertIn("pinned: codex", self.make(pinned="codex"))
         self.assertNotIn("fijado", self.make(pinned="auto"))
 
     def test_chat_prompt_is_readline_safe_only_with_color(self):

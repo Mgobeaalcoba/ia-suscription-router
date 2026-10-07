@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atajo para correr desde un clon del repo: `python3 cli.py`. Instalado con pip/brew el comando es `ia-router`."""
+"""Shortcut to run from a clone of the repo: `python3 cli.py`. When installed with pip/brew the command is `ia-router`."""
 import sys
 
 from ia_router.cli import main

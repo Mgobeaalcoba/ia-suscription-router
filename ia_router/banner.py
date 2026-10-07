@@ -1,7 +1,7 @@
-"""Encabezado del chat: marca (tres proveedores que convergen en un nodo), wordmark con degradé,
-y un panel con el estado clave (manager, modelos disponibles, carpeta), al estilo de los CLIs de IA.
+"""Chat header: brand mark (three providers converging on a node), gradient wordmark,
+and a panel with the key state (manager, available models, folder), in the style of AI CLIs.
 
-Sin color devuelve la misma composición en texto plano; con menos de 60 columnas, una versión compacta.
+Without color it returns the same composition as plain text; under 60 columns, a compact version.
 """
 from __future__ import annotations
 
@@ -10,16 +10,16 @@ from typing import Dict, List, Optional
 
 from .render import BOLD, DIM, GRAY, RESET, UNDER, _vlen
 
-# Wordmark "ia-router" (fuente Calvin S): tres filas por letra.
+# "ia-router" wordmark (Calvin S font): three rows per letter.
 _GLYPHS = {
     "i": ("╦", "║", "╩"), "a": ("╔═╗", "╠═╣", "╩ ╩"), "r": ("╦═╗", "╠╦╝", "╩╚═"), "o": ("╔═╗", "║ ║", "╚═╝"),
     "u": ("╦ ╦", "║ ║", "╚═╝"), "t": ("╔╦╗", " ║ ", " ╩ "), "e": ("╔═╗", "║╣ ", "╚═╝"), "-": ("   ", " ─ ", "   "),
 }
 _WORD = "ia-router"
-# Colores de marca de los proveedores (claude, codex, antigravity) y degradé del wordmark.
+# Provider brand colors (claude, codex, antigravity) and wordmark gradient.
 _BRAND = [(217, 119, 87), (99, 168, 248), (52, 168, 83)]
 _STOPS = [(217, 119, 87), (200, 90, 160), (66, 133, 244)]
-_TAGLINE = "tus suscripciones de IA, ruteadas"
+_TAGLINE = "your AI subscriptions, routed"
 _AUTHOR, _SITE, _URL = "Mgobeaalcoba", "mgatc.com", "https://mgatc.com"
 _GITHUB = "https://github.com/Mgobeaalcoba"
 
@@ -45,7 +45,7 @@ def _wordmark(color: bool) -> List[str]:
 
 
 def _mark(names: List[str], ok: Dict[str, bool], color: bool) -> List[str]:
-    """●─╮ / ●─┼─◉ / ●─╯: los proveedores entran al router por la izquierda."""
+    """●─╮ / ●─┼─◉ / ●─╯: the providers enter the router from the left."""
     dots = []
     for i in range(3):
         n = names[i] if i < len(names) else None
@@ -64,7 +64,7 @@ def _short_path(path: str, room: int) -> str:
 
 
 def _credit(color: bool) -> str:
-    """'by Mgobeaalcoba · mgatc.com' con el sitio como link clickeable (OSC 8) en terminales que lo soportan."""
+    """'by Mgobeaalcoba · mgatc.com' with the site as a clickable link (OSC 8) in terminals that support it."""
     if not color:
         return f"by {_AUTHOR} · {_SITE}"
     osc = lambda url, text: f"\033]8;;{url}\033\\{text}\033]8;;\033\\"
@@ -79,7 +79,7 @@ def _box(lines: List[str], width: int, color: bool, footer: str = "") -> List[st
     out = [b("╭" + "─" * (width - 2) + "╮")]
     for l in lines:
         out.append(b("│") + " " + l + " " * max(0, inner - _vlen(l)) + " " + b("│"))
-    if footer:  # firma alineada a la derecha sobre el borde inferior
+    if footer:  # signature right-aligned on the bottom border
         seg = f" {footer} "
         out.append(b("╰" + "─" * max(1, width - 3 - _vlen(seg))) + seg + b("─╯"))
     else:
@@ -96,18 +96,18 @@ def render(version: str, metrics_line: str, models: List[str], installed: Dict[s
         on = installed.get(n, False)
         dot = f"{_rgb(_BRAND[i % 3])}●{RESET}" if color and on else (f"{GRAY}○{RESET}" if color else ("●" if on else "○"))
         chips.append(f"{dot} {n}" if on else f"{dot} {dim(n)}")
-    hints = dim("Hablame normal: tareas o preferencias  ·  /help atajos  ·  /exit salir")
+    hints = dim("Just talk normally: tasks or preferences  ·  /help shortcuts  ·  /exit quit")
 
-    if width < 60:  # versión compacta
+    if width < 60:  # compact version
         title = f"{BOLD}ia-router{RESET} {dim('v' + version)}" if color else f"ia-router v{version}"
-        return "\n".join([title, f"{label('métricas')}{metrics_line}", label("modelos") + "  ".join(chips), hints, dim(_credit(False)), ""])
+        return "\n".join([title, f"{label('metrics')}{metrics_line}", label("models") + "  ".join(chips), hints, dim(_credit(False)), ""])
 
     mark, word = _mark(models, installed, color), _wordmark(color)
     ver = dim(f"v{version}")
     head = [f"{mark[0]}   {word[0]}", f"{mark[1]}   {word[1]}  {ver}", f"{mark[2]}   {word[2]}  {dim(_TAGLINE)}"]
     w = min(width - 2, 76)
     room = w - 4 - 8
-    info = [f"{label('métricas')}{metrics_line}" + (f"   {dim('fijado:')} {pinned}" if pinned and pinned != "auto" else ""),
-            f"{label('modelos')}" + "   ".join(chips),
-            f"{label('carpeta')}{_short_path(cwd, room)}"]
+    info = [f"{label('metrics')}{metrics_line}" + (f"   {dim('pinned:')} {pinned}" if pinned and pinned != "auto" else ""),
+            f"{label('models')}" + "   ".join(chips),
+            f"{label('folder')}{_short_path(cwd, room)}"]
     return "\n".join([""] + [" " + h for h in head] + [""] + [" " + l for l in _box(info, w, color, _credit(color))] + [" " + hints, ""])

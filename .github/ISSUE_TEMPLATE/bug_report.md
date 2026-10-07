@@ -1,20 +1,20 @@
 ---
-name: Reportar un bug
-about: Algo no funciona como dice la documentación
+name: Report a bug
+about: Something does not work as the documentation says
 labels: bug
 ---
 
-**Qué pasó**
+**What happened**
 
-**Qué esperabas que pasara**
+**What you expected to happen**
 
-**Cómo reproducirlo**
+**How to reproduce it**
 1.
 
-**Entorno**
-- Salida de `ia-router --version`:
-- Cómo lo instalaste (Homebrew, pipx, pip o clon):
-- Sistema operativo y versión de Python (`python3 --version`):
-- Salida de `ia-router doctor` (no incluye claves):
+**Environment**
+- Output of `ia-router --version`:
+- How you installed it (Homebrew, pipx, pip or clone):
+- Operating system and Python version (`python3 --version`):
+- Output of `ia-router doctor` (it does not include keys):
 
-> No pegues claves de API ni el contenido de tu `.env`. Si el problema es de seguridad, no abras un issue público (ver CONTRIBUTING.md).
+> Do not paste API keys or the contents of your `.env`. If the problem is a security issue, do not open a public issue (see CONTRIBUTING.md).

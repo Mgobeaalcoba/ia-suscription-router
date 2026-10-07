@@ -1,3 +1,3 @@
-"""ia_router: router de suscripciones de IA con ruteo por métricas objetivas."""
+"""ia_router: AI subscription router that routes by objective metrics."""
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"

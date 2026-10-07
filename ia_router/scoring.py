@@ -1,15 +1,15 @@
-"""Puntaje de cada modelo por tipo de tarea, calculado con métricas objetivas y tus prioridades.
+"""Score of each model per kind of task, computed from objective metrics and your priorities.
 
-    puntaje(modelo, categoría) = Σ peso × valor      (valores de 0 a 10, relativos a TUS modelos)
+    score(model, category) = Σ weight × value      (values from 0 to 10, relative to YOUR models)
 
-  precisión   Elo de Arena en la categoría (preferencia humana, con margen de error) y, si hay clave, los benchmarks con respuesta
-              correcta de Artificial Analysis. Si no hay dato, la estimación de `models.json` (marcada como estimada).
-  velocidad   tokens/s publicados por Artificial Analysis. Solo existe con su clave.
-  costo       precio de lista por millón de tokens (Arena o Artificial Analysis). Proxy del consumo de cuota.
-              Velocidad y costo van en escala logarítmica: 2 puntos menos por cada duplicación frente al mejor de tus modelos.
+  accuracy    Arena Elo in the category (human preference, with margin of error) and, if there is a key, the correct-answer
+              benchmarks from Artificial Analysis. With no data, the `models.json` estimate (marked as estimated).
+  speed       tokens/s published by Artificial Analysis. Only exists with its key.
+  cost        list price per million tokens (Arena or Artificial Analysis). Proxy for quota consumption.
+              Speed and cost use a logarithmic scale: 2 points less for every doubling versus the best of your models.
 
-Una dimensión sin datos para TODOS tus modelos no pesa (los pesos se reparten entre las que sí tienen). Los pesos por tipo de
-tarea salen de tus respuestas en `priorities`; sin respuestas hay unos por defecto. Este puntaje alimenta al router (`strengths`).
+A dimension without data for ALL your models carries no weight (the weights are shared among those that do have it). The weights per kind of
+task come from your answers in `priorities`; without answers there are defaults. This score feeds the router (`strengths`).
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from . import metrics, router, state
 
 DIMS = ("precision", "speed", "cost")
-LABELS = {"precision": "precisión", "speed": "velocidad", "cost": "costo"}
+LABELS = {"precision": "accuracy", "speed": "speed", "cost": "cost"}
 DEFAULT_WEIGHTS = {"precision": 0.70, "speed": 0.15, "cost": 0.15}
 QUICK_WEIGHTS = {"precision": 0.40, "speed": 0.50, "cost": 0.10}
 PRESETS: Dict[str, Dict[str, float]] = {
@@ -30,19 +30,19 @@ PRESETS: Dict[str, Dict[str, float]] = {
     "speed": {"precision": 0.40, "speed": 0.50, "cost": 0.10},
     "cost": {"precision": 0.40, "speed": 0.10, "cost": 0.50},
 }
-PRESET_LABELS = {"precision": "Precisión", "balanced": "Equilibrado", "speed": "Velocidad", "cost": "Costo"}
-# grupos de tareas sobre los que se pregunta: (clave, título, categorías del router)
+PRESET_LABELS = {"precision": "Accuracy", "balanced": "Balanced", "speed": "Speed", "cost": "Cost"}
+# task groups the questions are about: (key, title, router categories)
 GROUPS: List[Tuple[str, str, List[str]]] = [
-    ("coding", "Código y debugging", ["coding", "debugging"]),
-    ("writing", "Escritura y redacción", ["writing"]),
-    ("analysis", "Análisis, datos e investigación", ["analysis", "data", "research"]),
-    ("math", "Matemática", ["math"]),
-    ("quick", "Tareas rápidas", ["quick"]),
+    ("coding", "Code and debugging", ["coding", "debugging"]),
+    ("writing", "Writing and drafting", ["writing"]),
+    ("analysis", "Analysis, data and research", ["analysis", "data", "research"]),
+    ("math", "Math", ["math"]),
+    ("quick", "Quick tasks", ["quick"]),
 ]
 CATEGORIES: List[str] = list(router.PATTERNS) + ["quick", "general"]
 
 
-# ---------- perfil: tus prioridades ----------
+# ---------- profile: your priorities ----------
 
 def profile_path():
     return state.home() / "profile.json"
@@ -75,15 +75,15 @@ def weights_for(profile: Dict, cat: str) -> Dict[str, float]:
     return QUICK_WEIGHTS if cat == "quick" else DEFAULT_WEIGHTS
 
 
-# ---------- cálculo ----------
+# ---------- computation ----------
 
 def enabled_models(cfg: Dict) -> List[str]:
     return [n for n, s in cfg["models"].items() if s.get("enabled", True)]
 
 
 def build(cfg: Dict, data: Optional[Dict] = None, profile: Optional[Dict] = None, ids: Optional[Dict[str, Optional[str]]] = None) -> Dict:
-    """{"table": {modelo: {categoría: desglose}}, "available": {dim: bool}, "arena": …, "aa": …, "missing_ids": [modelos]}.
-    El desglose: score, values {dim: 0-10 | None}, srcs {dim: texto}, weights {dim: peso usado}, basis ('métricas' | 'estimado')."""
+    """{"table": {model: {category: breakdown}}, "available": {dim: bool}, "arena": …, "aa": …, "missing_ids": [models]}.
+    The breakdown: score, values {dim: 0-10 | None}, srcs {dim: text}, weights {dim: weight used}, basis ('metrics' | 'estimated')."""
     data = data if data is not None else metrics.active()
     profile = profile if profile is not None else load_profile()
     names = enabled_models(cfg)
@@ -99,7 +99,7 @@ def build(cfg: Dict, data: Optional[Dict] = None, profile: Optional[Dict] = None
             p = prec.get(cat, {}).get(n)
             vals: Dict[str, Optional[float]] = {"precision": p[0] if p else float(est.get(cat, est.get("general", 5))),
                                                 "speed": speed[n][0] if n in speed else None, "cost": cost[n][0] if n in cost else None}
-            srcs = {"precision": p[1] if p else "estimada a mano (models.json)"}
+            srcs = {"precision": p[1] if p else "hand-estimated (models.json)"}
             if n in speed:
                 srcs["speed"] = speed[n][1]
             if n in cost:
@@ -108,18 +108,18 @@ def build(cfg: Dict, data: Optional[Dict] = None, profile: Optional[Dict] = None
             total = sum(w.values()) or 1.0
             w = {d: x / total for d, x in w.items()}
             table[n][cat] = {"score": round(sum(w[d] * vals[d] for d in w), 2), "values": {d: (round(v, 2) if v is not None else None) for d, v in vals.items()},
-                             "srcs": srcs, "weights": {d: round(x, 2) for d, x in w.items()}, "basis": "métricas" if p else "estimado"}
+                             "srcs": srcs, "weights": {d: round(x, 2) for d, x in w.items()}, "basis": "metrics" if p else "estimated"}
     return {"table": table, "available": {"speed": bool(speed), "cost": bool(cost)}, "arena": arena, "aa": aa,
             "missing_ids": [n for n in names if not ids.get(n)]}
 
 
 def apply_to_config(cfg: Dict) -> Dict:
-    """Reemplaza `strengths` por el puntaje (si hay métricas que cubran a tus modelos). Guarda el desglose en spec['_scoring']."""
+    """Replaces `strengths` with the score (if there are metrics covering your models). Stores the breakdown in spec['_scoring']."""
     if len(enabled_models(cfg)) < 2:
         return cfg
     b = build(cfg)
-    if not any(d["basis"] == "métricas" for n in b["table"] for d in b["table"][n].values()):
-        return cfg  # sin ids de modelos o sin cobertura: rige la estimación de models.json
+    if not any(d["basis"] == "metrics" for n in b["table"] for d in b["table"][n].values()):
+        return cfg  # no model ids or no coverage: the models.json estimate applies
     for n, spec in cfg["models"].items():
         if n not in b["table"]:
             continue
@@ -130,38 +130,38 @@ def apply_to_config(cfg: Dict) -> Dict:
     return cfg
 
 
-# ---------- presentación ----------
+# ---------- presentation ----------
 
 def render_table(cfg: Dict, cats: Optional[List[str]] = None) -> str:
     if not cfg.get("_scored"):
-        return ("Todavía no hay métricas que cubran a tus modelos: rige la estimación de models.json.\n"
-                "Necesito saber qué modelo usa cada CLI: corré `doctor --probe` (o dejá que lo detecte al iniciar el chat).")
+        return ("There are no metrics covering your models yet: the models.json estimate applies.\n"
+                "I need to know which model each CLI uses: run `doctor --probe` (or let it detect them when the chat starts).")
     names = enabled_models(cfg)
     table = {n: cfg["models"][n]["_scoring"] for n in names}
     cats = cats or [c for c in CATEGORIES if c != "general"]
-    head = f"{'categoría':<14}" + "".join(f"{n:>12}   " for n in names)   # cada celda: puntaje (12) + marca * + marca e + espacio
+    head = f"{'category':<14}" + "".join(f"{n:>12}   " for n in names)   # each cell: score (12) + * mark + e mark + space
     lines = [head, "─" * len(head)]
     for cat in cats:
         best = max(table[n][cat]["score"] for n in names)
         row = f"{cat:<14}"
         for n in names:
             d = table[n][cat]
-            row += f"{d['score']:>12.1f}{'*' if d['score'] == best else ' '}{'e' if d['basis'] == 'estimado' else ' '} "
+            row += f"{d['score']:>12.1f}{'*' if d['score'] == best else ' '}{'e' if d['basis'] == 'estimated' else ' '} "
         lines.append(row)
-    lines += ["", "* = el que elige el router · e = precisión estimada a mano (Arena no cubre esa categoría para todos tus modelos)"]
+    lines += ["", "* = the one the router picks · e = hand-estimated accuracy (Arena does not cover that category for all your models)"]
     a = cfg.get("_available", {})
-    lines.append("Dimensiones con datos: precisión" + (", velocidad" if a.get("speed") else "") + (", costo" if a.get("cost") else "")
-                 + ("" if a.get("speed") else "  ·  velocidad: falta tu clave de Artificial Analysis (.env)"))
+    lines.append("Dimensions with data: accuracy" + (", speed" if a.get("speed") else "") + (", cost" if a.get("cost") else "")
+                 + ("" if a.get("speed") else "  ·  speed: your Artificial Analysis key is missing (.env)"))
     d = metrics.active()
-    lines.append("Datos: " + metrics.status_line(d) + "  ·  Atribución: " + " · ".join(metrics.ATTRIBUTION[k] for k in (("arena", "aa") if d.get("aa") else ("arena",))))
+    lines.append("Data: " + metrics.status_line(d) + "  ·  Attribution: " + " · ".join(metrics.ATTRIBUTION[k] for k in (("arena", "aa") if d.get("aa") else ("arena",))))
     return "\n".join(lines)
 
 
 def explain(cfg: Dict, cat: str) -> str:
     names = enabled_models(cfg)
     if not cfg.get("_scored") or cat not in cfg["models"][names[0]].get("_scoring", {}):
-        return f"Sin desglose para '{cat}'."
-    lines = [f"Puntaje de «{cat}» = Σ peso × valor (0-10)"]
+        return f"No breakdown for '{cat}'."
+    lines = [f"Score of «{cat}» = Σ weight × value (0-10)"]
     for n in names:
         d = cfg["models"][n]["_scoring"][cat]
         parts = [f"{LABELS[k]} {d['values'][k]:.1f}×{w:.2f}" for k, w in d["weights"].items()]
@@ -171,32 +171,32 @@ def explain(cfg: Dict, cat: str) -> str:
 
 
 def describe_sources(cfg: Dict) -> str:
-    """Qué entrada de cada portal se emparejó con cada uno de tus modelos, y de dónde salen los datos."""
+    """Which entry of each portal was matched to each of your models, and where the data comes from."""
     names = enabled_models(cfg)
     b = build(cfg)
     d = metrics.active()
-    lines = [f"Métricas: {metrics.status_line(d)}  ·  Arena {d.get('arena_origin', '')}", ""]
+    lines = [f"Metrics: {metrics.status_line(d)}  ·  Arena {d.get('arena_origin', '')}", ""]
     for n in names:
         mid = metrics.known_model_ids([n])[n]
         a, x = b["arena"].get(n), b["aa"].get(n)
-        lines.append(f"{n:<12} modelo del CLI: {mid or 'desconocido (corré /models probe)'}")
+        lines.append(f"{n:<12} CLI model: {mid or 'unknown (run /models probe)'}")
         if a:
-            warn = "" if a["exact"] else "  ⚠ Arena no publica el mismo nivel de esfuerzo que usa tu CLI: dato aproximado (" + ", ".join(
-                f"{sub}: {v['effort'] or 'sin nivel'}" for sub, v in a["variants"].items() if not v["exact"]) + ")"
+            warn = "" if a["exact"] else "  ⚠ Arena does not publish the same effort level your CLI uses: approximate data (" + ", ".join(
+                f"{sub}: {v['effort'] or 'no level'}" for sub, v in a["variants"].items() if not v["exact"]) + ")"
             lines.append(f"{'':<12} Arena → {a['name']}{warn}")
         elif mid:
-            lines.append(f"{'':<12} Arena → sin coincidencia para ese modelo")
+            lines.append(f"{'':<12} Arena → no match for that model")
         if x:
-            warn = "" if x["exact"] else "  ⚠ aproximado: tu CLI no informa su nivel de esfuerzo"
+            warn = "" if x["exact"] else "  ⚠ approximate: your CLI does not report its effort level"
             lines.append(f"{'':<12} Artificial Analysis → {x['name']}" + (f" · {x['tps']:.0f} tok/s" if x.get("tps") else "") + warn)
     if not d.get("aa"):
-        lines += ["", "Artificial Analysis no está activo: sin su clave no hay velocidad ni, en general, costo. Ver .env.example."]
-    lines.append("Fuentes: " + " · ".join(metrics.ATTRIBUTION[k] for k in (("arena", "aa") if d.get("aa") else ("arena",))))
+        lines += ["", "Artificial Analysis is not active: without its key there is no speed nor, in general, cost. See .env.example."]
+    lines.append("Sources: " + " · ".join(metrics.ATTRIBUTION[k] for k in (("arena", "aa") if d.get("aa") else ("arena",))))
     return "\n".join(lines)
 
 
 def diff_tables(old: Optional[Dict], new: Dict, threshold: float = 0.3) -> List[str]:
-    """Qué cambió entre dos cálculos: el modelo elegido por categoría y los puntajes que se movieron al menos `threshold`."""
+    """What changed between two computations: the model chosen per category and the scores that moved at least `threshold`."""
     if not old:
         return []
     out = []
@@ -210,26 +210,26 @@ def diff_tables(old: Optional[Dict], new: Dict, threshold: float = 0.3) -> List[
         bo, bw = max(o, key=o.get), max(w, key=w.get)
         moved = [f"{n} {o[n]:.1f}→{w[n]:.1f}" for n in w if n in o and abs(w[n] - o[n]) >= threshold]
         if bo != bw:
-            out.append(f"{cat}: ahora elige {bw} (antes {bo})" + (f"  [{', '.join(moved)}]" if moved else ""))
+            out.append(f"{cat}: now picks {bw} (was {bo})" + (f"  [{', '.join(moved)}]" if moved else ""))
         elif moved:
             out.append(f"{cat}: {', '.join(moved)}")
     return out
 
 
 def refresh_and_report(cfg: Dict, say: Callable[[str], None] = print, force: bool = False, get=metrics.http_get, sleep=time.sleep) -> bool:
-    """Actualiza las métricas mostrando cada paso y, al final, qué cambió en el ruteo. True si se actualizó."""
+    """Updates the metrics showing every step and, at the end, what changed in the routing. True if it was updated."""
     first = build(cfg)
     before, ids_known = first["table"], not first["missing_ids"]
     try:
         metrics.refresh(cfg, say=say, get=get, force=force, sleep=sleep)
     except (OSError, ValueError) as exc:
-        say(f"No pude actualizar las métricas: {exc}. Sigo con las que tenías ({metrics.status_line()}).")
+        say(f"Could not update the metrics: {exc}. Continuing with the ones you had ({metrics.status_line()}).")
         return False
     after = build(cfg)["table"]
     changes = diff_tables(before, after) if ids_known else []
-    say("Métricas al día: " + metrics.status_line())
+    say("Metrics up to date: " + metrics.status_line())
     if changes:
-        say("Qué cambió en el ruteo:\n" + "\n".join("  · " + c for c in changes))
+        say("What changed in the routing:\n" + "\n".join("  · " + c for c in changes))
     elif ids_known:
-        say("El ruteo no cambia con estos datos.")
+        say("The routing does not change with this data.")
     return True

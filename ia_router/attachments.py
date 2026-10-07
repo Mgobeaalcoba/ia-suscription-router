@@ -1,8 +1,8 @@
-"""Archivos adjuntos: al arrastrar un archivo a la terminal, ésta pega su ruta como texto (con espacios escapados,
-entre comillas o como file://). Este módulo reconoce esas rutas, las clasifica y las normaliza para mostrarlas.
+"""File attachments: when a file is dragged onto the terminal, it pastes its path as text (with escaped spaces,
+quoted or as file://). This module recognizes those paths, classifies them and normalizes them for display.
 
-El texto del mensaje no se modifica: las rutas siguen ahí, igual que en Claude Code y Codex. Lo que cambia es que
-el router sabe cuáles son archivos reales para anexarlos a la tarea (texto) o referenciarlos (imágenes, PDF, etc.).
+The message text is not modified: the paths stay there, just like in Claude Code and Codex. What changes is that
+the router knows which ones are real files so it can attach them to the task (text) or reference them (images, PDFs, etc.).
 """
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ PDF_EXT = {".pdf"}
 TEXT_EXT = {".txt", ".md", ".markdown", ".rst", ".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".xml", ".html",
             ".css", ".js", ".ts", ".tsx", ".jsx", ".py", ".ipynb", ".sql", ".sh", ".zsh", ".bash", ".go", ".rs", ".java", ".c", ".h", ".cpp",
             ".rb", ".php", ".swift", ".kt", ".r", ".log", ".env", ".tex", ".lock"}
-MAX_INLINE_BYTES = 200_000  # por archivo de texto; el límite total lo pone core.MAX_CONTEXT_CHARS
+MAX_INLINE_BYTES = 200_000  # per text file; the total limit is set by core.MAX_CONTEXT_CHARS
 
 
 def safe_cwd() -> str:
-    """La carpeta actual; si fue borrada mientras el chat estaba abierto, la del usuario."""
+    """The current folder; if it was deleted while the chat was open, the user's home."""
     try:
         return os.getcwd()
     except OSError:
@@ -40,7 +40,7 @@ class Attachment:
         return self.path.name or str(self.path)
 
     def label(self) -> str:
-        kinds = {"image": "imagen", "pdf": "PDF", "text": "texto", "dir": "carpeta", "binary": "binario"}
+        kinds = {"image": "image", "pdf": "PDF", "text": "text", "dir": "folder", "binary": "binary"}
         return f"{self.name} · {kinds[self.kind]}" + (f" · {human_size(self.size)}" if self.kind != "dir" else "")
 
 
@@ -76,10 +76,10 @@ def classify(p: Path) -> str:
         return "binary"
 
 
-# ---------- reconocimiento de rutas ----------
+# ---------- path recognition ----------
 
 def tokens(text: str) -> List[Tuple[int, int, str]]:
-    """Parte `text` en palabras estilo shell: (inicio, fin, valor) respetando comillas y `\\ ` (espacio escapado)."""
+    """Splits `text` into shell-style words: (start, end, value) respecting quotes and `\\ ` (escaped space)."""
     out, i, n = [], 0, len(text)
     while i < n:
         if text[i].isspace():
@@ -108,27 +108,27 @@ def tokens(text: str) -> List[Tuple[int, int, str]]:
 
 
 def resolve(value: str, cwd: Optional[str] = None) -> Optional[Path]:
-    """Devuelve la ruta existente a la que apunta `value` (absoluta, ~, file:// o relativa explícita), o None."""
+    """Returns the existing path that `value` points to (absolute, ~, file:// or explicit relative), or None."""
     v = value.strip()
     if not v or len(v) > 4096:
         return None
     if v.startswith("file://"):
         v = unquote(urlparse(v).path)
-    elif v.startswith("@"):  # menciones estilo @ruta
+    elif v.startswith("@"):  # @path-style mentions
         v = v[1:]
     if not (v.startswith(("/", "~", "./", "../")) or re.match(r"^[A-Za-z]:[\\/]", v)):
-        return None  # una palabra suelta como "hola" no es una ruta aunque exista un archivo con ese nombre
+        return None  # a bare word like "hello" is not a path even if a file with that name exists
     p = Path(os.path.expanduser(v))
     if not p.is_absolute():
         p = Path(cwd or safe_cwd()) / p
     try:
-        return Path(os.path.abspath(p)) if p.exists() else None  # sin resolver symlinks: se ve la ruta tal cual se arrastró
+        return Path(os.path.abspath(p)) if p.exists() else None  # without resolving symlinks: the path is shown exactly as it was dragged
     except OSError:
         return None
 
 
 def find(text: str, cwd: Optional[str] = None) -> List[Attachment]:
-    """Archivos o carpetas reales mencionados en `text`, sin repetidos y en orden de aparición."""
+    """Real files or folders mentioned in `text`, without duplicates and in order of appearance."""
     seen, found = set(), []
     for _, _, value in tokens(text):
         p = resolve(value, cwd)
@@ -143,13 +143,13 @@ def find(text: str, cwd: Optional[str] = None) -> List[Attachment]:
 
 
 def spans(text: str, cwd: Optional[str] = None) -> List[Tuple[int, int]]:
-    """Rangos (inicio, fin) del texto que son rutas existentes; el editor los resalta."""
+    """Ranges (start, end) of the text that are existing paths; the editor highlights them."""
     return [(s, e) for s, e, v in tokens(text) if resolve(v, cwd)]
 
 
 def normalize_paste(text: str, cwd: Optional[str] = None) -> str:
-    """Si todo lo pegado son rutas existentes (lo que pasa al arrastrar archivos), las deja limpias:
-    absolutas, sin escapes, entre comillas solo si tienen espacios y con un espacio al final. Si no, devuelve `text` igual."""
+    """If everything pasted is existing paths (what happens when dragging files), it leaves them clean:
+    absolute, unescaped, quoted only if they contain spaces and with a trailing space. Otherwise it returns `text` unchanged."""
     toks = tokens(text.strip())
     if not toks:
         return text
@@ -163,19 +163,19 @@ def quote(path: str) -> str:
     return f'"{path}"' if re.search(r"\s", path) else path
 
 
-# ---------- armado de la tarea ----------
+# ---------- task assembly ----------
 
 def split_for_prompt(atts: List[Attachment]) -> Tuple[List[str], List[Attachment]]:
-    """(archivos de texto para inlinear como contexto, el resto para referenciar por ruta)."""
+    """(text files to inline as context, the rest to reference by path)."""
     text = [str(a.path) for a in atts if a.kind == "text" and a.size <= MAX_INLINE_BYTES]
     rest = [a for a in atts if not (a.kind == "text" and a.size <= MAX_INLINE_BYTES)]
     return text, rest
 
 
 def reference_block(atts: List[Attachment]) -> str:
-    """Texto que se agrega al prompt para los adjuntos que no se inlinean (el modelo los abre por ruta)."""
+    """Text added to the prompt for the attachments that are not inlined (the model opens them by path)."""
     if not atts:
         return ""
-    lines = ["", "--- ARCHIVOS ADJUNTOS (abrilos por su ruta) ---"]
+    lines = ["", "--- ATTACHED FILES (open them by path) ---"]
     lines += [f"- {a.path}  [{a.kind}, {human_size(a.size)}]" for a in atts]
     return "\n".join(lines)

@@ -1,8 +1,8 @@
-"""Adaptadores CLI-subprocess: lanzan los CLIs OFICIALES (claude, codex, agy).
+"""CLI-subprocess adapters: they launch the OFFICIAL CLIs (claude, codex, agy).
 
-Principio de diseño: este código NUNCA lee, copia ni envía tokens OAuth. Cada CLI usa su
-propio login y su propia suscripción. Se ejecutan en modo no interactivo, con stdin cerrado
-(salvo en modo stdin para prompts enormes) y sin shell (lista de argumentos).
+Design principle: this code NEVER reads, copies or sends OAuth tokens. Each CLI uses its
+own login and its own subscription. They run in non-interactive mode, with stdin closed
+(except in stdin mode for huge prompts) and without a shell (argument list).
 """
 from __future__ import annotations
 
@@ -26,13 +26,13 @@ AUTH_RE = re.compile(
     r"no longer supported|ineligible|invalid api key|api key (is )?(not set|missing|required)|authentication (required|failed)|GEMINI_API_KEY",
     re.I,
 )
-# Por encima de este tamaño el prompt va por stdin para no pasarse del límite de argv.
+# Above this size the prompt goes through stdin so it does not exceed the argv limit.
 STDIN_THRESHOLD = 100_000
 
 
 def _cmd_template(name: str, spec: dict, use_stdin: bool) -> List[str]:
     override = os.environ.get(f"ROUTER_CMD_{name.upper()}")
-    if override:  # ej: ROUTER_CMD_CODEX='["codex","exec","{prompt}"]'
+    if override:  # e.g. ROUTER_CMD_CODEX='["codex","exec","{prompt}"]'
         return list(json.loads(override))
     return list(spec["cmd_stdin"] if use_stdin and spec.get("cmd_stdin") else spec["cmd"])
 
@@ -45,17 +45,17 @@ def is_available(name: str, spec: dict) -> bool:
 
 
 def _with_usage_args(name: str, spec: dict, template: List[str], logfile: str) -> List[str]:
-    """Inserta los flags que hacen al CLI devolver JSON con modelo y tokens (spec["usage"]["args"])."""
+    """Inserts the flags that make the CLI return JSON with the model and tokens (spec["usage"]["args"])."""
     u = spec.get("usage") or {}
     if os.environ.get(f"ROUTER_CMD_{name.upper()}") or not u.get("args"):
-        return template  # comando personalizado: se respeta tal cual
+        return template  # custom command: respected as is
     extra = [a.replace("{logfile}", logfile) for a in u["args"]]
     at = u.get("at", 1)
     return template[:at] + extra + template[at:]
 
 
 def _with_dirs(name: str, spec: dict, template: List[str], dirs: List[str]) -> List[str]:
-    """Da acceso de lectura a las carpetas de los adjuntos (claude: --add-dir), que si no quedan fuera de su carpeta de trabajo."""
+    """Gives read access to the attachments' folders (claude: --add-dir), which would otherwise be outside its working folder."""
     a = spec.get("add_dir") or {}
     if os.environ.get(f"ROUTER_CMD_{name.upper()}") or not a.get("args") or not dirs:
         return template
@@ -73,10 +73,10 @@ def run_cli(
     usage: bool = False,
     extra_dirs: Optional[List[str]] = None,
 ) -> Dict:
-    """Ejecuta el CLI del modelo y devuelve un dict normalizado.
+    """Runs the model's CLI and returns a normalized dict.
 
-    Con `usage=True` pide al CLI salida JSON y extrae de ahí el modelo real y los tokens
-    (`res["model_id"]`, `res["tokens"]`). Si el JSON no se puede interpretar, devuelve el texto crudo."""
+    With `usage=True` it asks the CLI for JSON output and extracts the real model and the tokens from it
+    (`res["model_id"]`, `res["tokens"]`). If the JSON cannot be interpreted, it returns the raw text."""
     use_stdin = len(prompt) > STDIN_THRESHOLD and bool(spec.get("cmd_stdin"))
     template = _cmd_template(name, spec, use_stdin)
     logfile = ""
@@ -110,7 +110,7 @@ def _run(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, usage, logfile) 
             cwd=cwd,
         )
     except FileNotFoundError:
-        return _result(False, "", f"CLI no encontrado: {argv[0]}", None, t0, False, "not_installed")
+        return _result(False, "", f"CLI not found: {argv[0]}", None, t0, False, "not_installed")
     except subprocess.TimeoutExpired:
         return _result(False, "", "timeout", None, t0, False, "timeout")
     out, err = proc.stdout.strip(), proc.stderr.strip()
@@ -126,14 +126,14 @@ def _run(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, usage, logfile) 
             limited = failed and bool(RATE_LIMIT_RE.search(out + "\n" + err))
             auth = failed and not limited and bool(AUTH_RE.search(out + "\n" + err))
     ok = not failed and bool(out)
-    error = None if ok else ("rate_limited" if limited else "auth_required" if auth else (err[-400:] or (out[-400:] if failed else "") or "salida vacía"))
+    error = None if ok else ("rate_limited" if limited else "auth_required" if auth else (err[-400:] or (out[-400:] if failed else "") or "empty output"))
     res = _result(ok, out, err[-400:], proc.returncode, t0, limited, error, auth)
     res["model_id"] = info.get("model")
     res["tokens"] = info.get("tokens")
     return res
 
 
-# ---------- uso (modelo y tokens) ----------
+# ---------- usage (model and tokens) ----------
 
 def _tokens(inp, out, cached=0, reasoning=0) -> Dict:
     return {"input": int(inp or 0), "output": int(out or 0), "cached": int(cached or 0), "reasoning": int(reasoning or 0)}
@@ -159,7 +159,7 @@ def _argv_model(argv: List[str]) -> Optional[str]:
 
 
 def codex_model(thread_id: str) -> Optional[str]:
-    """Codex no informa el modelo en su salida JSON: se lee de la sesión que guardó (rollout) o de su config."""
+    """Codex does not report the model in its JSON output: it is read from the session it saved (rollout) or from its config."""
     home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
     try:
         for f in (home / "sessions").rglob(f"rollout-*{thread_id}.jsonl"):
@@ -178,7 +178,7 @@ def codex_model(thread_id: str) -> Optional[str]:
 
 
 def agy_model(logfile: str) -> Optional[str]:
-    """Antigravity tampoco: el modelo por defecto queda en su log (`--log-file`)."""
+    """Antigravity does not either: the default model ends up in its log (`--log-file`)."""
     try:
         labels = re.findall(r'selected model override to backend: label="([^"]+)"', Path(logfile).read_text(encoding="utf-8", errors="replace"))
     except OSError:
@@ -187,7 +187,7 @@ def agy_model(logfile: str) -> Optional[str]:
 
 
 def parse_usage(parser: str, raw: str, argv: List[str], logfile: str = ""):
-    """Devuelve (texto, {"model", "tokens"}, es_error). texto=None si la salida no era el JSON esperado."""
+    """Returns (text, {"model", "tokens"}, is_error). text=None if the output was not the expected JSON."""
     try:
         if parser == "claude":
             d = json.loads(raw)
@@ -220,12 +220,12 @@ def parse_usage(parser: str, raw: str, argv: List[str], logfile: str = ""):
 
 
 def fmt_tokens(t: Optional[Dict]) -> str:
-    """'in 15.9k (13.2k caché) · out 5' o 'tokens n/d'."""
+    """'in 15.9k (13.2k cached) · out 5' or 'tokens n/a'."""
     if not t:
-        return "tokens n/d"
+        return "tokens n/a"
     def k(n: int) -> str:
         return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
-    cached = f" ({k(t['cached'])} caché)" if t.get("cached") else ""
+    cached = f" ({k(t['cached'])} cached)" if t.get("cached") else ""
     return f"in {k(t['input'])}{cached} · out {k(t['output'])}"
 
 

@@ -1,7 +1,7 @@
-"""Preguntas de opción múltiple (selector ↑/↓ + Enter) sobre qué priorizás en cada tipo de tarea: precisión, velocidad o costo.
+"""Multiple-choice questions (↑/↓ selector + Enter) about what you prioritize for each kind of task: accuracy, speed or cost.
 
-Con tus respuestas se rearma el ruteo: cada tipo de tarea usa los pesos de la opción elegida sobre las métricas objetivas
-(ver scoring.PRESETS). No se inventan números: el resultado se muestra antes de guardar. Sin responder, rigen los pesos por defecto.
+Your answers rebuild the routing: each kind of task uses the weights of the chosen option over the objective metrics
+(see scoring.PRESETS). No numbers are made up: the result is shown before saving. Without answers, the default weights apply.
 """
 from __future__ import annotations
 
@@ -11,20 +11,20 @@ from . import scoring
 from .select import Option, choose as tty_choose
 
 OPTION_TEXT = {
-    "precision": "la mejor respuesta, aunque tarde o cueste más",
-    "balanced": "un poco de todo: precisión, velocidad y costo",
-    "speed": "el que responde más rápido entre los buenos (tokens/s publicados)",
-    "cost": "el que menos cuota consume (precio por millón de tokens)",
+    "precision": "the best answer, even if it is slower or costs more",
+    "balanced": "a bit of everything: accuracy, speed and cost",
+    "speed": "the fastest among the good ones (published tokens/s)",
+    "cost": "the one that uses the least quota (price per million tokens)",
 }
 
 
 def options_for(available: Dict[str, bool]) -> List[str]:
-    """Opciones ofrecidas: velocidad y costo solo si hay dato objetivo para todos tus modelos."""
+    """Options offered: speed and cost only if there is objective data for all your models."""
     return ["precision", "balanced"] + (["speed"] if available.get("speed") else []) + (["cost"] if available.get("cost") else [])
 
 
 def preview(table: Dict[str, Dict[str, Dict]]) -> List[str]:
-    """Qué modelo elegiría el router por categoría con ese cálculo."""
+    """Which model the router would pick per category with that calculation."""
     names = list(table)
     out = []
     for key, title, cats in scoring.GROUPS:
@@ -37,33 +37,33 @@ def preview(table: Dict[str, Dict[str, Dict]]) -> List[str]:
 
 
 def run(cfg: Dict, choose: Callable = tty_choose, say: Callable[[str], None] = print, color: bool = True) -> Optional[Dict]:
-    """Hace las preguntas. Devuelve el perfil guardado o None si se canceló o descartó. `choose` es inyectable para tests."""
+    """Asks the questions. Returns the saved profile, or None if cancelled or discarded. `choose` is injectable for tests."""
     built = scoring.build(cfg)
     avail = built["available"]
     keys = options_for(avail)
     if not avail.get("speed") and not avail.get("cost"):
-        say("Con las métricas actuales solo hay datos de precisión para tus modelos: no hay nada que priorizar entre precisión, velocidad y costo.\n"
-            "Sumá tu clave gratuita de Artificial Analysis (ver .env.example) y actualizá con `metrics refresh`: aporta velocidad y precio.")
+        say("With the current metrics there is only accuracy data for your models: there is nothing to prioritize between accuracy, speed and cost.\n"
+            "Add your free Artificial Analysis key (see .env.example) and update with `metrics refresh`: it brings speed and price.")
         return None
     prev = scoring.load_profile().get("priorities") or {}
-    notes = [f"{scoring.LABELS[d]} no está disponible: " + ("falta tu clave de Artificial Analysis (ver .env.example)" if d == "speed" else "ningún portal publica el precio de todos tus modelos")
+    notes = [f"{scoring.LABELS[d]} is not available: " + ("your Artificial Analysis key is missing (see .env.example)" if d == "speed" else "no portal publishes the price of all your models")
              for d in ("speed", "cost") if not avail.get(d)]
     answers: Dict[str, str] = {}
     total = len(scoring.GROUPS) + 1
     for i, (key, title, _) in enumerate(scoring.GROUPS, 1):
-        a = choose(f"Para {title.lower()}, ¿qué priorizás?", [Option(scoring.PRESET_LABELS[k], OPTION_TEXT[k]) for k in keys],
+        a = choose(f"For {title.lower()}, what do you prioritize?", [Option(scoring.PRESET_LABELS[k], OPTION_TEXT[k]) for k in keys],
                    default=keys.index(prev[key]) if prev.get(key) in keys else 0, subtitle="  ·  ".join(notes) if i == 1 else "",
                    step=f"{i}/{total}", color=color)
         if a is None:
-            say("Cancelado: no cambié nada.")
+            say("Cancelled: nothing changed.")
             return None
         answers[key] = keys[a]
     profile = {"priorities": answers}
-    say("\nAsí queda el ruteo con tus prioridades:\n" + "\n".join(preview(scoring.build(cfg, profile=profile)["table"])))
-    final = choose("¿Aplico estas prioridades?", [Option("Guardar", "el router las usa desde ya"), Option("Descartar", "no cambiar nada")], default=0, step=f"{total}/{total}", color=color)
+    say("\nThis is the routing with your priorities:\n" + "\n".join(preview(scoring.build(cfg, profile=profile)["table"])))
+    final = choose("Apply these priorities?", [Option("Save", "the router uses them right away"), Option("Discard", "change nothing")], default=0, step=f"{total}/{total}", color=color)
     if final != 0:
-        say("Descartado: no cambié nada.")
+        say("Discarded: nothing changed.")
         return None
     scoring.save_profile(profile)
-    say("Guardado. Se aplican ya (`scores` muestra el detalle).")
+    say("Saved. They apply right away (`scores` shows the detail).")
     return profile
