@@ -68,7 +68,7 @@ If you do not have `pipx`: `brew install pipx && pipx ensurepath` (macOS) or `py
 ### Check that it worked
 
 ```bash
-ia-router --version     # ia-router 0.4.0
+ia-router --version     # ia-router 0.5.0
 ia-router doctor        # which CLIs you have installed and which model each one uses (spends no quota)
 ```
 

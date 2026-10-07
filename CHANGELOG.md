@@ -2,7 +2,7 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are published on [PyPI](https://pypi.org/project/ia-router/) and [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
 
-## Unreleased
+## 0.5.0 — 2026-10-07
 
 ### Added
 - **First-run onboarding.** On the first open the chat checks which official CLIs are installed and tells you, for each missing one, the exact step to install it and log in. If none is installed it says tasks cannot run yet and asks again on the next start; with just one it explains that everything goes to it. It stays silent when all three are present. It never installs a CLI or logs in for you.
