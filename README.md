@@ -93,6 +93,8 @@ From the source code ([Mgobeaalcoba/ia-suscription-router](https://github.com/Mg
 ia-router            # opens the chat
 ```
 
+![First open on a machine that only has claude: the table of CLIs and the exact step for the missing ones](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-onboarding.png)
+
 If a CLI is missing or logged out, the first open tells you the exact step for each one (`/setup` or `ia-router setup` repeat that check any time). The router never installs a CLI or logs in for you.
 
 On open it asks you (always before spending anything): which model each CLI uses (a minimal query to each one, only the first time), whether you want to update the metrics if they are old, and, once, whether you want to answer the priority questions.

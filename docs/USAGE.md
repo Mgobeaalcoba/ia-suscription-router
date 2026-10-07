@@ -114,7 +114,11 @@ ia-router      # or: python3 cli.py
 
 ### First open: onboarding
 
-On the first open the chat checks which of the three official CLIs are installed. If everything is there it says nothing. If something is missing you get the exact step for each one, for example:
+On the first open the chat checks which of the three official CLIs are installed. If everything is there it says nothing. If something is missing you get the exact step for each one. Real output on a machine that only has `claude`:
+
+![First open on a machine that only has claude](img/ia-router-onboarding.png)
+
+The relevant part, as text:
 
 ```
 Welcome to ia-router. It routes your tasks across the official AI CLIs you already pay for. Here is where you stand:

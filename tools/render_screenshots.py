@@ -10,6 +10,7 @@ It uses your real state (~/.ia-router): the screenshots show your models and wha
 import html
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -192,6 +193,21 @@ def main() -> int:
             shown = " ".join(a if a != docs else "~/Documents" for a in args)
             lines += ["\033[1;38;2;200;90;160m$\033[0m ia-router " + shown] + run(*args).split("\n") + [""]
         shot(lines[:-1], out / "ia-router-connectors.png", "ia-router · connectors", COLS)
+
+    # 6) first-run onboarding: REAL output of the first open on a machine that only has claude (a throwaway state folder and a PATH with just claude)
+    claude = shutil.which("claude")
+    if claude:
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as bindir:
+            for tool in (sys.executable, shutil.which("curl") or "/usr/bin/curl", claude):
+                os.symlink(tool, os.path.join(bindir, os.path.basename(tool) if tool != sys.executable else "python3"))
+            r = subprocess.run([sys.executable, str(ROOT / "cli.py")], input="n\nn\n/exit\n", capture_output=True, text=True, timeout=120,
+                               env=dict(os.environ, ROUTER_HOME=home, PATH=bindir, NO_COLOR="1"))
+            out_text = r.stdout.replace("[y/N]: ", "[y/N]: n\n").replace("[Y/n]: ", "[Y/n]: n\n")  # piped answers are not echoed: show them as typed
+            text = [l.rstrip() for l in out_text.splitlines()]
+            text = text[next(i for i, l in enumerate(text) if "Welcome" in l):]
+            while text and not text[-1].strip():
+                text.pop()
+            shot(["\033[1;38;2;200;90;160m$\033[0m ia-router"] + text, out / "ia-router-onboarding.png", "ia-router · first open", COLS)
     return 0
 
 
