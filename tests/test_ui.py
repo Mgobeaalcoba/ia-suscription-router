@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.environ["PATH"] = str(ROOT / "tests" / "fake_bin") + os.pathsep + os.environ["PATH"]
 
-from ia_router import ui  # noqa: E402
+from ia_router import ui, ui_page  # noqa: E402
 
 
 class UiTests(unittest.TestCase):
@@ -124,12 +124,34 @@ class ApiTests(UiTests):
 
 
 class PageTests(unittest.TestCase):
+    page = ui_page.render("TOKEN123")
+
     def test_the_page_loads_nothing_from_outside(self):
-        for bad in ("<script src", "<link ", "<img", "@import", "url("):
-            self.assertNotIn(bad, ui.PAGE)
+        for bad in ("<script src", "<img", "@import", "url(", 'rel="stylesheet"', 'src="http'):
+            self.assertNotIn(bad, self.page)
+        self.assertEqual(self.page.count("<link "), 1)          # only the tab icon, which is a data: URI
+        self.assertIn('href="data:image/svg+xml,', self.page)
+
+    def test_every_placeholder_is_filled(self):
+        import re
+        self.assertEqual(re.findall(r"__[A-Z0-9]+__", self.page), [])
+        self.assertIn("TOKEN123", self.page)
+
+    def test_the_brand_is_the_terminals(self):               # one identity for the CLI and the UI
+        from ia_router import banner
+        self.assertIn(banner._TAGLINE, self.page)
+        self.assertIn(banner._GITHUB, self.page)
+        self.assertIn(banner._URL, self.page)
+        self.assertIn("rgb(%d,%d,%d)" % tuple(banner._BRAND[0]), self.page)
+        for row in range(3):                                  # the box-drawing wordmark, row by row
+            self.assertIn("".join(banner._GLYPHS[c][row] for c in banner._WORD), self.page)
+
+    def test_the_credit_links_open_safely(self):
+        self.assertIn('href="https://github.com/Mgobeaalcoba" target="_blank" rel="noopener noreferrer"', self.page)
+        self.assertIn('href="https://mgatc.com" target="_blank" rel="noopener noreferrer"', self.page)
 
     def test_the_markdown_renderer_escapes_before_it_builds_tags(self):
-        self.assertIn("esc(src).replace", ui.PAGE)
+        self.assertIn("esc(src).replace", self.page)
 
 
 if __name__ == "__main__":

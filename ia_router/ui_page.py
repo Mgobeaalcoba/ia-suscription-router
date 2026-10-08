@@ -3,18 +3,24 @@
 Laid out like a modern chat app: conversations grouped by date on the left, a welcome screen with suggestions, a rounded composer with the
 model and connector pickers under it, user bubbles, and copy / regenerate actions on every answer. Status (CLIs, usage, connectors) lives in a dialog.
 
-`__TOKEN__` is replaced per run. Answers are rendered by a tiny markdown renderer that escapes everything first, so model output can never inject HTML.
+The brand (three-dot mark, gradient wordmark, tagline and credit) comes from `banner.py`, the same source the terminal header uses, so the CLI and the UI are
+one identity. `__TOKEN__` is replaced per run. Answers are rendered by a tiny markdown renderer that escapes everything first, so model output can never inject HTML.
 """
 
-PAGE = r"""<!doctype html>
+from urllib.parse import quote
+
+from . import banner
+
+TEMPLATE = r"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ia-router</title>
+<link rel="icon" href="__FAVICON__">
 <style>
-:root { --bg:#ffffff; --side:#f6f7f9; --panel:#f3f4f6; --line:#e5e7eb; --text:#111827; --dim:#6b7280; --accent:#2563eb; --accent-fg:#fff; --ok:#16a34a; --bad:#dc2626; --warn:#d97706; --code:#f3f4f6; --bubble:#eef2ff; --shadow:0 4px 24px rgba(0,0,0,.07); }
-@media (prefers-color-scheme: dark) { :root { --bg:#0b0f19; --side:#111827; --panel:#1f2937; --line:#263041; --text:#e5e7eb; --dim:#9ca3af; --accent:#3b82f6; --ok:#4ade80; --bad:#f87171; --warn:#fbbf24; --code:#0f1626; --bubble:#1f2937; --shadow:0 4px 24px rgba(0,0,0,.4); } }
+:root { --bg:#ffffff; --side:#f6f7f9; --panel:#f3f4f6; --line:#e5e7eb; --text:#111827; --dim:#6b7280; --c1:__C1__; --c2:__C2__; --c3:__C3__; --grad:linear-gradient(90deg,__S1__,__S2__,__S3__); --accent:#4285f4; --accent-fg:#fff; --ok:#16a34a; --bad:#dc2626; --warn:#d97706; --code:#f3f4f6; --bubble:#eef2ff; --shadow:0 4px 24px rgba(0,0,0,.07); }
+@media (prefers-color-scheme: dark) { :root { --bg:#0b0f19; --side:#111827; --panel:#1f2937; --line:#263041; --text:#e5e7eb; --dim:#9ca3af; --accent:#4285f4; --ok:#4ade80; --bad:#f87171; --warn:#fbbf24; --code:#0f1626; --bubble:#1f2937; --shadow:0 4px 24px rgba(0,0,0,.4); } }
 * { box-sizing:border-box; }
 html, body { height:100%; }
 body { margin:0; display:flex; background:var(--bg); color:var(--text); font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }
@@ -25,8 +31,8 @@ svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; s
 
 /* sidebar */
 aside { width:272px; flex:none; background:var(--side); border-right:1px solid var(--line); display:flex; flex-direction:column; padding:12px; gap:10px; }
-.brand { display:flex; align-items:center; gap:8px; padding:6px 8px; font-weight:650; font-size:16px; } .brand small { color:var(--dim); font-weight:400; }
-.logo { width:26px; height:26px; border-radius:8px; background:linear-gradient(135deg,#2563eb,#7c3aed); color:#fff; display:grid; place-items:center; font-size:14px; flex:none; }
+.brand { display:flex; align-items:center; gap:9px; padding:6px 8px; font-size:17px; } .brand small { color:var(--dim); font-weight:400; font-size:12px; } .brand svg { width:40px; height:28px; }
+.word-t { font-weight:750; letter-spacing:-.01em; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
 #new { display:flex; align-items:center; gap:8px; width:100%; padding:9px 12px; border:1px solid var(--line); background:var(--bg); border-radius:12px; font-weight:550; }
 #new:hover { border-color:var(--accent); }
 #sessions { flex:1; overflow-y:auto; margin:0 -4px; padding:0 4px; }
@@ -34,7 +40,7 @@ aside { width:272px; flex:none; background:var(--side); border-right:1px solid v
 .sess { display:flex; align-items:center; gap:4px; padding:7px 8px; border-radius:10px; cursor:pointer; font-size:14px; }
 .sess:hover, .sess.on { background:var(--panel); } .sess span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sess b { opacity:0; color:var(--dim); font-weight:400; padding:0 4px; } .sess:hover b { opacity:1; } .sess b:hover { color:var(--bad); }
-.foot { border-top:1px solid var(--line); padding-top:10px; display:flex; flex-direction:column; gap:2px; }
+.foot { border-top:1px solid var(--line); padding-top:10px; display:flex; flex-direction:column; gap:2px; } .foot .credit { padding:8px 8px 2px; }
 .foot button { display:flex; align-items:center; gap:10px; padding:8px; border-radius:10px; text-align:left; width:100%; } .foot button:hover { background:var(--panel); }
 .dot { width:8px; height:8px; border-radius:50%; background:var(--dim); margin-left:auto; } .dot.ok { background:var(--ok); } .dot.bad { background:var(--bad); }
 
@@ -45,13 +51,15 @@ main { flex:1; display:flex; flex-direction:column; min-width:0; position:relati
 .banner { padding:10px 14px; border:1px solid var(--warn); border-radius:12px; font-size:13px; white-space:pre-wrap; }
 #log { flex:1; overflow-y:auto; scroll-behavior:smooth; }
 .col { width:min(780px, calc(100% - 32px)); margin:0 auto; }
-.hero { text-align:center; padding-top:14vh; } .hero .logo { width:56px; height:56px; font-size:28px; border-radius:16px; margin:0 auto 16px; }
-.hero h2 { margin:0 0 6px; font-size:28px; } .hero p { margin:0 auto 28px; max-width:520px; color:var(--dim); }
+.hero { text-align:center; padding-top:11vh; } .hero .mark svg { width:92px; height:64px; }
+.word { margin:14px auto 6px; display:inline-block; text-align:left; font:600 clamp(11px,2.8vw,19px)/1.02 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; white-space:pre; }
+.hero .tag { color:var(--dim); margin:0 0 4px; } .credit { font-size:13px; color:var(--dim); } .credit a { color:var(--text); font-weight:600; text-decoration:underline; text-decoration-color:var(--line); text-underline-offset:3px; } .credit a:hover { text-decoration-color:var(--accent); }
+.hero p.about { margin:22px auto 26px; max-width:520px; color:var(--dim); }
 .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px; text-align:left; }
 .card { border:1px solid var(--line); border-radius:14px; padding:12px 14px; font-size:14px; color:var(--dim); } .card:hover { background:var(--panel); border-color:var(--accent); color:var(--text); }
 .msg { display:flex; gap:12px; padding:14px 0; } .msg.user { justify-content:flex-end; }
 .bubble { background:var(--bubble); border-radius:18px; padding:9px 16px; max-width:85%; white-space:pre-wrap; overflow-wrap:anywhere; }
-.avatar { width:28px; height:28px; border-radius:8px; background:linear-gradient(135deg,#2563eb,#7c3aed); color:#fff; display:grid; place-items:center; font-size:14px; flex:none; margin-top:2px; }
+.avatar { width:34px; flex:none; margin-top:3px; } .avatar svg { width:34px; height:24px; }
 .body { flex:1; min-width:0; }
 .meta { font-size:12px; color:var(--dim); margin-bottom:4px; } .status { font-size:13px; color:var(--dim); } .status::before { content:""; display:inline-block; width:8px; height:8px; margin-right:8px; border-radius:50%; background:var(--accent); animation:pulse 1s infinite alternate; }
 @keyframes pulse { from { opacity:.25; } to { opacity:1; } }
@@ -90,11 +98,12 @@ table { width:100%; border-collapse:collapse; font-size:13px; } td, th { padding
 </head>
 <body>
 <aside>
-  <div class="brand"><span class="logo">◇</span>ia-router <small id="ver"></small></div>
+  <div class="brand"><span id="side-mark"></span><span class="word-t">ia-router</span><small id="ver"></small></div>
   <button id="new"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New chat</button>
   <div id="sessions"></div>
   <div class="foot">
     <button id="open-status"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Status &amp; usage<span class="dot" id="dot"></span></button>
+    __CREDIT__
   </div>
 </aside>
 <main>
@@ -124,6 +133,11 @@ const ICON = {
   send: '<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>', stop: '<svg viewBox="0 0 24 24" style="fill:currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
 };
 let session = null, busy = false, ctrl = null, lastTask = "", health = {};
+const BRAND = ["var(--c1)", "var(--c2)", "var(--c3)"];
+// The terminal header's mark: three providers entering the router from the left. A provider that is not ready is gray, as in the terminal.
+const mark = on => '<svg viewBox="0 0 42 30" aria-hidden="true"><g fill="none" stroke="var(--dim)" stroke-width="1.6" stroke-linecap="round"><path d="M10 5H17Q22 5 22 10V15"/><path d="M10 15H29"/><path d="M10 25H17Q22 25 22 20V15"/><circle cx="34" cy="15" r="5.2" stroke="currentColor" stroke-width="1.8"/></g><circle cx="34" cy="15" r="2.2" fill="currentColor"/>' +
+  [5, 15, 25].map((y, i) => '<circle cx="6" cy="' + y + '" r="3.4" fill="' + (on[i] === false ? "var(--dim)" : BRAND[i]) + '"/>').join("") + "</svg>";
+let ready = [true, true, true];
 const SUGGESTIONS = ["Fix this bug in my Python function and explain what was wrong", "Summarize the pros and cons of microservices versus a monolith",
   "Write a SQL query that returns the top 5 customers by revenue per month", "Explain how DNS resolution works, step by step, for a beginner"];
 
@@ -172,7 +186,7 @@ function answerHtml(r) {
 }
 
 function hero() {
-  $("thread").innerHTML = '<div class="hero"><div class="logo">◇</div><h2>ia-router</h2><p>Your AI subscriptions, one chat. The router picks the best model for each task, and falls back to another if one is rate limited.</p><div class="cards">' +
+  $("thread").innerHTML = '<div class="hero"><div class="mark">' + mark(ready) + '</div><pre class="word" aria-label="ia-router">__WORDMARK__</pre><p class="tag">__TAGLINE__</p>__CREDIT__<p class="about">Your AI subscriptions, one chat. The router picks the best model for each task, and falls back to another if one is rate limited.</p><div class="cards">' +
     SUGGESTIONS.map(s => '<button class="card" data-suggest="' + esc(s) + '">' + esc(s) + "</button>").join("") + "</div></div>";
 }
 function put(html, cls) {
@@ -181,7 +195,7 @@ function put(html, cls) {
 }
 const scroll = () => { const l = $("log"); l.scrollTop = l.scrollHeight; };
 const user = text => put('<div class="bubble">' + esc(text) + "</div>", "user");
-const bot = html => put('<div class="avatar">◇</div><div class="body">' + html + "</div>", "bot");
+const bot = html => put('<div class="avatar">' + mark(ready) + '</div><div class="body">' + html + "</div>", "bot");
 
 function setBusy(on) {
   busy = on; const b = $("send"); b.classList.toggle("stop", on); b.innerHTML = on ? ICON.stop : ICON.send; b.setAttribute("aria-label", on ? "Stop" : "Send"); b.disabled = !on && !$("task").value.trim();
@@ -245,6 +259,8 @@ async function refresh() {
   $("cmp-pill").classList.toggle("on", $("compare").checked);
   $("banner").innerHTML = st.advice.length ? '<div class="banner">' + esc(st.advice.join("\n")) + "</div>" : "";
   $("dot").className = "dot " + (st.ready.length ? (st.usage_warnings.length ? "" : "ok") : "bad");
+  ready = st.models.slice(0, 3).map(m => m.installed && m.auth !== "missing"); $("side-mark").innerHTML = mark(ready);
+  const h = document.querySelector(".hero .mark"); if (h) h.innerHTML = mark(ready);
   health = st; renderStatus();
   let html = "", last = "";
   if (!ss.enabled) html = '<div class="group">Saving is off</div>';
@@ -298,9 +314,39 @@ $("close-status").onclick = () => $("status").close();
 $("status").addEventListener("click", e => { if (e.target === $("status")) $("status").close(); });
 $("task").addEventListener("input", grow);
 $("task").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
-hero(); refresh();
+hero(); $("side-mark").innerHTML = mark(ready); refresh();
 if (location.hash.length > 1) openSession(location.hash.slice(1));
 </script>
 </body>
 </html>
 """
+
+
+def _mark_svg() -> str:
+    """The same mark as a standalone SVG (all three providers on) for the tab icon."""
+    c = ["rgb(%d,%d,%d)" % tuple(x) for x in banner._BRAND]
+    dots = "".join(f'<circle cx="6" cy="{y}" r="3.4" fill="{c[i]}"/>' for i, y in enumerate((5, 15, 25)))
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -4 46 38"><g fill="none" stroke="#9ca3af" stroke-width="1.8" stroke-linecap="round">'
+            '<path d="M10 5H17Q22 5 22 10V15"/><path d="M10 15H29"/><path d="M10 25H17Q22 25 22 20V15"/><circle cx="34" cy="15" r="5.2" stroke="#6b7280"/></g>'
+            f'<circle cx="34" cy="15" r="2.2" fill="#6b7280"/>{dots}</svg>')
+
+
+def _esc(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _credit_html() -> str:
+    return (f'<div class="credit">by <a href="{banner._GITHUB}" target="_blank" rel="noopener noreferrer">{banner._AUTHOR}</a> · '
+            f'<a href="{banner._URL}" target="_blank" rel="noopener noreferrer">{banner._SITE}</a></div>')
+
+
+def render(token: str) -> str:
+    """The page with the per-run token and the brand taken from the terminal header (`banner.py`)."""
+    rgb = lambda c: "rgb(%d,%d,%d)" % tuple(c)
+    word = "\\n".join("".join(banner._GLYPHS[ch][r] for ch in banner._WORD) for r in range(3))
+    vals = {"__TOKEN__": token, "__FAVICON__": "data:image/svg+xml," + quote(_mark_svg()), "__WORDMARK__": _esc(word), "__TAGLINE__": _esc(banner._TAGLINE),
+            "__CREDIT__": _credit_html(), **{f"__C{i + 1}__": rgb(c) for i, c in enumerate(banner._BRAND)}, **{f"__S{i + 1}__": rgb(c) for i, c in enumerate(banner._STOPS)}}
+    out = TEMPLATE
+    for key, value in vals.items():
+        out = out.replace(key, value)
+    return out

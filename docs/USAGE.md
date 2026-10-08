@@ -10,7 +10,7 @@ All the examples assume you are in the repo folder:
 cd ~/Documents/ia-suscription-router
 ```
 
-The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 408 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
+The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 411 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
 
 ---
 
@@ -565,7 +565,7 @@ ia-router ui --no-open         # only prints the URL
 ia-router ui --port 8765       # a fixed port (default: any free one)
 ```
 
-A chat page with the same engine as the terminal chat. The sidebar lists your saved conversations grouped by date (open, or delete with the ✕) and a **Status & usage** dialog shows which CLIs are ready (with the exact next step if one is not), your usage and your connectors. A welcome screen offers a few starter prompts (they only fill the box; nothing is sent until you press Enter). Under the box, **Model** pins one model, **Connectors** is auto / all / none, and **Compare** runs the task on two models and shows both answers side by side (it spends quota on each, like `ask --compare`). Answers stream in, are rendered as markdown, code blocks have a Copy button, and each answer has Copy and Ask again (which spends quota). The stop button ends the stream in the page, but the model may still finish in the background and use quota. A conversation has its own link (`#id`), so reloading keeps you in it. It uses the same sessions as the chat, so `ia-router --continue` can pick up a conversation you started in the browser.
+A chat page with the same engine as the terminal chat. The sidebar lists your saved conversations grouped by date (open, or delete with the ✕) and a **Status & usage** dialog shows which CLIs are ready (with the exact next step if one is not), your usage and your connectors. A welcome screen offers a few starter prompts (they only fill the box; nothing is sent until you press Enter). Under the box, **Model** pins one model, **Connectors** is auto / all / none, and **Compare** runs the task on two models and shows both answers side by side (it spends quota on each, like `ask --compare`). Answers stream in, are rendered as markdown, code blocks have a Copy button, and each answer has Copy and Ask again (which spends quota). The stop button ends the stream in the page, but the model may still finish in the background and use quota. The page wears the same identity as the terminal header: the three-provider mark (a provider that is not ready turns gray, as in the terminal), the wordmark, the tagline and the credit with links to the author and the site. A conversation has its own link (`#id`), so reloading keeps you in it. It uses the same sessions as the chat, so `ia-router --continue` can pick up a conversation you started in the browser.
 
 It is a prototype of a desktop experience, not a different product: no extra dependencies, nothing to install, and no attachments yet (use the chat to drag files in).
 

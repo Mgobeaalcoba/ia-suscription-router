@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 from . import __version__, chat, connectors as connectors_mod, core, router, sessions, setup as setup_mod, state, usage as usage_mod
-from .ui_page import PAGE
+from .ui_page import render as render_page
 
 MAX_BODY = 1_000_000
 CONNECTOR_MODES = {"auto": None, "on": True, "off": False}
@@ -106,7 +106,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'")
         self.end_headers()
         self.wfile.write(data)
 
@@ -122,7 +122,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorized(query):
             return self._deny(401, "missing or wrong token (open the URL that `ia-router ui` printed)")
         if url.path == "/":
-            return self._send(200, PAGE.replace("__TOKEN__", self.server.token).encode(), "text/html")
+            return self._send(200, render_page(self.server.token).encode(), "text/html")
         if url.path == "/api/state":
             return self._json(snapshot(core.load_config()))
         if url.path == "/api/sessions":

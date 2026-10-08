@@ -11,7 +11,7 @@ A Python router that splits tasks across the **official CLIs** of the AI subscri
 ## Commands
 
 ```bash
-python3 -m unittest discover -s tests       # the whole suite (408 tests, ~15 s); it must end in OK
+python3 -m unittest discover -s tests       # the whole suite (411 tests, ~15 s); it must end in OK
 python3 -m unittest tests.test_scoring      # one file
 /usr/bin/python3 -m unittest discover -s tests   # on macOS: system Python 3.9 (the minimum supported)
 python3 cli.py doctor                        # installed CLIs and which model each one uses (spends no quota)
@@ -56,7 +56,7 @@ There is no build or linter configured. Do not add dependencies.
 | `ia_router/usage.py` | Quota meter: tokens per window/day/week from `log.jsonl`, a limit LEARNED from the user's own rate limits, 80% warning. Pure with injectable `now`. |
 | `ia_router/sessions.py` | Saved chat sessions (`~/.ia-router/sessions/*.json`, 0600, capped). The only place that stores prompts and answers: keep it opt-out and local. |
 | `ia_router/stream.py` | `LiveOutput`: shows streamed text, then erases it if it fits on screen so the rendered answer can replace it. Pure row accounting (`advance`). |
-| `ia_router/ui.py` · `ui_page.py` | `ia-router ui`: a local browser UI. `ui.py` is the HTTP API (stdlib `ThreadingHTTPServer`, NDJSON streaming) over `core.ask/compare`, `usage`, `setup`, `sessions`; `ui_page.py` is the one static page (inline HTML/CSS/JS, no build, no external requests). `snapshot` and `run_ask` are testable without a socket. |
+| `ia_router/ui.py` · `ui_page.py` | `ia-router ui`: a local browser UI. `ui.py` is the HTTP API (stdlib `ThreadingHTTPServer`, NDJSON streaming) over `core.ask/compare`, `usage`, `setup`, `sessions`; `ui_page.py` is the one static page (inline HTML/CSS/JS, no build, no external requests). `snapshot` and `run_ask` are testable without a socket. The brand (mark colors, wordmark glyphs, gradient, tagline, credit links) is read from `banner.py` by `ui_page.render`, so the terminal header and the UI stay one identity: change it in `banner.py`, never in the page. |
 | `ia_router/mcp_server.py` | MCP stdio server that exposes the router itself as tools. |
 | `ia_router/connectors.py` | **Connectors**: registry (`connectors.json`), MCP clients (stdio and Streamable HTTP), the single **proxy MCP server** that aggregates them (`ia-router connectors serve`) and the per-CLI argument injection (`cli_args`). Pure registry/naming/args; only the clients and `serve` do I/O. |
 
