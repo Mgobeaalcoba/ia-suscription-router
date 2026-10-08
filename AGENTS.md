@@ -17,6 +17,8 @@ python3 -m unittest tests.test_scoring      # one file
 python3 cli.py doctor                        # installed CLIs and which model each one uses (spends no quota)
 python3 cli.py scores                        # what the router picks and why
 ROUTER_HOME=/tmp/test python3 cli.py ...     # isolated state: never test against ~/.ia-router
+python3 tools/render_screenshots.py [--live] # MAINTAINERS: terminal screenshots (docs/img); --live runs real models on tiny prompts
+python3 tools/render_ui_screenshots.py       # MAINTAINERS: screenshots of `ia-router ui` (Chrome + DevTools; three tiny real prompts)
 python3 tools/update_snapshot.py             # MAINTAINERS: regenerates ia_router/data/arena.json before publishing a version
 ```
 

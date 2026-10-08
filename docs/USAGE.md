@@ -565,7 +565,17 @@ ia-router ui --no-open         # only prints the URL
 ia-router ui --port 8765       # a fixed port (default: any free one)
 ```
 
-A chat page with the same engine as the terminal chat. The sidebar lists your saved conversations grouped by date (open, or delete with the ✕) and a **Status & usage** dialog shows which CLIs are ready (with the exact next step if one is not), your usage and your connectors. A welcome screen offers a few starter prompts (they only fill the box; nothing is sent until you press Enter). Under the box, **Model** pins one model, **Connectors** is auto / all / none, and **Compare** runs the task on two models and shows both answers side by side (it spends quota on each, like `ask --compare`). Answers stream in, are rendered as markdown, code blocks have a Copy button, and each answer has Copy and Ask again (which spends quota). The stop button ends the stream in the page, but the model may still finish in the background and use quota. The page wears the same identity as the terminal header: the three-provider mark (a provider that is not ready turns gray, as in the terminal), the wordmark, the tagline and the credit with links to the author and the site. A conversation has its own link (`#id`), so reloading keeps you in it. It uses the same sessions as the chat, so `ia-router --continue` can pick up a conversation you started in the browser.
+![The welcome screen of ia-router ui](img/ia-router-ui.png)
+
+A chat page with the same engine as the terminal chat. The sidebar lists your saved conversations grouped by date (open, or delete with the ✕) and a **Settings & status** dialog shows which CLIs are ready (with the exact next step if one is not), your usage and your connectors. A welcome screen offers a few starter prompts (they only fill the box; nothing is sent until you press Enter). Under the box, **Model** pins one model, **Connectors** is auto / all / none, and **Compare** runs the task on two models and shows both answers side by side (it spends quota on each, like `ask --compare`). Answers stream in, are rendered as markdown, code blocks have a Copy button, and each answer has Copy and Ask again (which spends quota). The stop button ends the stream in the page, but the model may still finish in the background and use quota. The page wears the same identity as the terminal header: the three-provider mark (a provider that is not ready turns gray, as in the terminal), the wordmark, the tagline and the credit with links to the author and the site. A conversation has its own link (`#id`), so reloading keeps you in it. It uses the same sessions as the chat, so `ia-router --continue` can pick up a conversation you started in the browser.
+
+![A real answer: model, tokens, estimated cost, and "Why this model"](img/ia-router-ui-chat.png)
+
+![Compare: the same task on two models, side by side](img/ia-router-ui-compare.png)
+
+**Preview routing** shows which model the router would pick for what you wrote, and why, before you spend anything:
+
+![Preview routing: the ranking and the connectors the task would get](img/ia-router-ui-routing.png)
 
 It is a prototype of a desktop experience, not a different product: no extra dependencies and nothing to install. **The rule is that the CLI and the UI can do the same things**, so every command has its place in the page:
 
@@ -585,6 +595,18 @@ It is a prototype of a desktop experience, not a different product: no extra dep
 Not applicable in a page: `--json`, `--raw`, `--stdin` and `--quiet` (they are for pipes), and `mcp` / `connectors serve` (they serve other programs over stdio). A test keeps this table honest: a new subcommand fails it until it has a route in the UI or a stated reason.
 
 **Connectors from the page.** Add one from a *template*, from a *command* or from a *URL*. A free command is a program that runs on your machine every time a model uses the connector, so the page shows you the exact command and asks you to confirm before it saves it. It is split into arguments but never passed through a shell: `;`, `|` and `$(...)` are plain characters, not operators. Secret values you enter (environment variables, headers) are never sent back to the page; write them as `${NAME}` and put NAME in your `.env` so the key is not stored in the registry file (the page warns when a literal secret is stored). **Test** starts the connector and lists its tools without spending quota.
+
+![The Connectors dialog: the real memory server, added from a template and tested](img/ia-router-ui-connectors.png)
+
+![A free command is shown to you, and nothing is saved until you confirm it](img/ia-router-ui-confirm.png)
+
+**Settings.** Status (CLIs, logins, usage, history per model, cooldowns), Scores, Priorities, Metrics and Conversations:
+
+![Settings: status, usage and history per model](img/ia-router-ui-settings.png)
+
+![Settings: the score per model for a category, with where each number comes from](img/ia-router-ui-scores.png)
+
+The screenshots are real: `python3 tools/render_ui_screenshots.py` regenerates them from the live page (three tiny prompts on real models; the rest spends no quota).
 
 **Files from the page.** A file you attach is copied to `~/.ia-router/uploads/` (readable just by you, 25 MB at most, removed after a week) so the models can open it by path, like a file dragged into the terminal. The page can only attach files it uploaded itself.
 

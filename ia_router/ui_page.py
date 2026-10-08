@@ -85,6 +85,7 @@ main { flex:1; display:flex; flex-direction:column; min-width:0; position:relati
 
 /* status dialog */
 dialog { border:1px solid var(--line); border-radius:18px; background:var(--bg); color:var(--text); width:min(560px, calc(100% - 32px)); padding:0; box-shadow:var(--shadow); } dialog::backdrop { background:rgba(0,0,0,.45); }
+#status { width:min(800px, calc(100% - 32px)); }
 .dhead { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); font-weight:600; } .dbody { padding:6px 18px 18px; max-height:70vh; overflow-y:auto; }
 .dbody h3 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:16px 0 6px; }
 .model { display:flex; justify-content:space-between; gap:10px; padding:3px 0; font-size:14px; }

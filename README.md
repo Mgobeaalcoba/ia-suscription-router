@@ -154,6 +154,16 @@ Also: its own input box with history and multiple lines, **dragged files** (text
 
 The task classifier understands tasks written in English and in Spanish; the whole interface is in English.
 
+## In the browser: `ia-router ui`
+
+The same router in a local browser tab, for when you would rather not live in a terminal. It has the same identity as the terminal header and does everything the CLI does: chat with streaming answers, attachments, compare, a routing preview, scores, priorities, metrics, usage, logins, saved conversations and a **connector manager**. It listens on `127.0.0.1` only and every request needs a random token; the full guide is in [docs/USAGE.md](https://github.com/Mgobeaalcoba/ia-suscription-router/blob/main/docs/USAGE.md) (section 5.11).
+
+![ia-router ui: welcome screen](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-ui.png)
+
+![A real answer in the browser, with the model, tokens, cost and why it was picked](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-ui-chat.png)
+
+![Connectors: the real memory server added from a template and tested](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-ui-connectors.png)
+
 ## Files
 
 | File | Role |
