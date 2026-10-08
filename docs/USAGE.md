@@ -40,42 +40,60 @@ The router **never reads or copies your tokens**: each CLI uses its own login. T
 |---|---|
 | Python 3.9 or higher | `python3 --version` |
 | At least one CLI installed **and logged in** (ideally all three) | See the table below |
-| `curl` (comes with macOS and Linux) | To update the metrics |
+| `curl` (comes with macOS; on Linux install it with your package manager) | To update the metrics |
 | Nothing else | There are no external dependencies (standard library only) |
 
 | CLI | Installation | Login |
 |---|---|---|
 | `claude` (Claude Code) | See the Claude Code documentation | Run `claude` once and follow the login |
 | `codex` (OpenAI) | See the Codex CLI documentation | Run `codex` once and follow the login |
-| `agy` (Google Antigravity) | `brew install --cask antigravity-cli` | Run `agy` **with no arguments** in a terminal and choose to sign in with Google |
+| `agy` (Google Antigravity) | macOS: `brew install --cask antigravity-cli`; Linux and WSL: see the Antigravity documentation | Run `agy` **with no arguments** in a terminal and choose to sign in with Google |
 
 > **Gemini CLI is no longer used.** Google discontinued it for individual accounts (login fails with *"This client is no longer supported"*). Its replacement is `agy`.
 
 You do not need to install all three, but the router splits work among the ones you have.
 
-**Installing the router.** Two options; pick one (Python 3.9 or higher):
+**Installing the router.** Available for **macOS**, **Linux** and **Windows (through WSL 2)**, with Python 3.9 or higher and no other dependencies. Pick your system:
 
-#### Option A · Homebrew (macOS)
-
-```bash
-brew install Mgobeaalcoba/tap/ia-router
-```
-
-It is equivalent to `brew tap Mgobeaalcoba/tap && brew install ia-router`. Homebrew installs Python if needed.
-
-#### Option B · pip or pipx (any system with Python 3.9+)
+#### macOS
 
 ```bash
-pipx install ia-router                  # recommended: installs it isolated and puts the `ia-router` command on your PATH
-python3 -m pip install --user ia-router # alternative with pip
+brew install Mgobeaalcoba/tap/ia-router       # Homebrew installs Python if needed (same as: brew tap Mgobeaalcoba/tap && brew install ia-router)
 ```
 
-If you do not have `pipx`: `brew install pipx && pipx ensurepath` (macOS) or `python3 -m pip install --user pipx && python3 -m pipx ensurepath`. Then open a new terminal.
+Or with pipx: `brew install pipx && pipx ensurepath`, open a new terminal, then `pipx install ia-router`.
+
+#### Linux
+
+```bash
+# Debian / Ubuntu
+sudo apt update && sudo apt install -y pipx curl && pipx ensurepath
+# Fedora
+sudo dnf install -y pipx curl && pipx ensurepath
+# Arch
+sudo pacman -S python-pipx curl && pipx ensurepath
+# any other distribution
+python3 -m pip install --user pipx && python3 -m pipx ensurepath
+```
+
+Open a new terminal and run `pipx install ia-router`. Recent Debian and Ubuntu refuse `pip install` outside a virtual environment ("externally managed environment"); that is why pipx is the recommended way. `curl` is only needed to update the metrics.
+
+#### Windows (WSL 2)
+
+ia-router runs inside WSL 2, the Linux that ships with Windows:
+
+1. In PowerShell **as administrator**: `wsl --install -d Ubuntu`, then restart.
+2. Open **Ubuntu** from the Start menu and create your user.
+3. Inside that Ubuntu window follow the **Linux** steps above.
+4. Install and log in to the official CLIs (`claude`, `codex`, `agy`) **inside WSL** too: the router runs them from the same terminal.
+5. For the web interface run `ia-router ui --no-open` and open the address it prints in your Windows browser (WSL 2 forwards `localhost`).
+
+Native Windows (PowerShell or `cmd`) is not supported: the chat uses terminal features that only exist on Linux and macOS.
 
 #### Check that it worked
 
 ```bash
-ia-router --version     # ia-router 0.6.0
+ia-router --version     # ia-router 0.7.0
 ia-router doctor        # which CLIs you have installed and which model each one uses (spends no quota)
 ```
 

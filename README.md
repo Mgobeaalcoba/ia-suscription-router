@@ -46,29 +46,47 @@ Speed and cost use a logarithmic scale (2 points less for every doubling versus 
 
 ## Installation
 
-Tested on macOS (it should also work on Linux), with Python 3.9 or higher. There are two ways to install it, pick one:
+Available for **macOS**, **Linux** and **Windows (through WSL 2)**, with Python 3.9 or higher and no other dependencies. Pick your system:
 
-### Option A · Homebrew (macOS)
-
-```bash
-brew install Mgobeaalcoba/tap/ia-router
-```
-
-It is equivalent to `brew tap Mgobeaalcoba/tap && brew install ia-router`. Homebrew installs Python if needed.
-
-### Option B · pip or pipx (any system with Python 3.9+)
+### macOS
 
 ```bash
-pipx install ia-router                  # recommended: installs it isolated and puts the `ia-router` command on your PATH
-python3 -m pip install --user ia-router # alternative with pip
+brew install Mgobeaalcoba/tap/ia-router       # Homebrew installs Python if needed (same as: brew tap Mgobeaalcoba/tap && brew install ia-router)
 ```
 
-If you do not have `pipx`: `brew install pipx && pipx ensurepath` (macOS) or `python3 -m pip install --user pipx && python3 -m pipx ensurepath`. Then open a new terminal.
+Or with pipx: `brew install pipx && pipx ensurepath`, open a new terminal, then `pipx install ia-router`.
+
+### Linux
+
+```bash
+# Debian / Ubuntu
+sudo apt update && sudo apt install -y pipx curl && pipx ensurepath
+# Fedora
+sudo dnf install -y pipx curl && pipx ensurepath
+# Arch
+sudo pacman -S python-pipx curl && pipx ensurepath
+# any other distribution
+python3 -m pip install --user pipx && python3 -m pipx ensurepath
+```
+
+Open a new terminal and run `pipx install ia-router`. Recent Debian and Ubuntu refuse `pip install` outside a virtual environment ("externally managed environment"); that is why pipx is the recommended way. `curl` is only needed to update the metrics.
+
+### Windows (WSL 2)
+
+ia-router runs inside WSL 2, the Linux that ships with Windows:
+
+1. In PowerShell **as administrator**: `wsl --install -d Ubuntu`, then restart.
+2. Open **Ubuntu** from the Start menu and create your user.
+3. Inside that Ubuntu window follow the **Linux** steps above.
+4. Install and log in to the official CLIs (`claude`, `codex`, `agy`) **inside WSL** too: the router runs them from the same terminal.
+5. For the web interface run `ia-router ui --no-open` and open the address it prints in your Windows browser (WSL 2 forwards `localhost`).
+
+Native Windows (PowerShell or `cmd`) is not supported: the chat uses terminal features that only exist on Linux and macOS.
 
 ### Check that it worked
 
 ```bash
-ia-router --version     # ia-router 0.6.0
+ia-router --version     # ia-router 0.7.0
 ia-router doctor        # which CLIs you have installed and which model each one uses (spends no quota)
 ```
 

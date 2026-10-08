@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are published on [PyPI](https://pypi.org/project/ia-router/) and [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
 
+## Unreleased
+
+### Changed
+- Documentation: installation steps for **macOS, Linux and Windows (through WSL 2)**, with the exact commands for each system (Homebrew or pipx, apt, dnf, pacman, and `wsl --install -d Ubuntu`). Native Windows (PowerShell or `cmd`) is not supported.
+
 ## 0.7.0 — 2026-10-08
 
 ### Added
