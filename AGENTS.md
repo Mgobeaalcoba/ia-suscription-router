@@ -11,7 +11,7 @@ A Python router that splits tasks across the **official CLIs** of the AI subscri
 ## Commands
 
 ```bash
-python3 -m unittest discover -s tests       # the whole suite (392 tests, ~15 s); it must end in OK
+python3 -m unittest discover -s tests       # the whole suite (408 tests, ~15 s); it must end in OK
 python3 -m unittest tests.test_scoring      # one file
 /usr/bin/python3 -m unittest discover -s tests   # on macOS: system Python 3.9 (the minimum supported)
 python3 cli.py doctor                        # installed CLIs and which model each one uses (spends no quota)
@@ -56,6 +56,7 @@ There is no build or linter configured. Do not add dependencies.
 | `ia_router/usage.py` | Quota meter: tokens per window/day/week from `log.jsonl`, a limit LEARNED from the user's own rate limits, 80% warning. Pure with injectable `now`. |
 | `ia_router/sessions.py` | Saved chat sessions (`~/.ia-router/sessions/*.json`, 0600, capped). The only place that stores prompts and answers: keep it opt-out and local. |
 | `ia_router/stream.py` | `LiveOutput`: shows streamed text, then erases it if it fits on screen so the rendered answer can replace it. Pure row accounting (`advance`). |
+| `ia_router/ui.py` · `ui_page.py` | `ia-router ui`: a local browser UI. `ui.py` is the HTTP API (stdlib `ThreadingHTTPServer`, NDJSON streaming) over `core.ask/compare`, `usage`, `setup`, `sessions`; `ui_page.py` is the one static page (inline HTML/CSS/JS, no build, no external requests). `snapshot` and `run_ask` are testable without a socket. |
 | `ia_router/mcp_server.py` | MCP stdio server that exposes the router itself as tools. |
 | `ia_router/connectors.py` | **Connectors**: registry (`connectors.json`), MCP clients (stdio and Streamable HTTP), the single **proxy MCP server** that aggregates them (`ia-router connectors serve`) and the per-CLI argument injection (`cli_args`). Pure registry/naming/args; only the clients and `serve` do I/O. |
 
@@ -92,6 +93,7 @@ Invariants:
 - **Connectors are matched per task** (`connectors.select`): unknown connectors are always attached, never dropped; the selection travels in `IA_ROUTER_CONNECTORS` (claude/codex MCP env) or `connectors.active.json` (agy, removed after the call). Keywords are in English and Spanish like the classifier.
 - **Compare spends quota on every model**: only behind an explicit flag/command, and the chat asks first.
 - **Usage meter honesty.** Never invent a limit: it exists only after a recorded rate limit, and the 5-hour window is an assumption that the output says so.
+- **The UI is a localhost server, so every request is hostile until proven otherwise** (any web page can call `127.0.0.1`). Keep all four guards in `ui.Handler`: bind `127.0.0.1` only, require the per-run token, check `Host` (DNS rebinding) and `Origin`, and require a JSON content type on POST. Never answer CORS preflights, never add `Access-Control-Allow-*`. The page escapes model output before turning markdown into tags; keep it that way, and keep the CSP header. The UI adds no dependencies and no build step: do not introduce a JS toolchain or CDN assets.
 - **Averaging tokens** only over runs that have recorded tokens (`token_runs`).
 - **Pty tests** (`PtySmokeTests`, `test_select`) compare before/after and not the absolute state of the file system.
 - `pyte` (terminal emulator) was used **by hand** to look at real screens; it is not a dependency and it is not imported in tests.

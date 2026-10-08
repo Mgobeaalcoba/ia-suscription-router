@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are published on [PyPI](https://pypi.org/project/ia-router/) and [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
 
+## Unreleased
+
+### Added
+- **`ia-router ui`: the router in a browser tab.** A local page (no new dependencies, nothing to install) with the same engine as the chat: streaming answers rendered as markdown, a model picker, connectors auto/all/none, **Compare two models**, which CLIs are ready (and the next step if not), usage, connectors and saved conversations you can reopen or delete. It shares sessions with the chat. Local only: it listens on `127.0.0.1` and every request needs a per-run token. No attachments yet.
+
 ## 0.6.0 — 2026-10-08
 
 ### Added

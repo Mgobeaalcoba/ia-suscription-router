@@ -138,6 +138,7 @@ The `.env` is **never pushed to git** (it is in `.gitignore`); `.env.example` is
 | `doctor [--probe]` | Installed CLIs and which model each one uses; with `--probe`, real login and latency. |
 | `stats` | Success, latency, rate limits and tokens per model. |
 | `connectors [list\|add\|remove\|enable\|disable\|test\|install]` | MCP connectors (Gmail, Calendar, Slack…) that every model can use. |
+| `ui [--port N] [--no-open]` | The router in a browser tab, local only: chat with streaming, compare, usage, connectors and saved conversations. |
 | `mcp` | MCP server (stdio): exposes the router itself as tools. |
 | `reset-cooldowns` | Clears rate-limit or auth cooldowns. |
 
@@ -173,7 +174,7 @@ The task classifier understands tasks written in English and in Spanish; the who
 | `ia_router/usage.py` · `sessions.py` · `stream.py` | Usage meter, saved sessions and live streaming output. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | `.env` reader, state and log, MCP server. |
 | `tools/update_snapshot.py` | For whoever maintains the repo: regenerates the Arena snapshot before publishing. |
-| `tests/` | 392 tests and fake CLIs (`tests/fake_bin`). |
+| `tests/` | 408 tests and fake CLIs (`tests/fake_bin`). |
 
 ## Connectors: let any model use your other apps (MCP)
 

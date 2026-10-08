@@ -385,6 +385,9 @@ def main() -> int:
     for verb, text in (("install", "register the proxy once in a CLI that has no per-call option (agy)"), ("uninstall", "remove that registration")):
         cs.add_parser(verb, help=text).add_argument("cli", choices=["agy", "claude", "codex"])
     cs.add_parser("serve", help="run the proxy MCP server (stdio); the CLIs start it themselves")
+    up = sub.add_parser("ui", help="the router in a browser tab (local only): chat, compare, usage, connectors and saved conversations")
+    up.add_argument("--port", type=int, default=0, help="port to listen on (default: any free one)")
+    up.add_argument("--no-open", action="store_true", help="print the URL but do not open the browser")
     sub.add_parser("mcp", help="run the MCP server (stdio)")
     sub.add_parser("reset-cooldowns", help="clear cooldowns (rate limit and auth)")
     argv, tail = sys.argv[1:], []
@@ -398,6 +401,9 @@ def main() -> int:
         return chat.run(resume=args.resume, continue_last=args.cont)
     if args.cmd == "sessions":
         return cmd_sessions(args)
+    if args.cmd == "ui":
+        from . import ui
+        return ui.serve(port=args.port, open_browser=not args.no_open)
     if args.cmd == "mcp":
         from . import mcp_server
         mcp_server.main()

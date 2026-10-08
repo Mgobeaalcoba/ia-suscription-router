@@ -10,7 +10,7 @@ All the examples assume you are in the repo folder:
 cd ~/Documents/ia-suscription-router
 ```
 
-The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 392 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
+The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 408 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
 
 ---
 
@@ -210,7 +210,7 @@ It also understands queries in natural language ("show me the stats", "which mod
 
 ### Standalone commands (without opening the chat)
 
-Everything in the chat also exists as commands for scripts (`setup`, `ask`, `route`, `scores`, `metrics`, `priorities`, `doctor`, `stats`, `connectors`). They are described in section 5.
+Everything in the chat also exists as commands for scripts (`setup`, `ask`, `route`, `scores`, `metrics`, `priorities`, `doctor`, `stats`, `connectors`, `ui`). They are described in section 5.
 
 ---
 
@@ -556,6 +556,20 @@ In the chat: `/sessions` lists them and `/resume [id]` continues one. Resuming r
 ### 5.10 Streaming
 
 In the chat the answer appears as the model writes it. When it is complete, if it still fits on screen the live text is replaced by the rendered markdown; if it is taller than the terminal it stays as raw text. `/stream off` turns it off. claude and agy stream the text as it is written (and show the tools they use, like `⚙ using view_file`); codex delivers whole messages and tool progress. The answer, tokens and errors are interpreted exactly as without streaming. For pipes use `ask --stream`.
+
+### 5.11 `ui` — the router in a browser tab
+
+```bash
+ia-router ui                   # starts a local server and opens your browser
+ia-router ui --no-open         # only prints the URL
+ia-router ui --port 8765       # a fixed port (default: any free one)
+```
+
+A page with the same engine as the chat: write a task and the router picks the model, the answer streams in and is rendered as markdown, and a sidebar shows which CLIs are ready (with the exact next step if one is not), your usage, the connectors and your saved conversations (open or delete them). **Model** pins one model, **Connectors** is auto / all / none, and **Compare two models** runs the task on two models and shows both answers side by side (it spends quota on each, like `ask --compare`). It uses the same sessions as the chat, so `ia-router --continue` can pick up a conversation you started in the browser.
+
+It is a prototype of a desktop experience, not a different product: no extra dependencies, nothing to install, and no attachments yet (use the chat to drag files in).
+
+Safety: it listens on `127.0.0.1` only and every request needs a random token that changes on each run (the URL it opens contains it), so another web page you visit cannot talk to it. Anyone who can read your terminal output or your browser history for that session can use the URL while the server runs: stop it with Ctrl+C when you are done.
 
 ---
 
