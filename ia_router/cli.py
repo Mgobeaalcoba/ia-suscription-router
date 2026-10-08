@@ -8,7 +8,7 @@ import sys
 
 import subprocess
 
-from . import __version__, adapters, connectors, core, setup as setup_mod, envfile, metrics, priorities, probe, render, scoring, state, usage
+from . import __version__, adapters, connectors, core, setup as setup_mod, envfile, metrics, priorities, probe, render, scoring, sessions, state, usage
 
 
 def _color() -> bool:
@@ -165,6 +165,34 @@ def cmd_metrics(cfg, args) -> int:
     return 0
 
 
+def cmd_sessions(args) -> int:
+    if args.action == "clear":
+        print(f"Deleted {sessions.clear()} saved conversation(s).")
+        return 0
+    if args.action in ("show", "delete"):
+        if not args.id:
+            print(f"Error: `sessions {args.action}` needs an id (see `ia-router sessions`).", file=sys.stderr)
+            return 2
+        if args.action == "delete":
+            ok = sessions.delete(args.id)
+            print("Deleted." if ok else "No such saved conversation.", file=sys.stdout if ok else sys.stderr)
+            return 0 if ok else 1
+        data = sessions.load(args.id)
+        if not data:
+            print("No such saved conversation.", file=sys.stderr)
+            return 1
+        for t in data["turns"]:
+            print(f"you> {t['user']}\n[{t['model']}] {t['answer']}\n")
+        return 0
+    rows = sessions.list_sessions(30)
+    if not rows:
+        print("No saved conversations yet." + ("" if sessions.enabled() else " (Saving is off.)"))
+        return 0
+    for r in rows:
+        print(f"{r['id']}  {r['updated'][:16].replace('T', ' ')}  {r['turns']:>3} turns  {r['title']}")
+    return 0
+
+
 def cmd_usage(cfg, _args) -> int:
     summary = usage.summarize(usage.read_log(), cfg=cfg)
     print("\n".join(usage.table(summary)))
@@ -277,8 +305,13 @@ def main() -> int:
     envfile.load()  # .env (e.g. ARTIFICIAL_ANALYSIS_API_KEY); never overrides what is already set in the environment
     p = argparse.ArgumentParser(prog="ia-router", description=__doc__)
     p.add_argument("--version", action="version", version=f"ia-router {__version__}")
+    p.add_argument("--continue", dest="cont", action="store_true", help="open the chat and resume the most recent saved conversation")
+    p.add_argument("--resume", metavar="ID", help="open the chat and resume a saved conversation (see `ia-router sessions`)")
     sub = p.add_subparsers(dest="cmd")
     sub.add_parser("chat", help="conversational mode (what opens with no arguments)")
+    ss = sub.add_parser("sessions", help="saved conversations: list, show, delete or clear (they are stored only on this machine)")
+    ss.add_argument("action", nargs="?", choices=["list", "show", "delete", "clear"], default="list")
+    ss.add_argument("id", nargs="?")
     dp = sub.add_parser("doctor", help="check which CLIs are installed and which model each one uses")
     dp.add_argument("--probe", action="store_true", help="minimal real call to each CLI: login, latency, version and model")
     for name in ("route", "ask"):
@@ -330,7 +363,9 @@ def main() -> int:
 
     if args.cmd in (None, "chat"):
         from . import chat
-        return chat.run()
+        return chat.run(resume=args.resume, continue_last=args.cont)
+    if args.cmd == "sessions":
+        return cmd_sessions(args)
     if args.cmd == "mcp":
         from . import mcp_server
         mcp_server.main()

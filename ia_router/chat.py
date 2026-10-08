@@ -14,7 +14,7 @@ import sys
 import time
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import __version__, adapters, attachments, banner, connectors as connectors_mod, core, setup as setup_mod, usage as usage_mod, editor as editor_mod, metrics, priorities, probe as probe_mod, render, router, scoring, state
+from . import __version__, adapters, attachments, banner, connectors as connectors_mod, core, sessions, setup as setup_mod, usage as usage_mod, editor as editor_mod, metrics, priorities, probe as probe_mod, render, router, scoring, state
 
 HISTORY_TURNS = 6
 HISTORY_ANSWER_CHARS = 1500
@@ -32,6 +32,7 @@ HELP = """Just talk normally: each message is a task and is routed to the best m
   /explain on|off    show the routing table on every message            /md on|off   rendered or raw markdown
   /connectors [auto|on|off]  MCP connectors (Gmail, Calendar…): auto = only the ones a task needs, on = all, off = none
   /compare [a,b] task  run the same task on two models and show both (spends quota on each)
+  /sessions [off|on]  saved conversations; /resume [id] continues one (they are stored locally, readable only by you)
   /ask text          force "this is a task"                             /clear   forget the conversation
   /help              this help                                          /exit    quit"""
 
@@ -40,7 +41,7 @@ COMMANDS = [
     editor_mod.Command("/scores", "score per model and category"), editor_mod.Command("/metrics", "where the data comes from; refresh = update it"),
     editor_mod.Command("/usage", "usage per model and distance to the rate limit"), editor_mod.Command("/setup", "check your CLIs and get the steps for the missing ones"), editor_mod.Command("/priorities", "what you prioritize for each kind of task (questions)"), editor_mod.Command("/model", "pin a model or auto"),
     editor_mod.Command("/stats", "success, latency and tokens per model"), editor_mod.Command("/explain", "show the routing table (on|off)"),
-    editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/compare", "run a task on two models and compare (spends quota on each)"), editor_mod.Command("/ask", "force: this is a task"),
+    editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/compare", "run a task on two models and compare (spends quota on each)"), editor_mod.Command("/sessions", "list saved conversations (off|on)"), editor_mod.Command("/resume", "continue a saved conversation"), editor_mod.Command("/ask", "force: this is a task"),
     editor_mod.Command("/connectors", "MCP connectors the models can use (auto|on|off)"), editor_mod.Command("/clear", "forget the conversation"), editor_mod.Command("/exit", "quit"),
 ]
 
@@ -88,6 +89,7 @@ class Chat:
         self.pinned = "auto"
         self.explain = False
         self.markdown = True
+        self.session = sessions.new_session(attachments.safe_cwd())
         self.connectors: Optional[bool] = None   # None = automatic (only the connectors a task needs), True = all, False = none
 
     # --- utilities ---
@@ -156,6 +158,9 @@ class Chat:
         self.say(self.dim(f"── {core.format_usage(res)} · {why} · {secs:.1f}s{fb}"))
         self.say(render.render(res["output"], color=self.color and self.markdown) + "\n")
         self.history.append((text, used, res["output"]))
+        sessions.add_turn(self.session, text, used, res["output"])
+        self.session["pinned"] = self.pinned
+        sessions.save(self.session)
         for w in usage_mod.warnings(usage_mod.summarize(usage_mod.read_log()), [used]):
             self.say(self.dim("⚠ " + w))
 
@@ -218,7 +223,12 @@ class Chat:
                 self.say(f"Mode: {mode} (/connectors auto|on|off). Manage them with `ia-router connectors`.")
         elif cmd == "clear":
             self.history.clear()
-            self.say("Conversation forgotten.")
+            self.session = sessions.new_session(attachments.safe_cwd())
+            self.say("Conversation forgotten here; a new one starts. (The saved one is still listed in /sessions.)" if sessions.enabled() else "Conversation forgotten.")
+        elif cmd == "sessions":
+            self.sessions_command(arg)
+        elif cmd == "resume":
+            self.resume(arg)
         elif cmd == "compare":
             self.compare(cfg, arg)
         elif cmd == "ask":
@@ -226,6 +236,31 @@ class Chat:
         else:
             self.say(f"Unknown command /{cmd}. Type /help.")
         return True
+
+    def sessions_command(self, arg: str) -> None:
+        if arg in ("off", "on"):
+            state.set_flag("sessions_off", arg == "off")
+            self.say("Saving conversations is " + ("OFF: nothing new is stored (delete old ones with `ia-router sessions clear`)." if arg == "off" else "ON."))
+            return
+        rows = sessions.list_sessions(10)
+        if not rows:
+            self.say("No saved conversations yet." + ("" if sessions.enabled() else " (Saving is off: /sessions on)"))
+            return
+        for r in rows:
+            self.say(f"{r['id']}  {r['updated'][:16].replace('T', ' ')}  {r['turns']:>3} turns  {r['title']}")
+        self.say("/resume <id> continues one; `ia-router sessions delete <id>` removes it. They are stored only on this machine.")
+
+    def resume(self, arg: str) -> None:
+        sid = arg.strip()
+        data = sessions.load(sid) if sid else sessions.latest()
+        if not data:
+            self.say("No such saved conversation. See /sessions." if sid else "No saved conversations yet.")
+            return
+        self.session, self.history = data, sessions.to_history(data)
+        if data.get("pinned") in ("auto", *core.load_config()["models"]):
+            self.pinned = data["pinned"]
+        last = self.history[-1] if self.history else None
+        self.say(f"Resumed {data['id']} ({len(self.history)} turns)." + (f" Last you asked: {last[0][:70]}" if last else ""))
 
     def compare(self, cfg: Dict, arg: str) -> None:
         names = None
@@ -324,12 +359,14 @@ class Chat:
         # \001..\002 mark the color codes as non-printing so readline computes the cursor correctly
         return f"\001\033[1;38;2;200;90;160m\002ia ❯\001\033[0m\002 " if self.color else "ia> "
 
-    def loop(self) -> int:
+    def loop(self, resume: Optional[str] = None, continue_last: bool = False) -> int:
         self.say(self.banner())
         try:
             self.startup()
         except KeyboardInterrupt:
             self.say("\n(startup interrupted)")
+        if resume or continue_last:
+            self.resume(resume or "")
         while True:
             try:
                 line = self.editor.read() if self.editor else self.read(self.prompt())
@@ -350,7 +387,7 @@ class Chat:
                 self.say("\n(interrupted)")
 
 
-def run() -> int:
+def run(resume: Optional[str] = None, continue_last: bool = False) -> int:
     try:
         import readline  # noqa: F401  (line editing and arrow-key history)
     except ImportError:
@@ -361,4 +398,4 @@ def run() -> int:
         chat.editor = editor_mod.LineEditor(
             COMMANDS, model=lambda: chat.pinned, status=lambda: chat.status_line(),
             history_path=state.home() / "history.jsonl", color=color)
-    return chat.loop()
+    return chat.loop(resume=resume, continue_last=continue_last)
