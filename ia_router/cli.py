@@ -63,6 +63,32 @@ def _read_stdin(force: bool = False) -> str:
         return ""
 
 
+def _compare(cfg, args, task, route_text) -> int:
+    names = [m for m in (args.models or "").split(",") if m] or None
+    if args.dry_run:
+        print("(dry-run) it would run the task on: " + ", ".join(names or [r["name"] for r in core.route(route_text or task, cfg)["ranking"] if r["usable"]][:2]), file=sys.stderr)
+        return 0
+    if not (args.json or args.raw):
+        print("Comparing: the task runs on every model below and spends quota on each.", file=sys.stderr)
+    try:
+        results = core.compare(task, cfg, names, context_files=args.context, route_text=route_text,
+                               connectors=False if args.no_connectors else True if args.all_connectors else None)
+    except ValueError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}) if args.json else f"Error: {exc}", file=None if args.json else sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps({"compare": [core.result_json(r, cfg) for r in results]}, ensure_ascii=False))
+    else:
+        for r in results:
+            j = core.result_json(r, cfg)
+            cost = f" · ~${j['estimated_cost_usd']}" if j["estimated_cost_usd"] is not None else ""
+            who = core.format_usage(r) if r["ok"] else (r["order"][0] if r.get("order") else "?")
+            print(f"\n━━ {who} · {j['seconds']}s{cost}" + ("" if r["ok"] else f" · FAILED: {r.get('error')}"))
+            if r["ok"]:
+                print(r["output"] if args.raw else render.render(r["output"], color=_color()))
+    return 0 if any(r["ok"] for r in results) else 1
+
+
 def cmd_ask(cfg, args) -> int:
     task = (args.task or "").strip()
     piped = _read_stdin(force=args.stdin or task == "-").strip()
@@ -76,6 +102,8 @@ def cmd_ask(cfg, args) -> int:
     else:
         task = task or piped
     quiet = args.json or args.raw or args.quiet
+    if args.compare or args.models:
+        return _compare(cfg, args, task, route_text)
     try:
         res = core.ask(task, cfg, model=args.model, context_files=args.context, dry_run=args.dry_run, route_text=route_text,
                        connectors=False if args.no_connectors else True if args.all_connectors else None)
@@ -260,6 +288,8 @@ def main() -> int:
         if name == "ask":
             sp.add_argument("--model", "-m", default="auto", help="auto|claude|codex|antigravity")
             sp.add_argument("--dry-run", action="store_true", help="only show the decision")
+            sp.add_argument("--compare", action="store_true", help="run the same task on the two best models and show both answers (spends quota on each)")
+            sp.add_argument("--models", help="with --compare: which models to compare, e.g. claude,codex")
             sp.add_argument("--stdin", action="store_true", help="wait for piped input even if it is slow to start (a task of - does the same)")
             sp.add_argument("--json", action="store_true", help="print one JSON object (answer, model, tokens, estimated cost, routing, attempts) and nothing else")
             sp.add_argument("--raw", action="store_true", help="print only the answer on stdout, unrendered (who answered goes to stderr): for pipes")

@@ -31,6 +31,7 @@ HELP = """Just talk normally: each message is a task and is routed to the best m
   /model X           pin a model (X = claude|codex|... or auto)         /stats   success, latency and tokens
   /explain on|off    show the routing table on every message            /md on|off   rendered or raw markdown
   /connectors [auto|on|off]  MCP connectors (Gmail, Calendar…): auto = only the ones a task needs, on = all, off = none
+  /compare [a,b] task  run the same task on two models and show both (spends quota on each)
   /ask text          force "this is a task"                             /clear   forget the conversation
   /help              this help                                          /exit    quit"""
 
@@ -39,7 +40,7 @@ COMMANDS = [
     editor_mod.Command("/scores", "score per model and category"), editor_mod.Command("/metrics", "where the data comes from; refresh = update it"),
     editor_mod.Command("/usage", "usage per model and distance to the rate limit"), editor_mod.Command("/setup", "check your CLIs and get the steps for the missing ones"), editor_mod.Command("/priorities", "what you prioritize for each kind of task (questions)"), editor_mod.Command("/model", "pin a model or auto"),
     editor_mod.Command("/stats", "success, latency and tokens per model"), editor_mod.Command("/explain", "show the routing table (on|off)"),
-    editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/ask", "force: this is a task"),
+    editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/compare", "run a task on two models and compare (spends quota on each)"), editor_mod.Command("/ask", "force: this is a task"),
     editor_mod.Command("/connectors", "MCP connectors the models can use (auto|on|off)"), editor_mod.Command("/clear", "forget the conversation"), editor_mod.Command("/exit", "quit"),
 ]
 
@@ -218,11 +219,40 @@ class Chat:
         elif cmd == "clear":
             self.history.clear()
             self.say("Conversation forgotten.")
+        elif cmd == "compare":
+            self.compare(cfg, arg)
         elif cmd == "ask":
             self.run_task(arg) if arg else self.say("Usage: /ask <task>")
         else:
             self.say(f"Unknown command /{cmd}. Type /help.")
         return True
+
+    def compare(self, cfg: Dict, arg: str) -> None:
+        names = None
+        head, _, rest = arg.partition(" ")
+        if head and "," in head and all(p in cfg["models"] for p in head.split(",")):
+            names, arg = head.split(","), rest.strip()
+        if not arg:
+            self.say("Usage: /compare [claude,codex] <task>")
+            return
+        shown = names or [r["name"] for r in core.route(arg, cfg)["ranking"] if r["usable"]][:2]
+        if len(shown) < 2:
+            self.say("Comparing needs at least two models ready. Run /setup.")
+            return
+        if not self.ask_yes(f"Run this on {' and '.join(shown)}? It spends quota on each.", default=False):
+            self.say("Cancelled: nothing was sent.")
+            return
+        self.say(self.dim("… running on " + ", ".join(shown)))
+        try:
+            results = core.compare(arg, cfg, shown, connectors=self.connectors)
+        except ValueError as exc:
+            self.say(f"Error: {exc}")
+            return
+        for r in results:
+            j = core.result_json(r, cfg)
+            cost = f" · ~${j['estimated_cost_usd']}" if j["estimated_cost_usd"] is not None else ""
+            self.say(self.dim(f"━━ {core.format_usage(r) if r['ok'] else r['order'][0]} · {j['seconds']}s{cost}"))
+            self.say(render.render(r["output"], color=self.color and self.markdown) + "\n" if r["ok"] else f"Failed: {r.get('error')}\n")
 
     def models(self, cfg: Dict, probe: bool = False) -> None:
         probed = probe_mod.probe(cfg) if probe else {}

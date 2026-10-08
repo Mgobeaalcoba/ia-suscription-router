@@ -136,6 +136,32 @@ def ask(
     return result
 
 
+def compare(task: str, cfg: Dict, models: Optional[List[str]] = None, **kwargs) -> List[Dict]:
+    """Runs the SAME task on several models at once (default: the two best usable ones) and returns each model's result of `ask`.
+    It spends quota on every one of them, so callers must only use it when the user asked for it."""
+    wanted = list(models) if models else [r["name"] for r in route(kwargs.get("route_text") or task, cfg)["ranking"] if r["usable"]][:2]
+    unknown = [m for m in wanted if m not in cfg["models"]]
+    if unknown:
+        raise ValueError(f"unknown model: {', '.join(unknown)} (options: {', '.join(cfg['models'])})")
+    if len(set(wanted)) < 2:
+        raise ValueError("comparing needs at least two different models available (see `ia-router setup`)")
+    out: List[Optional[Dict]] = [None] * len(wanted)
+
+    def work(i: int, name: str) -> None:
+        try:
+            out[i] = ask(task, cfg, model=name, **kwargs)
+        except ValueError as exc:   # e.g. an attachment this model cannot open: the others still run
+            out[i] = {"decision": route(task, cfg), "order": [name], "warnings": [], "attempts": [], "ok": False, "output": "", "error": str(exc), "connectors": []}
+
+    import threading
+    threads = [threading.Thread(target=work, args=(i, n), daemon=True) for i, n in enumerate(wanted)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return [r for r in out if r is not None]
+
+
 def result_json(res: Dict, cfg: Optional[Dict] = None) -> Dict:
     """The result of `ask` as plain data for scripts: the answer, who gave it, tokens, an estimated list-price cost and why it was routed."""
     from . import scoring
