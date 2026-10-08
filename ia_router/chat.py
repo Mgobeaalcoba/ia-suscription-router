@@ -14,7 +14,7 @@ import sys
 import time
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import __version__, adapters, attachments, banner, connectors as connectors_mod, core, setup as setup_mod, editor as editor_mod, metrics, priorities, probe as probe_mod, render, router, scoring, state
+from . import __version__, adapters, attachments, banner, connectors as connectors_mod, core, setup as setup_mod, usage as usage_mod, editor as editor_mod, metrics, priorities, probe as probe_mod, render, router, scoring, state
 
 HISTORY_TURNS = 6
 HISTORY_ANSWER_CHARS = 1500
@@ -25,6 +25,7 @@ HELP = """Just talk normally: each message is a task and is routed to the best m
   /models [probe]    status of the CLIs and which model each one uses (probe = real minimal query)
   /scores [cat]      score per model and category; with a category, the breakdown
   /metrics [refresh] where the data comes from; refresh = update it (force = even if recent)
+  /usage             how much each model was used lately and how close it is to a rate limit
   /setup             which CLIs are installed and logged in, and what to do about the missing ones
   /priorities        questions: what you prioritize for each kind of task (accuracy, speed, cost)
   /model X           pin a model (X = claude|codex|... or auto)         /stats   success, latency and tokens
@@ -36,7 +37,7 @@ HELP = """Just talk normally: each message is a task and is routed to the best m
 COMMANDS = [
     editor_mod.Command("/help", "show the shortcuts"), editor_mod.Command("/models", "status of the CLIs and which model each one uses"),
     editor_mod.Command("/scores", "score per model and category"), editor_mod.Command("/metrics", "where the data comes from; refresh = update it"),
-    editor_mod.Command("/setup", "check your CLIs and get the steps for the missing ones"), editor_mod.Command("/priorities", "what you prioritize for each kind of task (questions)"), editor_mod.Command("/model", "pin a model or auto"),
+    editor_mod.Command("/usage", "usage per model and distance to the rate limit"), editor_mod.Command("/setup", "check your CLIs and get the steps for the missing ones"), editor_mod.Command("/priorities", "what you prioritize for each kind of task (questions)"), editor_mod.Command("/model", "pin a model or auto"),
     editor_mod.Command("/stats", "success, latency and tokens per model"), editor_mod.Command("/explain", "show the routing table (on|off)"),
     editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/ask", "force: this is a task"),
     editor_mod.Command("/connectors", "MCP connectors the models can use (auto|on|off)"), editor_mod.Command("/clear", "forget the conversation"), editor_mod.Command("/exit", "quit"),
@@ -154,6 +155,8 @@ class Chat:
         self.say(self.dim(f"── {core.format_usage(res)} · {why} · {secs:.1f}s{fb}"))
         self.say(render.render(res["output"], color=self.color and self.markdown) + "\n")
         self.history.append((text, used, res["output"]))
+        for w in usage_mod.warnings(usage_mod.summarize(usage_mod.read_log()), [used]):
+            self.say(self.dim("⚠ " + w))
 
     def route_text(self, text: str) -> Optional[str]:
         """A short follow-up with no topic of its own ("now make it recursive") inherits the previous message's."""
@@ -197,6 +200,9 @@ class Chat:
         elif cmd == "priorities":
             if priorities.run(cfg, say=self.say, color=self.color):
                 self.say("\n" + scoring.render_table(core.load_config()))
+        elif cmd == "usage":
+            summary = usage_mod.summarize(usage_mod.read_log(), cfg=cfg)
+            self.say("\n".join(usage_mod.table(summary) + [""] + ["⚠ " + w for w in usage_mod.warnings(summary)]).rstrip())
         elif cmd == "setup":
             setup_mod.run(cfg, say=self.say, ask_yes=self.ask_yes, explicit=True)
         elif cmd == "connectors":

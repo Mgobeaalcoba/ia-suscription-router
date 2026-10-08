@@ -1,4 +1,4 @@
-"""AI subscription router that routes by objective metrics. With no arguments it opens the chat; also: setup | doctor | route | ask | stats | scores | metrics | priorities | connectors | mcp | reset-cooldowns."""
+"""AI subscription router that routes by objective metrics. With no arguments it opens the chat; also: setup | usage | doctor | route | ask | stats | scores | metrics | priorities | connectors | mcp | reset-cooldowns."""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,7 @@ import sys
 
 import subprocess
 
-from . import __version__, adapters, connectors, core, setup as setup_mod, envfile, metrics, priorities, probe, render, scoring, state
+from . import __version__, adapters, connectors, core, setup as setup_mod, envfile, metrics, priorities, probe, render, scoring, state, usage
 
 
 def _color() -> bool:
@@ -134,6 +134,14 @@ def cmd_metrics(cfg, args) -> int:
         cfg = core.load_config()
         print()
     print(scoring.describe_sources(cfg))
+    return 0
+
+
+def cmd_usage(cfg, _args) -> int:
+    summary = usage.summarize(usage.read_log(), cfg=cfg)
+    print("\n".join(usage.table(summary)))
+    for w in usage.warnings(summary):
+        print("\n⚠ " + w)
     return 0
 
 
@@ -264,6 +272,7 @@ def main() -> int:
     sp = sub.add_parser("metrics", help="where the metrics come from; `refresh` updates them (Arena and, with a key, Artificial Analysis)")
     sp.add_argument("action", nargs="?", choices=["show", "refresh"], default="show")
     sp.add_argument("--force", action="store_true", help="(refresh) query even if your data is less than 12 hours old")
+    sub.add_parser("usage", help="how much each model was used lately and how close it is to the rate limit you already hit")
     sub.add_parser("setup", help="check which official CLIs are installed and logged in, and what to do about the missing ones")
     sub.add_parser("priorities", help="questions: what you prioritize for each kind of task (accuracy, speed or cost)")
     cp = sub.add_parser("connectors", help="MCP connectors (Gmail, Calendar, Slack…) that every model can use")
@@ -304,4 +313,4 @@ def main() -> int:
         return 0
     cfg = core.load_config()
     return {"doctor": cmd_doctor, "route": cmd_route, "ask": cmd_ask, "stats": cmd_stats, "scores": cmd_scores,
-            "metrics": cmd_metrics, "priorities": cmd_priorities, "setup": cmd_setup}[args.cmd](cfg, args)
+            "metrics": cmd_metrics, "priorities": cmd_priorities, "setup": cmd_setup, "usage": cmd_usage}[args.cmd](cfg, args)
