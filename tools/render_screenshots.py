@@ -3,9 +3,10 @@
 box, the scores, the routing and the priority questions. It converts ANSI codes to HTML and uses headless Chrome to render
 with real fonts. For maintainers only; it is not part of the package.
 
-    python3 tools/render_screenshots.py [output_folder]      (default docs/img)
+    python3 tools/render_screenshots.py [output_folder] [--live]      (default docs/img)
 
-It uses your real state (~/.ia-router): the screenshots show your models and whatever metrics you have. It spends no quota.
+It uses your real state (~/.ia-router): the screenshots show your models and whatever metrics you have. It spends no quota,
+except with --live, which also renders compare, script mode and usage by running REAL models on tiny prompts (a pinch of quota).
 """
 import html
 import os
@@ -148,7 +149,9 @@ def cli(*args) -> str:
 
 def main() -> int:
     envfile.load()
-    out = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "docs" / "img"
+    live = "--live" in sys.argv   # also render the captures that run REAL models (a few tiny prompts: spends a pinch of quota)
+    args = [a for a in sys.argv[1:] if a != "--live"]
+    out = Path(args[0]) if args else ROOT / "docs" / "img"
     out.mkdir(parents=True, exist_ok=True)
     cfg = core.load_config()
     names = list(cfg["models"])
@@ -208,7 +211,37 @@ def main() -> int:
             while text and not text[-1].strip():
                 text.pop()
             shot(["\033[1;38;2;200;90;160m$\033[0m ia-router"] + text, out / "ia-router-onboarding.png", "ia-router · first open", COLS)
+
+    if live:
+        live_shots(out)
     return 0
+
+
+def live_shots(out: Path) -> None:
+    """Compare, script mode and usage with REAL claude and codex, in a throwaway state folder. Tiny prompts; everything shown is what they printed."""
+    COLS = 100
+    mine = Path.home() / ".ia-router" / "metrics.json"
+    with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as workdir:   # an empty folder: the models must not read this repo
+        if mine.exists():   # public metrics only: they let the cost estimate find the list prices
+            shutil.copy(mine, Path(home) / "metrics.json")
+        env = dict(os.environ, ROUTER_HOME=home, NO_COLOR="1")
+
+        def sh(line: str, stdin: str = "") -> str:
+            r = subprocess.run(line, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, timeout=600, cwd=workdir, input=stdin)
+            return r.stdout.rstrip()      # stdout and stderr interleaved in the order they were printed
+
+        prompt = lambda cmd: "\033[1;38;2;200;90;160m$\033[0m " + cmd
+        py = f"{sys.executable} {ROOT / 'cli.py'}"
+        cmp_cmd = 'ia-router ask "Reply with one short sentence: what is a mutex?" --compare --models claude,codex'
+        cmp_out = sh(cmp_cmd.replace("ia-router", py, 1))
+        shot([prompt(cmp_cmd)] + cmp_out.split("\n"), out / "ia-router-compare.png", "ia-router · ask --compare", COLS)
+
+        pipe_cmd = "echo \"No module named 'yaml'\" | ia-router ask \"Why? One short sentence.\" --json | jq '{model,output}'"
+        pipe_out = sh(pipe_cmd.replace("ia-router", py, 1))
+        shot([prompt(pipe_cmd)] + pipe_out.split("\n"), out / "ia-router-scripts.png", "ia-router · script mode", COLS)
+
+        usage_out = sh(f"{py} usage")
+        shot([prompt("ia-router usage")] + usage_out.split("\n"), out / "ia-router-usage.png", "ia-router · usage", COLS)
 
 
 if __name__ == "__main__":

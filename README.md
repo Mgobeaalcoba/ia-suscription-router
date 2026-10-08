@@ -143,6 +143,12 @@ The `.env` is **never pushed to git** (it is in `.gitignore`); `.env.example` is
 
 Also: **piped input and `--json`** for scripts (`cat error.log | ia-router ask "what is wrong?" --json`), **`ask --compare`** to run one task on two models, a **usage meter** (`ia-router usage`), **saved sessions** (`ia-router --continue`) and **streaming** answers.
 
+![Script mode: piped input and --json](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-scripts.png)
+
+![ask --compare running one task on claude and codex](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-compare.png)
+
+![ia-router usage: tokens and estimated cost per model](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-usage.png)
+
 Also: its own input box with history and multiple lines, **dragged files** (text as context; images and PDFs by path), every answer with the **exact model and the tokens**, and markdown rendered like a README on GitHub.
 
 The task classifier understands tasks written in English and in Spanish; the whole interface is in English.

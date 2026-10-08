@@ -470,6 +470,8 @@ If the CLI does not report the model or the tokens, `tokens n/a` is shown.
 
 **Script mode.** `ask` works in pipes and scripts:
 
+![Real output of a piped task with --json](img/ia-router-scripts.png)
+
 ```bash
 cat error.log | ia-router ask "what is wrong here?"      # piped text is material for the task; the TASK decides the routing
 echo "explain this regex: ^a+$" | ia-router ask           # with no task argument the piped text is the task
@@ -524,15 +526,15 @@ If a model ended up in cooldown and you already fixed it (you logged in again, o
 ia-router usage
 ```
 
-```
-model          last 5h   last 24h    last 7d  runs limits  vs limit  est. USD 7d
-claude          41,200    188,900    902,300    57      1       82%        $4.10
-codex           12,800     60,400    310,000    22      0      n/a         $1.35
-```
+![Real output of ia-router usage after a few runs](img/ia-router-usage.png)
+
+The columns are tokens over the last 5 hours, 24 hours and 7 days, runs, rate limits seen, the distance to the observed limit (`n/a` until one is recorded) and the estimated list-price cost.
 
 Tokens are input plus output (cached input included), from the local log. **Nothing is guessed**: providers do not publish their subscription limits, so the router learns one from YOUR history: every time a model answered with a rate limit, the tokens it had used in the previous 5 hours are an observed ceiling, and the largest one is the reference ("vs limit"). It shows `n/a` until a rate limit has been recorded. The chat warns after an answer when a model is at 80% or more of its reference, and suggests `/model` to send the next task elsewhere. The 5-hour window is an assumption, and the cost is a list-price proxy, not what your subscription charges.
 
 ### 5.8 `ask --compare` — one task, two models
+
+![Real output of ask --compare on claude and codex](img/ia-router-compare.png)
 
 ```bash
 ia-router ask "refactor this function for readability" -c utils.py --compare
