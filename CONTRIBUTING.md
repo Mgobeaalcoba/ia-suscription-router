@@ -22,7 +22,7 @@ Open an [*issue*](https://github.com/Mgobeaalcoba/ia-suscription-router/issues/n
 ```bash
 git clone https://github.com/Mgobeaalcoba/ia-suscription-router.git
 cd ia-suscription-router
-python3 -m unittest discover -s tests     # must end in OK (311 tests, ~15 s)
+python3 -m unittest discover -s tests     # must end in OK (392 tests, ~15 s)
 ```
 
 There is nothing to install: the project uses **only the Python standard library** and is compatible with **Python 3.9** (try it with `/usr/bin/python3` on macOS). Do not add dependencies.

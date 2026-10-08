@@ -270,11 +270,28 @@ def cmd_connectors(args) -> int:
         print("\n".join(_connector_line(n, s) for n, s in servers.items()))
         print(f"\nEvery model gets them through one proxy ({connectors.PROXY_NAME}). `ia-router connectors test` checks them without spending quota.")
         return 0
+    if act == "templates":
+        for key, t in sorted(connectors.all_templates().items()):
+            kind = "remote" if t.get("url") else "local"
+            flag = "" if t.get("verified", True) else "  (not verified by the maintainers)"
+            print(f"{key:<12} {kind:<7} {t.get('description', '')}{flag}")
+            print(f"{'':<12} adds with: ia-router connectors add NAME --template {key}" + (" -- ARGS" if t.get("needs_args") else "")
+                  + (f"   needs: {', '.join(t['needs_env'])}" if t.get("needs_env") else "") + (f"   requires: {t['requires']}" if t.get("requires") else ""))
+        print(f"\nAdd your own trusted ones in {connectors.templates_path()} (same fields). The router does not ship third-party Gmail/Calendar/Slack servers: "
+              "they can read and write your accounts, so pick them yourself.")
+        return 0
     if act == "add":
         command = args.command
         try:
+            if args.template:
+                built = connectors.from_template(args.template, command)
+                command, args.url = built.get("command"), built.get("url")
+                args.env = [f"{k}={v}" for k, v in (built.get("env") or {}).items()] + args.env
+                args.header = [f"{k}: {v}" for k, v in (built.get("headers") or {}).items()] + args.header
             spec = connectors.add(args.name, command=command or None, url=args.url, env=connectors.parse_pairs(args.env, "="),
                                   headers=connectors.parse_pairs(args.header, ":"))
+            for var in (connectors.missing_env(args.template) if args.template else []):
+                print(f"Note: {var} is not set in your environment. Put it in your .env (it is read when the connector starts) before using it.")
         except ValueError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
@@ -354,8 +371,10 @@ def main() -> int:
     cp = sub.add_parser("connectors", help="MCP connectors (Gmail, Calendar, Slack…) that every model can use")
     cs = cp.add_subparsers(dest="action")
     cs.add_parser("list", help="show the registered connectors")
+    cs.add_parser("templates", help="ready-made connectors you can add with --template")
     ca = cs.add_parser("add", help="register an MCP server: add NAME [--env K=V] [--header 'K: V'] (--url URL | -- COMMAND…)")
     ca.add_argument("name")
+    ca.add_argument("--template", help="start from a ready-made connector (see `ia-router connectors templates`); extra arguments go after --")
     ca.add_argument("--url", help="URL of a remote (Streamable HTTP) MCP server")
     ca.add_argument("--env", action="append", default=[], help="environment variable for a local server, KEY=VALUE (repeatable; use ${NAME} to reference your environment)")
     ca.add_argument("--header", action="append", default=[], help="HTTP header for a remote server, 'Key: value' (repeatable)")

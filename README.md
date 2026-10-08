@@ -68,7 +68,7 @@ If you do not have `pipx`: `brew install pipx && pipx ensurepath` (macOS) or `py
 ### Check that it worked
 
 ```bash
-ia-router --version     # ia-router 0.5.0
+ia-router --version     # ia-router 0.6.0
 ia-router doctor        # which CLIs you have installed and which model each one uses (spends no quota)
 ```
 
@@ -133,11 +133,15 @@ The `.env` is **never pushed to git** (it is in `.gitignore`); `.env.example` is
 | `metrics [refresh] [--force]` | Where the data comes from and which entry each model was matched with; `refresh` updates it. |
 | `priorities` | Questions: what you prioritize for each kind of task. |
 | `setup` | Which official CLIs are installed and logged in, and the exact step for the missing ones. |
+| `usage` | Tokens and estimated cost per model, and how close each is to the rate limit you already hit. |
+| `sessions [list\|show\|delete\|clear]` | Saved conversations (`ia-router --continue` resumes the last). |
 | `doctor [--probe]` | Installed CLIs and which model each one uses; with `--probe`, real login and latency. |
 | `stats` | Success, latency, rate limits and tokens per model. |
 | `connectors [list\|add\|remove\|enable\|disable\|test\|install]` | MCP connectors (Gmail, Calendar, Slack…) that every model can use. |
 | `mcp` | MCP server (stdio): exposes the router itself as tools. |
 | `reset-cooldowns` | Clears rate-limit or auth cooldowns. |
+
+Also: **piped input and `--json`** for scripts (`cat error.log | ia-router ask "what is wrong?" --json`), **`ask --compare`** to run one task on two models, a **usage meter** (`ia-router usage`), **saved sessions** (`ia-router --continue`) and **streaming** answers.
 
 Also: its own input box with history and multiple lines, **dragged files** (text as context; images and PDFs by path), every answer with the **exact model and the tokens**, and markdown rendered like a README on GitHub.
 
@@ -160,9 +164,10 @@ The task classifier understands tasks written in English and in Spanish; the who
 | `ia_router/chat.py` · `editor.py` · `select.py` | Chat, input box and option selector. |
 | `ia_router/attachments.py` · `render.py` · `banner.py` | Dragged files, rendered markdown and the header. |
 | `ia_router/connectors.py` | MCP connectors: registry, proxy server that aggregates them, per-CLI injection. |
+| `ia_router/usage.py` · `sessions.py` · `stream.py` | Usage meter, saved sessions and live streaming output. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | `.env` reader, state and log, MCP server. |
 | `tools/update_snapshot.py` | For whoever maintains the repo: regenerates the Arena snapshot before publishing. |
-| `tests/` | 311 tests and fake CLIs (`tests/fake_bin`). |
+| `tests/` | 392 tests and fake CLIs (`tests/fake_bin`). |
 
 ## Connectors: let any model use your other apps (MCP)
 
@@ -172,7 +177,10 @@ Register MCP servers once and every model can use them: Gmail, Calendar, Slack, 
 ia-router connectors add gmail --env GMAIL_TOKEN='${GMAIL_TOKEN}' -- npx -y @your/gmail-mcp-server
 ia-router connectors add crm --url https://crm.example.com/mcp --header 'Authorization: Bearer ${CRM_KEY}'
 ia-router connectors test        # starts them and lists their tools (spends no model quota)
+ia-router connectors templates   # ready-made ones: filesystem, memory, github (official servers only)
 ```
+
+In automatic mode each task gets only the connectors it needs (a Gmail connector for an email task, none for a coding task).
 
 ![Registering two MCP connectors, testing them and listing them: the filesystem and memory servers, with their tools](https://raw.githubusercontent.com/Mgobeaalcoba/ia-suscription-router/main/docs/img/ia-router-connectors.png)
 
@@ -196,7 +204,7 @@ Tools: `route_task`, `ask_model`, `list_models`.
 | Cost | It is the list price per token: a proxy for quota consumption, not your real quota. |
 | Antigravity | `agy -p` does not read the prompt from stdin nor open files by path in non-interactive mode, and it fails if it asks for a tool it cannot authorize. |
 | Terms of use | Meant for personal use at a human pace. If you distribute it to third parties, review each provider's terms (Anthropic requires an API key for third-party products). |
-| Chat | The remembered history is the last few turns and it is not saved on exit; there is no response streaming. |
+| Chat | Conversations are saved locally so you can resume them (turn it off with `ROUTER_NO_SESSIONS=1`); the model only sees the last few turns of the history. Streaming shows raw text first and swaps in the rendered answer when it fits on screen. |
 
 ## Third-party data
 

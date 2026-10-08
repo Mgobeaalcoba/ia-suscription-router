@@ -137,6 +137,59 @@ def secret_literals(spec: Dict) -> List[str]:
     return [k for k, v in pairs if v and not _VAR.search(str(v))]
 
 
+# ---------- templates ----------
+
+# Ready-made connectors. The router ships ONLY servers published by the MCP project or by the app's own vendor: a connector can read (and
+# write) your accounts, so it does not recommend third-party packages for Gmail, Calendar or Slack. Your own trusted ones go in
+# ~/.ia-router/templates.json with the same fields (a user template with the same key replaces the built-in one).
+TEMPLATES: Dict[str, Dict] = {
+    "filesystem": {"description": "Read, search and write files in the folders you give it (official MCP reference server).",
+                   "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem"], "needs_args": "one or more folders to expose, after --",
+                   "requires": "Node.js (npx)", "source": "https://github.com/modelcontextprotocol/servers", "verified": True},
+    "memory": {"description": "A small knowledge graph the models can remember things in across tasks (official MCP reference server).",
+               "command": ["npx", "-y", "@modelcontextprotocol/server-memory"], "requires": "Node.js (npx)",
+               "source": "https://github.com/modelcontextprotocol/servers", "verified": True},
+    "github": {"description": "GitHub repositories, issues and pull requests (GitHub's own remote MCP server).",
+               "url": "https://api.githubcopilot.com/mcp/", "headers": {"Authorization": "Bearer ${GITHUB_TOKEN}"}, "needs_env": ["GITHUB_TOKEN"],
+               "source": "https://github.com/github/github-mcp-server", "verified": False},
+}
+
+
+def templates_path():
+    return state.home() / "templates.json"
+
+
+def all_templates() -> Dict[str, Dict]:
+    """The built-in templates plus the ones you added in templates.json (yours win)."""
+    out = {k: dict(v) for k, v in TEMPLATES.items()}
+    try:
+        mine = json.loads(templates_path().read_text(encoding="utf-8"))
+        if isinstance(mine, dict):
+            out.update({k: v for k, v in mine.items() if isinstance(v, dict) and (v.get("command") or v.get("url"))})
+    except (OSError, ValueError):
+        pass
+    return out
+
+
+def from_template(key: str, extra: Optional[List[str]] = None) -> Dict:
+    """The arguments of `add` for a template: {command|url, env, headers}. `extra` is appended to a local command (e.g. the folders)."""
+    t = all_templates().get(key)
+    if t is None:
+        raise ValueError(f"unknown template '{key}'. Available: {', '.join(sorted(all_templates())) or 'none'} (see `ia-router connectors templates`)")
+    if t.get("needs_args") and not extra:
+        raise ValueError(f"the '{key}' template needs {t['needs_args']}: ia-router connectors add NAME --template {key} -- ARGS")
+    if t.get("url"):
+        if extra:
+            raise ValueError(f"the '{key}' template is a remote server and takes no extra arguments")
+        return {"url": t["url"], "headers": dict(t.get("headers") or {})}
+    return {"command": list(t["command"]) + list(extra or []), "env": dict(t.get("env") or {})}
+
+
+def missing_env(key: str) -> List[str]:
+    """Environment variables a template needs that are not set (they may still come from .env when the proxy starts)."""
+    return [v for v in (all_templates().get(key) or {}).get("needs_env", []) if not os.environ.get(v)]
+
+
 # ---------- which connectors a task needs ----------
 
 ENV_SELECTION = "IA_ROUTER_CONNECTORS"          # comma list of connector names for ONE call (claude and codex get it in their MCP env)

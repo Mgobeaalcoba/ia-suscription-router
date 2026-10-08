@@ -352,3 +352,57 @@ class AskTests(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TemplateTests(Base):
+    def cli(self, *args):
+        return subprocess.run([sys.executable, str(ROOT / "cli.py"), *args], capture_output=True, text=True, env=dict(os.environ, ROUTER_HOME=self.tmp.name),
+                              timeout=60, cwd=ROOT, input="")
+
+    def test_the_builtin_templates_are_only_official_servers(self):
+        self.assertEqual(sorted(C.TEMPLATES), ["filesystem", "github", "memory"])
+        for key, t in C.TEMPLATES.items():
+            self.assertTrue(t["source"].startswith("https://github.com/"), key)
+            self.assertTrue(t["source"].split("/")[3] in ("modelcontextprotocol", "github"), key)     # published by the MCP project or the vendor
+        self.assertFalse(C.TEMPLATES["github"]["verified"])           # we never ran it against a real token: it says so
+
+    def test_a_local_template_builds_the_command_with_the_extra_arguments(self):
+        built = C.from_template("filesystem", ["/work", "/docs"])
+        self.assertEqual(built["command"][-3:], ["@modelcontextprotocol/server-filesystem", "/work", "/docs"])
+        self.assertEqual(built["command"][:2], ["npx", "-y"])
+        self.assertEqual(C.from_template("memory")["command"][-1], "@modelcontextprotocol/server-memory")
+
+    def test_a_remote_template_builds_the_url_and_a_header_that_references_the_environment(self):
+        built = C.from_template("github")
+        self.assertEqual(built["url"], "https://api.githubcopilot.com/mcp/")
+        self.assertEqual(built["headers"]["Authorization"], "Bearer ${GITHUB_TOKEN}")       # never a literal secret
+        self.assertEqual(C.missing_env("github"), ["GITHUB_TOKEN"] if not os.environ.get("GITHUB_TOKEN") else [])
+
+    def test_errors_are_explained(self):
+        for args, needle in ((("nope",), "unknown template"), (("filesystem",), "needs one or more folders"), (("github", ["x"]), "takes no extra arguments")):
+            with self.assertRaises(ValueError) as cm:
+                C.from_template(*args)
+            self.assertIn(needle, str(cm.exception))
+
+    def test_your_own_templates_extend_and_replace_the_builtin_ones(self):
+        C.templates_path().write_text(json.dumps({"mail": {"description": "my trusted one", "command": ["my-mail-mcp"]},
+                                                  "memory": {"description": "mine", "command": ["my-memory"]}, "broken": {"description": "no command"}}), encoding="utf-8")
+        t = C.all_templates()
+        self.assertIn("mail", t)
+        self.assertNotIn("broken", t)
+        self.assertEqual(C.from_template("memory")["command"], ["my-memory"])
+        C.templates_path().write_text("{not json", encoding="utf-8")
+        self.assertEqual(sorted(C.all_templates()), ["filesystem", "github", "memory"])
+
+    def test_the_cli_lists_adds_and_tests_a_real_template(self):
+        listing = self.cli("connectors", "templates").stdout
+        self.assertIn("filesystem", listing)
+        self.assertIn("not verified", listing)
+        self.assertIn("pick them yourself", listing)
+        r = self.cli("connectors", "add", "files", "--template", "filesystem", "--", self.tmp.name)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(C.load()["files"]["command"][-1], self.tmp.name)
+        self.assertEqual(self.cli("connectors", "add", "x", "--template", "filesystem").returncode, 2)
+        r = self.cli("connectors", "add", "gh", "--template", "github")
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(C.load()["gh"]["headers"]["Authorization"], "Bearer ${GITHUB_TOKEN}")

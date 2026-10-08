@@ -10,7 +10,7 @@ All the examples assume you are in the repo folder:
 cd ~/Documents/ia-suscription-router
 ```
 
-The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 311 tests pass with Python 3.9 and 3.14.
+The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 392 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
 
 ---
 
@@ -75,7 +75,7 @@ If you do not have `pipx`: `brew install pipx && pipx ensurepath` (macOS) or `py
 #### Check that it worked
 
 ```bash
-ia-router --version     # ia-router 0.5.0
+ia-router --version     # ia-router 0.6.0
 ia-router doctor        # which CLIs you have installed and which model each one uses (spends no quota)
 ```
 
@@ -141,7 +141,7 @@ The header shows where the metrics that drive the routing come from:
 
 ```
  ●─╮     ╦╔═╗   ╦═╗╔═╗╦ ╦╔╦╗╔═╗╦═╗
- ●─┼─◉   ║╠═╣ ─ ╠╦╝║ ║║ ║ ║ ║╣ ╠╦╝  v0.5.0
+ ●─┼─◉   ║╠═╣ ─ ╠╦╝║ ║║ ║ ║ ║╣ ╠╦╝  v0.6.0
  ●─╯     ╩╩ ╩   ╩╚═╚═╝╚═╝ ╩ ╚═╝╩╚═  your AI subscriptions, routed
 
  ╭──────────────────────────────────────────────────────────────────────────╮
@@ -195,9 +195,13 @@ They always work. When you type `/` the filtered list appears.
 | `/priorities` | Questions: what you prioritize for each kind of task (accuracy, speed or cost). |
 | `/model codex` · `/model auto` | Pin a model for everything that follows, or go back to automatic routing. |
 | `/stats` | Success, latency and tokens per model. |
-| `/connectors [on\|off]` | MCP connectors (Gmail, Calendar…) the models can use; see section 6. |
+| `/connectors [auto\|on\|off]` | MCP connectors (Gmail, Calendar…): auto = only the ones a task needs, on = all, off = none; see section 6. |
 | `/explain on\|off` | Show the routing table on every message. |
 | `/md on\|off` | Rendered markdown (like a README on GitHub, without markup characters) or raw text. Without a terminal (pipe) or with `NO_COLOR` it is shown raw. |
+| `/usage` | Tokens and estimated cost per model, and distance to the rate limit you already hit (section 5.7). |
+| `/compare [a,b] task` | Run one task on two models and show both answers; asks first because it spends quota on each (5.8). |
+| `/sessions [on\|off]` · `/resume [id]` | Saved conversations (section 5.9). |
+| `/stream on\|off` | Show answers as they are written (section 5.10). |
 | `/ask text` | Force the interpretation as a task. |
 | `/clear` | Forget the conversation (the chat remembers the last 6 turns). |
 | `/help` · `/exit` | Help · quit (also `exit`, Ctrl-D). |
@@ -464,6 +468,24 @@ If the CLI does not report the model or the tokens, `tokens n/a` is shown.
 
 **Exit code:** `0` if there was an answer, `1` if all attempts failed, `2` if you asked for a model that does not exist.
 
+**Script mode.** `ask` works in pipes and scripts:
+
+```bash
+cat error.log | ia-router ask "what is wrong here?"      # piped text is material for the task; the TASK decides the routing
+echo "explain this regex: ^a+$" | ia-router ask           # with no task argument the piped text is the task
+ia-router ask "summarize" -c notes.md --raw > summary.txt # only the answer on stdout; who answered goes to stderr
+ia-router ask "classify this ticket" --json | jq .model   # one JSON object and nothing else
+ia-router ask "write a haiku" --stream                    # raw text as it is written
+```
+
+| Flag | Effect |
+|---|---|
+| `--json` | One JSON object: `ok`, `model`, `model_id`, `output`, `tokens`, `seconds`, `estimated_cost_usd` (list price; `null` if unknown), `routing` (weights, chosen, ranking), `attempts`, `connectors`, `warnings`, `error`. Exit code 0 / 1 (failed) / 2 (usage error), also with `--json`. |
+| `--raw` | Only the answer, unrendered, on stdout. |
+| `--quiet`, `-q` | Hide the routing table and the attempts. |
+| `--stream` | Print the answer as it arrives. |
+| `--stdin`, task `-` | Wait for piped input even if it is slow to start. By default a silent open stdin never makes a task hang: it is read only if data shows up within half a second. |
+
 ### 5.5 `doctor` — diagnostics
 
 ```bash
@@ -495,6 +517,43 @@ codex               4    100%       60.5           0     0     454613       5960
 It comes from the local log (`~/.ia-router/log.jsonl`). The log **does not store your prompts**, only model, **real model id**, tokens, success, duration and errors. Input tokens include what came from cache; runs from before token tracking existed (like the `antigravity` ones here) add up to 0.
 
 If a model ended up in cooldown and you already fixed it (you logged in again, or the quota limit passed): `python3 cli.py reset-cooldowns`.
+
+### 5.7 `usage` — how much you have used and how close you are to the limit
+
+```bash
+ia-router usage
+```
+
+```
+model          last 5h   last 24h    last 7d  runs limits  vs limit  est. USD 7d
+claude          41,200    188,900    902,300    57      1       82%        $4.10
+codex           12,800     60,400    310,000    22      0      n/a         $1.35
+```
+
+Tokens are input plus output (cached input included), from the local log. **Nothing is guessed**: providers do not publish their subscription limits, so the router learns one from YOUR history: every time a model answered with a rate limit, the tokens it had used in the previous 5 hours are an observed ceiling, and the largest one is the reference ("vs limit"). It shows `n/a` until a rate limit has been recorded. The chat warns after an answer when a model is at 80% or more of its reference, and suggests `/model` to send the next task elsewhere. The 5-hour window is an assumption, and the cost is a list-price proxy, not what your subscription charges.
+
+### 5.8 `ask --compare` — one task, two models
+
+```bash
+ia-router ask "refactor this function for readability" -c utils.py --compare
+ia-router ask "summarize" --models claude,codex --json
+```
+
+Runs the same task on the two best usable models at once (or the ones in `--models`) and prints each answer under a header with the model, time and estimated cost. **It spends quota on each model**, so it never happens implicitly: the flag is explicit and the chat's `/compare` asks first (default no). A model that fails does not stop the other one; the exit code is 1 only if all fail. `--dry-run` shows where it would run, sending nothing.
+
+### 5.9 Saved sessions
+
+```bash
+ia-router --continue           # open the chat and resume the most recent conversation
+ia-router --resume <id>        # or a specific one
+ia-router sessions             # list; also: show <id>, delete <id>, clear
+```
+
+In the chat: `/sessions` lists them and `/resume [id]` continues one. Resuming restores the history the chat replays as context and the pinned model. **Sessions store what you and the model said** (unlike the usage log, which never stores prompts), so they are: local only (`~/.ia-router/sessions/`), files readable just by you, capped (200 turns, 20,000 characters per answer), and easy to turn off: `ROUTER_NO_SESSIONS=1` or `/sessions off`. `/clear` starts a new conversation and keeps the old one listed; `ia-router sessions clear` deletes them all.
+
+### 5.10 Streaming
+
+In the chat the answer appears as the model writes it. When it is complete, if it still fits on screen the live text is replaced by the rendered markdown; if it is taller than the terminal it stays as raw text. `/stream off` turns it off. claude and agy stream the text as it is written (and show the tools they use, like `⚙ using view_file`); codex delivers whole messages and tool progress. The answer, tokens and errors are interpreted exactly as without streaming. For pipes use `ask --stream`.
 
 ---
 
@@ -538,6 +597,26 @@ Names are lowercase letters, digits and hyphens. Everything after `--` is the co
 | `agy` | Antigravity has no per-call option, so register the proxy once: `ia-router connectors install agy` (undo with `uninstall agy`). It runs `agy mcp add …` and adds the allow rule `mcp(ia-router-connectors/*)` under `permissions.allow` in `~/.gemini/antigravity-cli/settings.json`: without it agy's non-interactive mode auto-denies MCP tools. The rule covers only this proxy, and `uninstall` removes it. |
 
 A custom `ROUTER_CMD_<MODEL>` command is respected as is: connectors are not injected into it.
+
+### 6.2b Which connectors a task gets
+
+Attaching every connector to every call would add their tool descriptions (thousands of tokens) and their startup time even to a task that never uses them. In **automatic mode** (the default) a task gets only the connectors it needs:
+
+- A connector is matched by words in the task, by the kind of app in its name: `gmail` or `mail-…` by *email, inbox, correo…*; `calendar` by *meeting, agenda, calendario…*; `drive`, `slack`, `github`, `files`/`filesystem` and `memory` likewise (English and Spanish). The connector's own name always counts.
+- `"when": ["invoice", "factura"]` in `connectors.json` replaces the words for that connector; `"always": true` attaches it to every task.
+- A connector the router cannot classify (an unknown name with no `when`) is **always attached**: it is never silently dropped.
+- A short follow-up ("do it now") is matched against the topic it inherits.
+- `/connectors on` (or `--all-connectors`) attaches every enabled connector; `/connectors off` (or `--no-connectors`) none.
+
+### 6.2c Ready-made connectors
+
+```bash
+ia-router connectors templates                                   # filesystem, memory, github
+ia-router connectors add files --template filesystem -- ~/Documents
+ia-router connectors add gh --template github                   # needs GITHUB_TOKEN in your .env
+```
+
+Only servers published by the MCP project or by the app's own vendor ship built in. A connector can read and write your accounts, so the router does **not** recommend third-party packages for Gmail, Calendar or Slack: add the one you trust yourself, or save it as a template in `~/.ia-router/templates.json` (`{"mail": {"description": "…", "command": ["…"]}}`, same fields). `filesystem` and `memory` were run and tested; `github` is marked unverified because it needs a real token that the maintainers did not test with.
 
 ### 6.3 Using them
 
@@ -603,6 +682,8 @@ The MCP server **uses the same metrics-based routing** as the CLI. If tasks take
 | Cooldowns | `~/.ia-router/state.json` |
 | Run log (no prompts; with model and tokens) | `~/.ia-router/log.jsonl` |
 | History of what you type in the input box | `~/.ia-router/history.jsonl` |
+| Saved conversations (what you and the model said; readable only by you) | `~/.ia-router/sessions/` |
+| Your own connector templates | `~/.ia-router/templates.json` |
 | Your MCP connectors (can hold keys: readable only by you) | `~/.ia-router/connectors.json` |
 | Connector tool-call log (no arguments or results) | `~/.ia-router/connectors.log.jsonl` |
 | Your Artificial Analysis key | `~/.ia-router/.env` (or `.env` in the clone folder, ignored by git) or the environment variable |
@@ -621,6 +702,7 @@ To start from scratch: `rm -r ~/.ia-router`. To repeat only one part, delete tha
 | Variable | Effect | Example |
 |---|---|---|
 | `ARTIFICIAL_ANALYSIS_API_KEY` | Free Artificial Analysis key (speed, cost, benchmarks). Best in `.env` (see 4.2). | `.env`: `ARTIFICIAL_ANALYSIS_API_KEY=…` |
+| `ROUTER_NO_SESSIONS` | Set to anything to stop saving conversations. | `ROUTER_NO_SESSIONS=1 ia-router` |
 | `ROUTER_HOME` | Changes the state folder (default `~/.ia-router`). | `ROUTER_HOME=/tmp/test python3 cli.py scores` |
 | `ROUTER_MODELS` | Uses another `models.json` (it takes priority over `~/.ia-router/models.json` and over the bundled one). | `ROUTER_MODELS=~/my-models.json python3 cli.py doctor` |
 | `ROUTER_CMD_<MODEL>` | Replaces a model's command (JSON list). `{prompt}` is replaced by the task. With a custom command the usage flags are not added (`tokens n/a` is shown). | `ROUTER_CMD_CODEX='["codex","exec","{prompt}"]'` |
@@ -703,4 +785,4 @@ A task can have several at once (for example `debugging×3, coding×2`). The cla
 - **Artificial Analysis was verified against its real API** (690 models). Its real fields differ from the documented ones: it does not publish every index for every model, so the router uses the benchmarks that cover yours (see 4.6). For a model with no known effort level it picks the usual one (`Medium`) and marks it with ⚠ approximate.
 - **`agy` does not read the prompt from stdin nor open files by path** in non-interactive mode, and it fails if the model asks for a tool it cannot authorize.
 - **Security:** the CLIs run in non-interactive mode with their default permissions. The router does **not** turn on "allow everything" flags.
-- **There are not yet** persistent sessions (the chat remembers the last turns but does not save them on exit), output streaming or a desktop version.
+- **There is not yet** a desktop version. The chat replays only the last turns of a resumed conversation to the models, and streaming shows raw text first (see 5.10).

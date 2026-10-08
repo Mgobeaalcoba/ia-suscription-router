@@ -2,6 +2,21 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are published on [PyPI](https://pypi.org/project/ia-router/) and [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
 
+## 0.6.0 — 2026-10-08
+
+### Added
+- **Connectors only when the task needs them.** In automatic mode a task gets just the connectors it needs (a Gmail connector for an email task, none for a coding task), instead of every connector on every call: less token cost and startup time. Built-in keywords in English and Spanish, per-connector `when` words and `always: true`, and connectors the router cannot classify are always attached. `/connectors auto|on|off` and `ask --all-connectors`/`--no-connectors`.
+- **Script mode.** `ask` reads piped input (`cat error.log | ia-router ask "what is wrong?"`, or `ask -`), and has `--json` (answer, model, tokens, estimated list-price cost, routing, attempts), `--raw` (only the answer on stdout), `--quiet` and `--stdin`.
+- **Usage meter.** `ia-router usage` and `/usage` show tokens per model over the last 5 hours, 24 hours and 7 days, and an estimated list-price cost. The limit is learned from your own history (the most you had used when a rate limit hit you) and the chat warns at 80% of it. Nothing is guessed until a rate limit has been recorded.
+- **Compare.** `ask --compare` (or `--models a,b`) and `/compare` run one task on two models and show both answers, tokens and cost. It spends quota on each, so it is always explicit (the chat asks first).
+- **Saved sessions.** `ia-router --continue`, `--resume ID`, `/sessions`, `/resume` and `ia-router sessions list|show|delete|clear`. Unlike the usage log, sessions DO store what you and the model said: local only, files readable just by you, capped, and easy to turn off (`ROUTER_NO_SESSIONS=1` or `/sessions off`).
+- **Streaming.** The chat shows an answer as the model writes it and then swaps it for the rendered markdown (it stays raw if it is taller than the screen); `/stream on|off`. `ask --stream` prints it as it arrives. Works with claude and agy (text as written, plus the tools they use) and codex (whole messages and tool progress).
+- **Connector templates.** `ia-router connectors templates` and `connectors add NAME --template filesystem|memory|github`. Only servers published by the MCP project or the app's vendor ship built in; your own trusted ones go in `~/.ia-router/templates.json`.
+- **CI.** The tests now run on Linux and macOS with Python 3.9 to 3.14 on every push and pull request.
+
+### Changed
+- In automatic mode the connectors are no longer attached to every call (see the first item). `ask` prints the same by default; `--json`, `--raw` and `--stream` are opt-in.
+
 ## 0.5.0 — 2026-10-07
 
 ### Added

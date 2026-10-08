@@ -11,7 +11,7 @@ A Python router that splits tasks across the **official CLIs** of the AI subscri
 ## Commands
 
 ```bash
-python3 -m unittest discover -s tests       # the whole suite (311 tests, ~15 s); it must end in OK
+python3 -m unittest discover -s tests       # the whole suite (392 tests, ~15 s); it must end in OK
 python3 -m unittest tests.test_scoring      # one file
 /usr/bin/python3 -m unittest discover -s tests   # on macOS: system Python 3.9 (the minimum supported)
 python3 cli.py doctor                        # installed CLIs and which model each one uses (spends no quota)
@@ -53,6 +53,9 @@ There is no build or linter configured. Do not add dependencies.
 | `ia_router/render.py` · `banner.py` | Rendered markdown (ANSI, no markup characters) and the header. |
 | `ia_router/envfile.py` | Minimal `.env` reader (never overrides the environment). |
 | `ia_router/state.py` | Cooldowns, `log.jsonl`, seen ids, startup flags. |
+| `ia_router/usage.py` | Quota meter: tokens per window/day/week from `log.jsonl`, a limit LEARNED from the user's own rate limits, 80% warning. Pure with injectable `now`. |
+| `ia_router/sessions.py` | Saved chat sessions (`~/.ia-router/sessions/*.json`, 0600, capped). The only place that stores prompts and answers: keep it opt-out and local. |
+| `ia_router/stream.py` | `LiveOutput`: shows streamed text, then erases it if it fits on screen so the rendered answer can replace it. Pure row accounting (`advance`). |
 | `ia_router/mcp_server.py` | MCP stdio server that exposes the router itself as tools. |
 | `ia_router/connectors.py` | **Connectors**: registry (`connectors.json`), MCP clients (stdio and Streamable HTTP), the single **proxy MCP server** that aggregates them (`ia-router connectors serve`) and the per-CLI argument injection (`cli_args`). Pure registry/naming/args; only the clients and `serve` do I/O. |
 
@@ -84,6 +87,11 @@ Invariants:
 - **Artificial Analysis: the real fields differ from the documentation.** It was verified against the real API (690 models): it does not publish every index (`artificial_analysis_coding_index`, `math_index`) for every model, but it does publish other benchmarks (`lcr`, `hle`, `scicode`, `terminalbench_v4_0`…). `metrics.AA_MAP` lists several candidates per category and only those covering all the models count. Names carry filler (`Claude Sonnet 5.5 (Max, Default Fallback)`): `metrics.NOISE` discards it; if a new word shows up, add it there with a test.
 - **Connectors design (decided with the owner):** ONE proxy MCP server for every CLI, tools enabled for reading and writing, any MCP server (no catalog). Do not add per-CLI connector registries. The router never handles OAuth: the MCP servers log in on their own. Registry file is `0600`; secrets should be `${NAME}` references. The audit log never stores arguments or results. claude gets `--allowedTools mcp__ia-router-connectors` (that one server, never `--dangerously-skip-permissions`); codex gets `default_tools_approval_mode="approve"` for the proxy only; **agy has no per-call MCP option** and needs the one-time `connectors install agy`, which also adds the allow rule `mcp(ia-router-connectors/*)` to agy's `settings.json` (headless agy auto-denies MCP tools without it; the syntax is `mcp(<server>/<tool>)`). The CLIs start MCP servers with a trimmed environment (codex does), so `cli_args` passes `ROUTER_HOME` explicitly; without it a custom state folder made the proxy read an empty registry. claude's `--mcp-config`/`--allowedTools` are variadic: they must sit before `-p`, never right before the prompt.
 - **Onboarding never spends quota unasked and never handles credentials.** `setup.run` only checks installation for free; the login check is one probe per CLI, asked first, default no. It stays silent when all CLIs are present (existing startup tests rely on it). A login failure is remembered in `state.json` (`auth_missing`) by `core.ask` and cleared on the next success or by `reset-cooldowns`; `probe.missing_ids` skips those CLIs. Install steps are deliberately vague ("see its documentation") except Antigravity's `brew install --cask`, the only one we can vouch for; do not invent install commands or URLs.
+- **Streaming (verified against the real CLIs).** claude: `--output-format stream-json --verbose --include-partial-messages` gives `stream_event`/`content_block_delta`/`text_delta` and a final `result` event with the same fields as the JSON mode; agy: `--output-format stream-json` gives `step_update` events with `text_delta` and a final `result` event; codex has no token deltas, only whole `item.completed` messages. The streaming path rebuilds the one-document output and reuses the normal interpretation (`_finish`), so tokens, model ids and error classification must stay identical. A chat answer taller than the terminal cannot be erased: it stays raw.
+- **Piped stdin must never hang a task.** `cli._read_stdin` only reads a silent open stdin if data arrives within 0.5 s (`--stdin` / task `-` force the wait). Tests that call the CLI pass `input=""`.
+- **Connectors are matched per task** (`connectors.select`): unknown connectors are always attached, never dropped; the selection travels in `IA_ROUTER_CONNECTORS` (claude/codex MCP env) or `connectors.active.json` (agy, removed after the call). Keywords are in English and Spanish like the classifier.
+- **Compare spends quota on every model**: only behind an explicit flag/command, and the chat asks first.
+- **Usage meter honesty.** Never invent a limit: it exists only after a recorded rate limit, and the 5-hour window is an assumption that the output says so.
 - **Averaging tokens** only over runs that have recorded tokens (`token_runs`).
 - **Pty tests** (`PtySmokeTests`, `test_select`) compare before/after and not the absolute state of the file system.
 - `pyte` (terminal emulator) was used **by hand** to look at real screens; it is not a dependency and it is not imported in tests.
@@ -92,6 +100,7 @@ Invariants:
 
 - **Add a model:** an entry in `models.json` (`cmd`, `usage` with its `parser` in `adapters.parse_usage`, `reads_files`) + `python3 cli.py doctor --probe`. If its CLI returns different JSON, add a parser and its fixture in `tests/fake_bin`.
 - **Add a task category:** `router.PATTERNS` (keywords in English and Spanish), and the `metrics.ARENA_MAP` / `AA_MAP` maps; if it is going to have its own question, `scoring.GROUPS`.
+- **Add a connector template:** only servers published by the MCP project or the app's vendor, with a `source` URL and `verified` set to what was actually run; never third-party packages for mail, calendar or chat accounts.
 - **Add a metrics source:** a `fetch_*` function with an injectable `get`, a `match_*` by real id + effort, and its contribution to `precision_values` / `speed_values` / `cost_values`. With offline tests, attribution in `metrics.ATTRIBUTION` and its variable in `.env.example`.
 - **Publish a version** (public and irreversible: PyPI does not allow re-uploading a version; only when the owner asks):
   1. `python3 tools/update_snapshot.py` (regenerates the Arena snapshot; ~1 minute), bump `__version__` in `ia_router/__init__.py` and `version`/`date-released` in `CITATION.cff`, add the version entry in `CHANGELOG.md`, and commit.
