@@ -131,14 +131,14 @@ The `.env` is **never pushed to git** (it is in `.gitignore`); `.env.example` is
 | `route "task"` | Shows which model it would pick, without running. |
 | `scores [category]` | Score per model and category; with a category, the breakdown. |
 | `metrics [refresh] [--force]` | Where the data comes from and which entry each model was matched with; `refresh` updates it. |
-| `priorities` | Questions: what you prioritize for each kind of task. |
+| `priorities [--set GROUP=OPTION] [--show]` | What you prioritize for each kind of task: questions, or without a terminal with `--set coding=speed` / `--show`. |
 | `setup` | Which official CLIs are installed and logged in, and the exact step for the missing ones. |
 | `usage` | Tokens and estimated cost per model, and how close each is to the rate limit you already hit. |
-| `sessions [list\|show\|delete\|clear]` | Saved conversations (`ia-router --continue` resumes the last). |
+| `sessions [list\|show\|delete\|clear\|on\|off]` | Saved conversations (`ia-router --continue` resumes the last); `off` stops saving. |
 | `doctor [--probe]` | Installed CLIs and which model each one uses; with `--probe`, real login and latency. |
 | `stats` | Success, latency, rate limits and tokens per model. |
 | `connectors [list\|add\|remove\|enable\|disable\|test\|install]` | MCP connectors (Gmail, Calendar, Slack…) that every model can use. |
-| `ui [--port N] [--no-open]` | The router in a browser tab, local only: chat with streaming, compare, usage, connectors and saved conversations. |
+| `ui [--port N] [--no-open]` | The router in a browser tab, local only. Everything the CLI does is there too: chat, compare, attachments, routing preview, scores, priorities, metrics, usage, logins, connectors (including free commands and the Antigravity registration) and saved conversations. |
 | `mcp` | MCP server (stdio): exposes the router itself as tools. |
 | `reset-cooldowns` | Clears rate-limit or auth cooldowns. |
 
@@ -174,7 +174,7 @@ The task classifier understands tasks written in English and in Spanish; the who
 | `ia_router/usage.py` · `sessions.py` · `stream.py` | Usage meter, saved sessions and live streaming output. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | `.env` reader, state and log, MCP server. |
 | `tools/update_snapshot.py` | For whoever maintains the repo: regenerates the Arena snapshot before publishing. |
-| `tests/` | 411 tests and fake CLIs (`tests/fake_bin`). |
+| `tests/` | 436 tests and fake CLIs (`tests/fake_bin`). |
 
 ## Connectors: let any model use your other apps (MCP)
 

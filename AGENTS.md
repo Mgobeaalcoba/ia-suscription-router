@@ -11,7 +11,7 @@ A Python router that splits tasks across the **official CLIs** of the AI subscri
 ## Commands
 
 ```bash
-python3 -m unittest discover -s tests       # the whole suite (411 tests, ~15 s); it must end in OK
+python3 -m unittest discover -s tests       # the whole suite (436 tests, ~15 s); it must end in OK
 python3 -m unittest tests.test_scoring      # one file
 /usr/bin/python3 -m unittest discover -s tests   # on macOS: system Python 3.9 (the minimum supported)
 python3 cli.py doctor                        # installed CLIs and which model each one uses (spends no quota)
@@ -94,6 +94,8 @@ Invariants:
 - **Compare spends quota on every model**: only behind an explicit flag/command, and the chat asks first.
 - **Usage meter honesty.** Never invent a limit: it exists only after a recorded rate limit, and the 5-hour window is an assumption that the output says so.
 - **The UI is a localhost server, so every request is hostile until proven otherwise** (any web page can call `127.0.0.1`). Keep all four guards in `ui.Handler`: bind `127.0.0.1` only, require the per-run token, check `Host` (DNS rebinding) and `Origin`, and require a JSON content type on POST. Never answer CORS preflights, never add `Access-Control-Allow-*`. The page escapes model output before turning markdown into tags; keep it that way, and keep the CSP header. The UI adds no dependencies and no build step: do not introduce a JS toolchain or CDN assets.
+- **CLI and UI have parity, on purpose (decided with the owner).** Whatever one can do the other can: a new subcommand or flag needs its place in the UI (a route in `ui.py` and a control in `ui_page.py`) in the same change, and a UI-only setting needs a CLI equivalent. `tests/test_ui.py` (`ParityMapTests`) fails when a subcommand has neither a UI route nor a stated reason; update its map and the table in `docs/USAGE.md` (5.11). Shared logic lives in one place (`priorities.apply`, `connectors.agy_register`, `core.*`), never copied between `cli.py` and `ui.py`.
+- **The UI runs commands the user typed, so confirm them.** A free connector command is the one place the page can start a program: it needs `confirm: true` from the page's confirmation step, is split with `shlex` and never goes through a shell. Never return secret values (env, headers) to the page. Uploaded files live in `~/.ia-router/uploads` (0600, pruned after 7 days) and the page may only attach files from there.
 - **Averaging tokens** only over runs that have recorded tokens (`token_runs`).
 - **Pty tests** (`PtySmokeTests`, `test_select`) compare before/after and not the absolute state of the file system.
 - `pyte` (terminal emulator) was used **by hand** to look at real screens; it is not a dependency and it is not imported in tests.

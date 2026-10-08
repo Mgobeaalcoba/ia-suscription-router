@@ -594,6 +594,24 @@ def uninstall_agy() -> List[str]:
     return ["agy", "mcp", "remove", PROXY_NAME]
 
 
+def agy_register(installing: bool, run=subprocess.run) -> Tuple[int, List[str]]:
+    """Registers (or removes) the proxy in agy and its allow rule. Returns (exit code, lines to show). Shared by the CLI and the UI."""
+    cmd = install_agy() if installing else uninstall_agy()
+    lines = ["Running: " + " ".join(cmd)]
+    try:
+        done = run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return 1, lines + [f"Could not run agy: {getattr(exc, 'strerror', None) or exc}"]
+    lines += [l for l in ((done.stdout or "") + (done.stderr or "")).splitlines() if l.strip()]
+    try:
+        change = agy_allow_rule(installing)
+    except ValueError as exc:
+        return 1, lines + [f"Error: {exc}"]
+    lines.append(f"agy settings ({agy_settings_path()}): rule {AGY_RULE} {change}. "
+                 + ("It lets agy use ONLY this proxy's tools in non-interactive mode; nothing else is allowed." if installing else ""))
+    return done.returncode, lines
+
+
 AGY_RULE = f"mcp({PROXY_NAME}/*)"   # agy's headless mode auto-denies MCP tools unless an allow rule names the server
 
 

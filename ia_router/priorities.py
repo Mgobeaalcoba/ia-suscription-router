@@ -36,6 +36,34 @@ def preview(table: Dict[str, Dict[str, Dict]]) -> List[str]:
     return out
 
 
+def current(cfg: Dict) -> Dict:
+    """What the questions would offer and what is saved now: {groups, options, answers, notes, blocked}. Shared by `priorities --show` and the UI."""
+    avail = scoring.build(cfg)["available"]
+    keys = options_for(avail)
+    notes = [f"{scoring.LABELS[d]} is not available: " + ("your Artificial Analysis key is missing (see .env.example)" if d == "speed" else "no portal publishes the price of all your models")
+             for d in ("speed", "cost") if not avail.get(d)]
+    return {"groups": [{"key": k, "title": t} for k, t, _ in scoring.GROUPS], "options": [{"key": k, "label": scoring.PRESET_LABELS[k], "text": OPTION_TEXT[k]} for k in keys],
+            "answers": {k: v for k, v in (scoring.load_profile().get("priorities") or {}).items() if v in keys}, "notes": notes,
+            "blocked": not avail.get("speed") and not avail.get("cost")}
+
+
+def apply(cfg: Dict, answers: Dict[str, str], save: bool = True) -> List[str]:
+    """Validates `answers` ({group: option}) against what is offered, optionally saves them, and returns the preview lines (which model wins per category).
+    Groups you leave out keep what was saved. Raises ValueError for an unknown group or an option that is not offered."""
+    info = current(cfg)
+    valid_groups, valid_options = {g["key"] for g in info["groups"]}, {o["key"] for o in info["options"]}
+    for group, option in answers.items():
+        if group not in valid_groups:
+            raise ValueError(f"unknown group '{group}' (options: {', '.join(sorted(valid_groups))})")
+        if option not in valid_options:
+            raise ValueError(f"'{option}' is not available (options: {', '.join(sorted(valid_options)) or 'none'}" + (f"; {' '.join(info['notes'])}" if info["notes"] else "") + ")")
+    profile = {"priorities": {**info["answers"], **answers}}
+    lines = preview(scoring.build(cfg, profile=profile)["table"])
+    if save:
+        scoring.save_profile(profile)
+    return lines
+
+
 def run(cfg: Dict, choose: Callable = tty_choose, say: Callable[[str], None] = print, color: bool = True) -> Optional[Dict]:
     """Asks the questions. Returns the saved profile, or None if cancelled or discarded. `choose` is injectable for tests."""
     built = scoring.build(cfg)

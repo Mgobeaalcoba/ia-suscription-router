@@ -10,7 +10,7 @@ All the examples assume you are in the repo folder:
 cd ~/Documents/ia-suscription-router
 ```
 
-The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 411 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
+The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 436 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
 
 ---
 
@@ -567,7 +567,26 @@ ia-router ui --port 8765       # a fixed port (default: any free one)
 
 A chat page with the same engine as the terminal chat. The sidebar lists your saved conversations grouped by date (open, or delete with the ✕) and a **Status & usage** dialog shows which CLIs are ready (with the exact next step if one is not), your usage and your connectors. A welcome screen offers a few starter prompts (they only fill the box; nothing is sent until you press Enter). Under the box, **Model** pins one model, **Connectors** is auto / all / none, and **Compare** runs the task on two models and shows both answers side by side (it spends quota on each, like `ask --compare`). Answers stream in, are rendered as markdown, code blocks have a Copy button, and each answer has Copy and Ask again (which spends quota). The stop button ends the stream in the page, but the model may still finish in the background and use quota. The page wears the same identity as the terminal header: the three-provider mark (a provider that is not ready turns gray, as in the terminal), the wordmark, the tagline and the credit with links to the author and the site. A conversation has its own link (`#id`), so reloading keeps you in it. It uses the same sessions as the chat, so `ia-router --continue` can pick up a conversation you started in the browser.
 
-It is a prototype of a desktop experience, not a different product: no extra dependencies, nothing to install, and no attachments yet (use the chat to drag files in).
+It is a prototype of a desktop experience, not a different product: no extra dependencies and nothing to install. **The rule is that the CLI and the UI can do the same things**, so every command has its place in the page:
+
+| CLI | In the UI |
+|---|---|
+| `ask`, chat, `--model`, `--context`, dragged files | The box, the **Model** picker, **Attach** (button, drag and drop, or a path in the message) |
+| `--compare`, `--models a,b` | **Compare** and **with** (two chosen models, or Auto for the two best) |
+| `--all-connectors` / `--no-connectors`, `/connectors` | **Connectors** Auto / All / None |
+| `route`, `--dry-run`, `/explain` | **Preview routing**, and "Why this model" under every answer |
+| `sessions` (`list`, `show`, `delete`, `clear`, `on`, `off`), `--continue`, `--resume` | The conversation list, the Conversations tab of Settings, a link per conversation |
+| `usage`, `stats`, `doctor`, `setup`, `reset-cooldowns` | Settings → Status (**Check logins** asks first; it spends a pinch of quota), **Reset cooldowns** |
+| `scores [category]` | Settings → Scores |
+| `priorities` (`--set`, `--show`) | Settings → Priorities (preview, then save) |
+| `metrics [refresh] [--force]` | Settings → Metrics (live progress; network only, no quota) |
+| `connectors` (`list`, `add`, `templates`, `test`, `enable`, `disable`, `remove`, `install agy`) | The **Connectors** dialog |
+
+Not applicable in a page: `--json`, `--raw`, `--stdin` and `--quiet` (they are for pipes), and `mcp` / `connectors serve` (they serve other programs over stdio). A test keeps this table honest: a new subcommand fails it until it has a route in the UI or a stated reason.
+
+**Connectors from the page.** Add one from a *template*, from a *command* or from a *URL*. A free command is a program that runs on your machine every time a model uses the connector, so the page shows you the exact command and asks you to confirm before it saves it. It is split into arguments but never passed through a shell: `;`, `|` and `$(...)` are plain characters, not operators. Secret values you enter (environment variables, headers) are never sent back to the page; write them as `${NAME}` and put NAME in your `.env` so the key is not stored in the registry file (the page warns when a literal secret is stored). **Test** starts the connector and lists its tools without spending quota.
+
+**Files from the page.** A file you attach is copied to `~/.ia-router/uploads/` (readable just by you, 25 MB at most, removed after a week) so the models can open it by path, like a file dragged into the terminal. The page can only attach files it uploaded itself.
 
 Safety: it listens on `127.0.0.1` only and every request needs a random token that changes on each run (the URL it opens contains it), so another web page you visit cannot talk to it. Anyone who can read your terminal output or your browser history for that session can use the URL while the server runs: stop it with Ctrl+C when you are done.
 

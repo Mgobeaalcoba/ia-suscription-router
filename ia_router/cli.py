@@ -178,6 +178,10 @@ def cmd_metrics(cfg, args) -> int:
 
 
 def cmd_sessions(args) -> int:
+    if args.action in ("on", "off"):
+        state.set_flag("sessions_off", args.action == "off")
+        print("Saving conversations is " + ("OFF: nothing new is stored (delete old ones with `ia-router sessions clear`)." if args.action == "off" else "ON."))
+        return 0
     if args.action == "clear":
         print(f"Deleted {sessions.clear()} saved conversation(s).")
         return 0
@@ -224,7 +228,20 @@ def cmd_setup(cfg, _args) -> int:
     return 0 if setup_mod.usable(rows) else 1
 
 
-def cmd_priorities(cfg, _args) -> int:
+def cmd_priorities(cfg, args) -> int:
+    if args.set or args.show:
+        info = priorities.current(cfg)
+        try:
+            pairs = connectors.parse_pairs(args.set, "=")
+            lines = priorities.apply(cfg, pairs, save=bool(args.set)) if args.set else priorities.preview(scoring.build(cfg, profile={"priorities": info["answers"]})["table"])
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
+        print(("Saved. " if args.set else "") + "Priorities:\n" + "\n".join(f"  {g['title']}: {({**info['answers'], **pairs}).get(g['key'], 'default')}" for g in info["groups"]))
+        print("\nThe router would pick:\n" + "\n".join(lines))
+        for note in info["notes"]:
+            print("note: " + note)
+        return 0
     if not sys.stdin.isatty():
         print("`priorities` needs an interactive terminal (it uses an arrow-key selector).", file=sys.stderr)
         return 1
@@ -311,21 +328,8 @@ def cmd_connectors(args) -> int:
         if args.cli != "agy":
             print("Only agy needs a one-time registration; claude and codex get the connectors on every call.", file=sys.stderr)
             return 2
-        installing = act == "install"
-        cmd = connectors.install_agy() if installing else connectors.uninstall_agy()
-        print("Running: " + " ".join(cmd))
-        try:
-            code = subprocess.run(cmd).returncode
-        except OSError as exc:
-            print(f"Could not run agy: {exc.strerror}", file=sys.stderr)
-            return 1
-        try:
-            done = connectors.agy_allow_rule(installing)
-        except ValueError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
-        print(f"agy settings ({connectors.agy_settings_path()}): rule {connectors.AGY_RULE} {done}. "
-              + ("It lets agy use ONLY this proxy's tools in non-interactive mode; nothing else is allowed." if installing else ""))
+        code, lines = connectors.agy_register(act == "install")
+        print("\n".join(lines), file=sys.stderr if code else sys.stdout)
         return code
     return 2
 
@@ -339,7 +343,7 @@ def main() -> int:
     sub = p.add_subparsers(dest="cmd")
     sub.add_parser("chat", help="conversational mode (what opens with no arguments)")
     ss = sub.add_parser("sessions", help="saved conversations: list, show, delete or clear (they are stored only on this machine)")
-    ss.add_argument("action", nargs="?", choices=["list", "show", "delete", "clear"], default="list")
+    ss.add_argument("action", nargs="?", choices=["list", "show", "delete", "clear", "on", "off"], default="list")
     ss.add_argument("id", nargs="?")
     dp = sub.add_parser("doctor", help="check which CLIs are installed and which model each one uses")
     dp.add_argument("--probe", action="store_true", help="minimal real call to each CLI: login, latency, version and model")
@@ -367,7 +371,9 @@ def main() -> int:
     sp.add_argument("--force", action="store_true", help="(refresh) query even if your data is less than 12 hours old")
     sub.add_parser("usage", help="how much each model was used lately and how close it is to the rate limit you already hit")
     sub.add_parser("setup", help="check which official CLIs are installed and logged in, and what to do about the missing ones")
-    sub.add_parser("priorities", help="questions: what you prioritize for each kind of task (accuracy, speed or cost)")
+    pp = sub.add_parser("priorities", help="what you prioritize for each kind of task (accuracy, speed or cost): questions, or --set / --show without a terminal")
+    pp.add_argument("--set", action="append", default=[], metavar="GROUP=OPTION", help="save one answer without the questions, e.g. --set coding=speed (repeatable)")
+    pp.add_argument("--show", action="store_true", help="print the saved priorities and what the router would pick")
     cp = sub.add_parser("connectors", help="MCP connectors (Gmail, Calendar, Slack…) that every model can use")
     cs = cp.add_subparsers(dest="action")
     cs.add_parser("list", help="show the registered connectors")
