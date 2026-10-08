@@ -18,7 +18,28 @@ if mode == "fail":
     sys.exit(2)
 text = os.environ.get(f"FAKE_{name}_OUT") or f"[fake-{name.lower()}] received {len(body)} chars"
 import json
-if name == "CLAUDE" and "--output-format" in args:  # same as `claude -p --output-format json`
+if name == "CLAUDE" and "stream-json" in args:  # same as `claude -p --output-format stream-json --verbose --include-partial-messages`
+    mid = max(1, len(text) // 2)
+    print(json.dumps({"type": "system", "subtype": "init"}))
+    for part in (text[:mid], text[mid:]):
+        print(json.dumps({"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": part}}}), flush=True)
+    if os.environ.get("FAKE_STREAM_TOOL"):
+        print(json.dumps({"type": "stream_event", "event": {"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "name": "files__read_text_file"}}}), flush=True)
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": text,
+                      "usage": {"input_tokens": 2, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 50, "output_tokens": 7},
+                      "modelUsage": {"claude-fake-1": {"costUSD": 0.01, "outputTokens": 7}}}))
+elif name == "AGY" and "stream-json" in args:  # same as `agy -p --output-format stream-json`
+    log = args[args.index("--log-file") + 1] if "--log-file" in args else None
+    if log:
+        open(log, "w").write('I1003 model_config_manager.go:327] Propagating selected model override to backend: label="Fake Flash (High)"\n')
+    mid = max(1, len(text) // 2)
+    print(json.dumps({"event": "init"}))
+    if os.environ.get("FAKE_STREAM_TOOL"):
+        print(json.dumps({"event": "step_update", "step_update": {"step_type": "tool", "state": "ACTIVE", "tool_name": "files__read_text_file"}}), flush=True)
+    for part in (text[:mid], text[mid:]):
+        print(json.dumps({"event": "step_update", "step_update": {"step_type": "agent_response", "state": "ACTIVE", "text_delta": part}}), flush=True)
+    print(json.dumps({"event": "result", "result": {"status": "SUCCESS", "response": text, "usage": {"input_tokens": 500, "output_tokens": 40, "thinking_tokens": 30, "cache_read_tokens": 0}}}))
+elif name == "CLAUDE" and "--output-format" in args:  # same as `claude -p --output-format json`
     print(json.dumps({"type": "result", "is_error": False, "result": text,
                       "usage": {"input_tokens": 2, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 50, "output_tokens": 7},
                       "modelUsage": {"claude-fake-1": {"costUSD": 0.01, "outputTokens": 7}}}))

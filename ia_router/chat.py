@@ -14,7 +14,7 @@ import sys
 import time
 from typing import Callable, Dict, List, Optional, Tuple
 
-from . import __version__, adapters, attachments, banner, connectors as connectors_mod, core, sessions, setup as setup_mod, usage as usage_mod, editor as editor_mod, metrics, priorities, probe as probe_mod, render, router, scoring, state
+from . import __version__, adapters, attachments, banner, connectors as connectors_mod, core, sessions, setup as setup_mod, stream as stream_mod, usage as usage_mod, editor as editor_mod, metrics, priorities, probe as probe_mod, render, router, scoring, state
 
 HISTORY_TURNS = 6
 HISTORY_ANSWER_CHARS = 1500
@@ -32,6 +32,7 @@ HELP = """Just talk normally: each message is a task and is routed to the best m
   /explain on|off    show the routing table on every message            /md on|off   rendered or raw markdown
   /connectors [auto|on|off]  MCP connectors (Gmail, Calendar…): auto = only the ones a task needs, on = all, off = none
   /compare [a,b] task  run the same task on two models and show both (spends quota on each)
+  /stream on|off     show answers as they are written (a live raw view, then the rendered one)
   /sessions [off|on]  saved conversations; /resume [id] continues one (they are stored locally, readable only by you)
   /ask text          force "this is a task"                             /clear   forget the conversation
   /help              this help                                          /exit    quit"""
@@ -41,7 +42,7 @@ COMMANDS = [
     editor_mod.Command("/scores", "score per model and category"), editor_mod.Command("/metrics", "where the data comes from; refresh = update it"),
     editor_mod.Command("/usage", "usage per model and distance to the rate limit"), editor_mod.Command("/setup", "check your CLIs and get the steps for the missing ones"), editor_mod.Command("/priorities", "what you prioritize for each kind of task (questions)"), editor_mod.Command("/model", "pin a model or auto"),
     editor_mod.Command("/stats", "success, latency and tokens per model"), editor_mod.Command("/explain", "show the routing table (on|off)"),
-    editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/compare", "run a task on two models and compare (spends quota on each)"), editor_mod.Command("/sessions", "list saved conversations (off|on)"), editor_mod.Command("/resume", "continue a saved conversation"), editor_mod.Command("/ask", "force: this is a task"),
+    editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/compare", "run a task on two models and compare (spends quota on each)"), editor_mod.Command("/stream", "show answers as they are written (on|off)"), editor_mod.Command("/sessions", "list saved conversations (off|on)"), editor_mod.Command("/resume", "continue a saved conversation"), editor_mod.Command("/ask", "force: this is a task"),
     editor_mod.Command("/connectors", "MCP connectors the models can use (auto|on|off)"), editor_mod.Command("/clear", "forget the conversation"), editor_mod.Command("/exit", "quit"),
 ]
 
@@ -89,6 +90,7 @@ class Chat:
         self.pinned = "auto"
         self.explain = False
         self.markdown = True
+        self.streaming = True
         self.session = sessions.new_session(attachments.safe_cwd())
         self.connectors: Optional[bool] = None   # None = automatic (only the connectors a task needs), True = all, False = none
 
@@ -131,9 +133,11 @@ class Chat:
             for a in atts:
                 self.say(self.dim(f"⎘ {a.label()}"))
         self.say(self.dim("… routing"))
+        live = stream_mod.LiveOutput(dim=self.dim) if self.streaming and self.color and sys.stdout.isatty() else None
         try:
             res = core.ask(text, cfg, model=self.pinned, context_files=files, attachments=atts,
-                           preamble=build_preamble(self.history), route_text=self.route_text(text), connectors=self.connectors)
+                           preamble=build_preamble(self.history), route_text=self.route_text(text), connectors=self.connectors,
+                           stream={"on_text": live.on_text, "on_status": live.on_status, "on_reset": live.reset} if live else None)
         except ValueError as exc:
             self.say(f"Error: {exc}")
             return
@@ -155,8 +159,12 @@ class Chat:
         why = ", ".join(f"{c}×{w:g}" for c, w in dec["weights"].items()) or "general"
         secs = sum(a["seconds"] for a in res["attempts"])
         fb = f" · fallback after {', '.join(a['model'] for a in res['attempts'][:-1])}" if len(res["attempts"]) > 1 else ""
-        self.say(self.dim(f"── {core.format_usage(res)} · {why} · {secs:.1f}s{fb}"))
-        self.say(render.render(res["output"], color=self.color and self.markdown) + "\n")
+        if live and live.text and not live.erase():
+            self.say("")                                    # taller than the screen: the raw text stays, the header goes after it
+            self.say(self.dim(f"── {core.format_usage(res)} · {why} · {secs:.1f}s{fb}"))
+        else:
+            self.say(self.dim(f"── {core.format_usage(res)} · {why} · {secs:.1f}s{fb}"))
+            self.say(render.render(res["output"], color=self.color and self.markdown) + "\n")
         self.history.append((text, used, res["output"]))
         sessions.add_turn(self.session, text, used, res["output"])
         self.session["pinned"] = self.pinned
@@ -206,6 +214,10 @@ class Chat:
         elif cmd == "priorities":
             if priorities.run(cfg, say=self.say, color=self.color):
                 self.say("\n" + scoring.render_table(core.load_config()))
+        elif cmd == "stream":
+            if arg in ("on", "off"):
+                self.streaming = arg == "on"
+            self.say(f"Streaming: {'on (live raw text, then the rendered answer)' if self.streaming else 'off'}.")
         elif cmd == "usage":
             summary = usage_mod.summarize(usage_mod.read_log(), cfg=cfg)
             self.say("\n".join(usage_mod.table(summary) + [""] + ["⚠ " + w for w in usage_mod.warnings(summary)]).rstrip())

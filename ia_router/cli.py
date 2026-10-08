@@ -104,9 +104,15 @@ def cmd_ask(cfg, args) -> int:
     quiet = args.json or args.raw or args.quiet
     if args.compare or args.models:
         return _compare(cfg, args, task, route_text)
+    live = None
+    if args.stream and not args.json and not args.dry_run:
+        from . import stream as stream_mod
+        live = stream_mod.LiveOutput(out=sys.stdout)
+        live.erase = lambda: False   # a plain stream on stdout is never erased
     try:
         res = core.ask(task, cfg, model=args.model, context_files=args.context, dry_run=args.dry_run, route_text=route_text,
-                       connectors=False if args.no_connectors else True if args.all_connectors else None)
+                       connectors=False if args.no_connectors else True if args.all_connectors else None,
+                       stream={"on_text": live.on_text, "on_status": lambda s: print(f"⚙ {s}", file=sys.stderr), "on_reset": lambda: print("\n(attempt failed, trying the next model)", file=sys.stderr)} if live else None)
     except ValueError as exc:
         if args.json:
             print(json.dumps({"ok": False, "error": str(exc)}))
@@ -124,6 +130,12 @@ def cmd_ask(cfg, args) -> int:
     if not quiet:
         for a in res["attempts"]:
             print(f"attempt {a['model']}: {'OK' if not a['error'] else a['error'][:80]} ({a['seconds']}s)", file=sys.stderr)
+    if res["ok"] and live is not None and live.text:
+        if live.text and not live.text.endswith("\n"):
+            print()
+        sys.stdout.flush()
+        print(f"[{core.format_usage(res)}]", file=sys.stderr)
+        return 0
     if res["ok"]:
         if args.raw:   # only the answer on stdout; who answered goes to stderr
             print(res["output"])
@@ -321,6 +333,7 @@ def main() -> int:
         if name == "ask":
             sp.add_argument("--model", "-m", default="auto", help="auto|claude|codex|antigravity")
             sp.add_argument("--dry-run", action="store_true", help="only show the decision")
+            sp.add_argument("--stream", action="store_true", help="print the answer as the model writes it (raw text on stdout; for pipes and long answers)")
             sp.add_argument("--compare", action="store_true", help="run the same task on the two best models and show both answers (spends quota on each)")
             sp.add_argument("--models", help="with --compare: which models to compare, e.g. claude,codex")
             sp.add_argument("--stdin", action="store_true", help="wait for piped input even if it is slow to start (a task of - does the same)")

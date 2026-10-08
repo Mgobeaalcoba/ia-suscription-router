@@ -82,6 +82,7 @@ def ask(
     route_text: Optional[str] = None,
     attachments: Optional[List[att_mod.Attachment]] = None,
     connectors: Optional[bool] = None,
+    stream: Optional[Dict] = None,
 ) -> Dict:
     """`preamble` (e.g. the chat history) is prepended to the prompt but does not influence routing.
     `route_text` lets you classify with a different text than the one sent (e.g. a short follow-up inherits the previous topic).
@@ -116,13 +117,15 @@ def ask(
         return result
 
     for name in order:
-        res = adapters.run_cli(name, models[name], prompt, timeout=timeout, cwd=cwd, usage=True, extra_dirs=att_dirs, mcp=use_mcp)
+        res = adapters.run_cli(name, models[name], prompt, timeout=timeout, cwd=cwd, usage=True, extra_dirs=att_dirs, mcp=use_mcp, stream=stream)
         attempt = {k: res[k] for k in ("seconds", "returncode", "rate_limited", "auth_required", "error", "model_id", "tokens")}
         attempt["model"] = name
         result["attempts"].append(attempt)
         state.remember_model_id(name, res["model_id"])  # this is how we learn which model each CLI uses without spending a separate query
         state.log_event({"model": name, "model_id": res["model_id"], "tokens": res["tokens"], "ok": res["ok"], "seconds": res["seconds"],
                          "error": res["error"], "task_chars": len(task), "weights": decision["weights"]})
+        if stream and not res["ok"] and stream.get("on_reset"):
+            stream["on_reset"]()           # drop whatever this failed attempt already showed before the next model starts
         if res["ok"]:
             state.set_auth_missing(name, False)
             result.update(ok=True, output=res["output"], model_used=name, model_id=res["model_id"], tokens=res["tokens"])

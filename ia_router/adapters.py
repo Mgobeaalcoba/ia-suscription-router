@@ -75,6 +75,7 @@ def run_cli(
     usage: bool = False,
     extra_dirs: Optional[List[str]] = None,
     mcp: Optional[List[str]] = None,
+    stream: Optional[Dict] = None,
 ) -> Dict:
     """Runs the model's CLI and returns a normalized dict.
 
@@ -97,7 +98,12 @@ def run_cli(
             connectors_mod.write_selection(list(mcp or []))
     argv = [a.replace("{prompt}", prompt) for a in template]
     t0 = time.time()
+    streaming = bool(stream) and usage and parser in STREAMERS
+    if streaming:
+        argv = stream_argv(parser, argv)
     try:
+        if streaming:
+            return _run_stream(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, parser, logfile, stream or {})
         return _run(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, usage, logfile)
     finally:
         if use_mcp and parser == "agy":
@@ -107,6 +113,116 @@ def run_cli(
                 os.unlink(logfile)
             except OSError:
                 pass
+
+
+# ---------- streaming ----------
+
+STREAMERS = ("claude", "agy", "codex")
+
+
+def stream_argv(parser: str, argv: List[str]) -> List[str]:
+    """Switches a command that returns one JSON document to the CLI's streaming JSON (claude and agy emit text as it is written; codex already
+    emits one JSON event per line, but only whole messages)."""
+    argv = list(argv)
+    if parser in ("claude", "agy") and "--output-format" in argv:
+        i = argv.index("--output-format")
+        if i + 1 < len(argv):
+            argv[i + 1] = "stream-json"
+        if parser == "claude":
+            argv[i + 2:i + 2] = ["--verbose", "--include-partial-messages"]
+    return argv
+
+
+def parse_stream_line(parser: str, line: str):
+    """One line of a CLI's streaming JSON -> ('text', delta) | ('status', what the model is doing) | ('final', object) | None."""
+    try:
+        d = json.loads(line)
+    except ValueError:
+        return None
+    if not isinstance(d, dict):
+        return None
+    if parser == "claude":
+        if d.get("type") == "result":
+            return "final", d
+        ev = d.get("event") if d.get("type") == "stream_event" else None
+        if isinstance(ev, dict):
+            if ev.get("type") == "content_block_delta" and (ev.get("delta") or {}).get("type") == "text_delta":
+                return "text", ev["delta"].get("text", "")
+            block = ev.get("content_block") or {}
+            if ev.get("type") == "content_block_start" and block.get("type") == "tool_use":
+                return "status", f"using {block.get('name', 'a tool')}"
+    elif parser == "agy":
+        if d.get("event") == "result":
+            return "final", d.get("result") or {}
+        step = d.get("step_update") if d.get("event") == "step_update" else None
+        if isinstance(step, dict):
+            if step.get("text_delta") and step.get("step_type") == "agent_response":
+                return "text", step["text_delta"]
+            if step.get("step_type") == "tool" and step.get("state") == "ACTIVE":
+                return "status", f"using {step.get('tool_name', 'a tool')}"
+    elif parser == "codex":
+        item = d.get("item") if d.get("type") in ("item.started", "item.completed") else None
+        if isinstance(item, dict):
+            if d["type"] == "item.completed" and item.get("type") == "agent_message":
+                return "text", item.get("text", "")
+            if d["type"] == "item.started" and item.get("type") not in ("agent_message", "reasoning"):
+                return "status", f"using {item.get('type', 'a tool')}"
+    return None
+
+
+def _run_stream(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, parser, logfile, stream) -> Dict:
+    """Like `_run`, but reads the CLI's output as it arrives and reports it: stream['on_text'](delta), stream['on_status'](text).
+    The final answer, tokens and errors are interpreted exactly as in the non-streaming path."""
+    import threading
+    on_text, on_status = stream.get("on_text") or (lambda s: None), stream.get("on_status") or (lambda s: None)
+    try:
+        proc = subprocess.Popen(argv, stdin=subprocess.PIPE if use_stdin else subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, cwd=cwd, bufsize=1)
+    except FileNotFoundError:
+        return _result(False, "", f"CLI not found: {argv[0]}", None, t0, False, "not_installed")
+    timed_out = threading.Event()
+    limit = timeout or spec.get("timeout", 300)
+    watchdog = threading.Timer(limit, lambda: (timed_out.set(), proc.kill()))
+    watchdog.daemon = True
+    watchdog.start()
+    err_parts: List[str] = []
+    err_thread = threading.Thread(target=lambda: err_parts.append(proc.stderr.read()), daemon=True)
+    err_thread.start()
+    if use_stdin:
+        try:
+            proc.stdin.write(prompt)
+            proc.stdin.close()
+        except OSError:
+            pass
+    lines: List[str] = []
+    final: Optional[Dict] = None
+    for line in proc.stdout:
+        lines.append(line)
+        ev = parse_stream_line(parser, line.strip())
+        if not ev:
+            continue
+        kind, value = ev
+        if kind == "text" and value:
+            on_text(value)
+        elif kind == "status":
+            on_status(value)
+        elif kind == "final":
+            final = value
+    proc.wait()
+    err_thread.join(timeout=5)
+    watchdog.cancel()
+    proc.stdout.close()
+    proc.stderr.close()
+    if timed_out.is_set():
+        return _result(False, "", "timeout", None, t0, False, "timeout")
+    err = "".join(err_parts).strip()
+    if parser == "codex":
+        out = "".join(lines).strip()
+    elif final is not None:
+        out = json.dumps(final)         # the same document the non-streaming mode would have printed
+    else:
+        out = "".join(lines).strip()
+    return _finish(name, spec, argv, proc.returncode, out, err, t0, True, logfile)
 
 
 def _run(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, usage, logfile) -> Dict:
@@ -124,8 +240,12 @@ def _run(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, usage, logfile) 
         return _result(False, "", f"CLI not found: {argv[0]}", None, t0, False, "not_installed")
     except subprocess.TimeoutExpired:
         return _result(False, "", "timeout", None, t0, False, "timeout")
-    out, err = proc.stdout.strip(), proc.stderr.strip()
-    failed = proc.returncode != 0
+    return _finish(name, spec, argv, proc.returncode, proc.stdout.strip(), proc.stderr.strip(), t0, usage, logfile)
+
+
+def _finish(name, spec, argv, returncode, out, err, t0, usage, logfile) -> Dict:
+    """Interprets what a CLI printed (its answer, tokens, rate limit, missing login) the same way for every way of running it."""
+    failed = returncode != 0
     limited = failed and bool(RATE_LIMIT_RE.search(out + "\n" + err))
     auth = failed and not limited and bool(AUTH_RE.search(out + "\n" + err))
     info: Dict = {}
@@ -138,7 +258,7 @@ def _run(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, usage, logfile) 
             auth = failed and not limited and bool(AUTH_RE.search(out + "\n" + err))
     ok = not failed and bool(out)
     error = None if ok else ("rate_limited" if limited else "auth_required" if auth else (err[-400:] or (out[-400:] if failed else "") or "empty output"))
-    res = _result(ok, out, err[-400:], proc.returncode, t0, limited, error, auth)
+    res = _result(ok, out, err[-400:], returncode, t0, limited, error, auth)
     res["model_id"] = info.get("model")
     res["tokens"] = info.get("tokens")
     return res
