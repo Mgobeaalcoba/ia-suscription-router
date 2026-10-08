@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -47,21 +48,62 @@ def cmd_route(cfg, args) -> int:
     return 0
 
 
-def cmd_ask(cfg, args) -> int:
+def _read_stdin(force: bool = False) -> str:
+    """What was piped in (`cat error.log | ia-router ask "what is wrong?"`), capped like any context. Empty on a terminal.
+    A stdin that is open but silent (some tools leave one attached) must not hang a task that never needed it, so unless `force`
+    (--stdin, or the task `-`) it is read only if data shows up within a moment."""
+    import select
     try:
-        res = core.ask(args.task, cfg, model=args.model, context_files=args.context, dry_run=args.dry_run,
-                       connectors=False if args.no_connectors else None)
-    except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        if sys.stdin is None or sys.stdin.isatty():
+            return ""
+        if not force and not select.select([sys.stdin], [], [], 0.5)[0]:
+            return ""
+        return sys.stdin.read(core.MAX_CONTEXT_CHARS)
+    except (OSError, ValueError):
+        return ""
+
+
+def cmd_ask(cfg, args) -> int:
+    task = (args.task or "").strip()
+    piped = _read_stdin(force=args.stdin or task == "-").strip()
+    task = "" if task == "-" else task
+    if not task and not piped:
+        print("Error: give a task, or pipe one in: echo 'explain this' | ia-router ask", file=sys.stderr)
         return 2
-    print(core.format_ranking(res["decision"]), file=sys.stderr)
+    route_text = None
+    if task and piped:   # the task decides the routing; the piped text is only material for it
+        route_text, task = task, f"{task}\n\n--- INPUT (from stdin) ---\n{piped}"
+    else:
+        task = task or piped
+    quiet = args.json or args.raw or args.quiet
+    try:
+        res = core.ask(task, cfg, model=args.model, context_files=args.context, dry_run=args.dry_run, route_text=route_text,
+                       connectors=False if args.no_connectors else True if args.all_connectors else None)
+    except ValueError as exc:
+        if args.json:
+            print(json.dumps({"ok": False, "error": str(exc)}))
+        else:
+            print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(core.result_json(res, cfg), ensure_ascii=False))
+        return 0 if res["ok"] or res.get("dry_run") else 1
+    if not quiet:
+        print(core.format_ranking(res["decision"]), file=sys.stderr)
     if res.get("dry_run"):
-        print(f"(dry-run) attempt order: {res['order']} · connectors: {'on' if res['connectors'] else 'off'}", file=sys.stderr)
+        print(f"(dry-run) attempt order: {res['order']} · connectors: {', '.join(res['connectors']) or 'none'}", file=sys.stderr)
         return 0
-    for a in res["attempts"]:
-        print(f"attempt {a['model']}: {'OK' if not a['error'] else a['error'][:80]} ({a['seconds']}s)", file=sys.stderr)
+    if not quiet:
+        for a in res["attempts"]:
+            print(f"attempt {a['model']}: {'OK' if not a['error'] else a['error'][:80]} ({a['seconds']}s)", file=sys.stderr)
     if res["ok"]:
-        print(f"\n[{core.format_usage(res)}]\n{render.render(res['output'], color=_color())}")
+        if args.raw:   # only the answer on stdout; who answered goes to stderr
+            print(res["output"])
+            print(f"[{core.format_usage(res)}]", file=sys.stderr)
+        elif args.quiet:
+            print(f"[{core.format_usage(res)}]\n{render.render(res['output'], color=_color())}")
+        else:
+            print(f"\n[{core.format_usage(res)}]\n{render.render(res['output'], color=_color())}")
         return 0
     print(f"Failed: {res.get('error')}", file=sys.stderr)
     return 1
@@ -205,12 +247,17 @@ def main() -> int:
     dp.add_argument("--probe", action="store_true", help="minimal real call to each CLI: login, latency, version and model")
     for name in ("route", "ask"):
         sp = sub.add_parser(name, help="route" if name == "route" else "route and run")
-        sp.add_argument("task")
+        sp.add_argument("task", nargs="?" if name == "ask" else None, default="", help="what to do; for `ask` it can also come from stdin")
         sp.add_argument("--context", "-c", action="append", default=[], help="context file (repeatable)")
         if name == "ask":
             sp.add_argument("--model", "-m", default="auto", help="auto|claude|codex|antigravity")
             sp.add_argument("--dry-run", action="store_true", help="only show the decision")
-            sp.add_argument("--no-connectors", action="store_true", help="do not give the model your MCP connectors for this task")
+            sp.add_argument("--stdin", action="store_true", help="wait for piped input even if it is slow to start (a task of - does the same)")
+            sp.add_argument("--json", action="store_true", help="print one JSON object (answer, model, tokens, estimated cost, routing, attempts) and nothing else")
+            sp.add_argument("--raw", action="store_true", help="print only the answer on stdout, unrendered (who answered goes to stderr): for pipes")
+            sp.add_argument("--quiet", "-q", action="store_true", help="hide the routing table and the attempts")
+            sp.add_argument("--no-connectors", action="store_true", help="do not give the model any MCP connector for this task")
+            sp.add_argument("--all-connectors", action="store_true", help="give the model every enabled MCP connector, not only the ones the task needs")
     sub.add_parser("stats", help="success, latency, rate limits and tokens per model (from the log)")
     sp = sub.add_parser("scores", help="score per model and category (with a breakdown if you give one)")
     sp.add_argument("category", nargs="?", help="e.g. coding")

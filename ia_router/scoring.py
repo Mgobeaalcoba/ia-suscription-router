@@ -195,6 +195,28 @@ def describe_sources(cfg: Dict) -> str:
     return "\n".join(lines)
 
 
+def price_of(cfg: Dict, name: str) -> Optional[Tuple[float, float]]:
+    """(input, output) list price in USD per million tokens for the model a CLI uses, from Artificial Analysis or Arena; None if unknown."""
+    try:
+        b = build(cfg)
+    except (KeyError, ValueError):
+        return None
+    aa, arena = b["aa"].get(name) or {}, b["arena"].get(name) or {}
+    pin, pout = aa.get("price_in"), aa.get("price_out")
+    if not (isinstance(pin, (int, float)) and isinstance(pout, (int, float))):
+        price = arena.get("price") or {}
+        pin, pout = price.get("in"), price.get("out")
+    return (float(pin), float(pout)) if isinstance(pin, (int, float)) and isinstance(pout, (int, float)) else None
+
+
+def estimate_cost(cfg: Dict, name: str, tokens: Optional[Dict]) -> Optional[float]:
+    """Estimated USD of one answer at LIST price (a proxy: a subscription does not bill per token). Cached input is counted as input."""
+    price = price_of(cfg, name)
+    if not price or not tokens:
+        return None
+    return round((tokens.get("input", 0) * price[0] + tokens.get("output", 0) * price[1]) / 1_000_000, 4)
+
+
 def diff_tables(old: Optional[Dict], new: Dict, threshold: float = 0.3) -> List[str]:
     """What changed between two computations: the model chosen per category and the scores that moved at least `threshold`."""
     if not old:

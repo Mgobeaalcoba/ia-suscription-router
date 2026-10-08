@@ -148,7 +148,7 @@ class ConnectedDocsTests(unittest.TestCase):
 class LanguageTests(unittest.TestCase):
     """The project is English-only. The one exception is the task classifier, which deliberately recognizes Spanish keywords."""
     SPANISH = "áéíóúñÁÉÍÓÚÑ¿¡"
-    ALLOWED = {"ia_router/router.py", "ia_router/chat.py"}   # classifier patterns and chat intent patterns
+    ALLOWED = {"ia_router/router.py", "ia_router/chat.py", "ia_router/connectors.py"}   # classifier patterns, chat intent patterns and connector keywords
     # words that only appear in Spanish prose (no accents needed): a guard for text written without accents
     WORDS = ("tarea", "modelo", "métricas", "instalá", "ejecutá", "abrilo", "guía", "elegí", "cuota", "archivo", "carpeta")
 

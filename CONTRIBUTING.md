@@ -33,7 +33,7 @@ There is nothing to install: the project uses **only the Python standard library
 2. **No secrets:** never push a `.env`, keys, tokens or personal data. The `.env` is ignored by git; only `.env.example` is versioned.
 3. **No unrequested spending:** nothing may consume a model's quota or query the network without the user asking.
 4. **Documentation up to date:** if a command, a state file or a rule changes, update `README.md`, `docs/USAGE.md` and `AGENTS.md` in the same change. The outputs shown in the guide must be **real**: capture them, do not invent them.
-5. **English everywhere:** user-facing text, code comments, docs, tests and commit messages are in English. The only Spanish allowed is the keywords the task classifier deliberately recognizes (`ia_router/router.py` and the intent patterns in `ia_router/chat.py`); a test enforces it.
+5. **English everywhere:** user-facing text, code comments, docs, tests and commit messages are in English. The only Spanish allowed is the keywords the task classifier deliberately recognizes (`ia_router/router.py`, the intent patterns in `ia_router/chat.py` and the connector keywords in `ia_router/connectors.py`); a test enforces it.
 6. **Commit messages** in English with a `feat:`, `fix:`, `docs:` or `test:` prefix, explaining the *why*.
 
 ## License of your contributions and commit sign-off (DCO)

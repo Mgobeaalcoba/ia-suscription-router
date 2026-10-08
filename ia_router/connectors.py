@@ -137,6 +137,82 @@ def secret_literals(spec: Dict) -> List[str]:
     return [k for k, v in pairs if v and not _VAR.search(str(v))]
 
 
+# ---------- which connectors a task needs ----------
+
+ENV_SELECTION = "IA_ROUTER_CONNECTORS"          # comma list of connector names for ONE call (claude and codex get it in their MCP env)
+# Words that say a task needs a connector, by the kind of app. A connector is matched by a part of its name (gmail -> "mail").
+# English and Spanish on purpose, like the task classifier.
+KEYWORDS: Dict[str, List[str]] = {
+    "mail": ["email", "e-mail", "mail", "mails", "inbox", "unread", "gmail", "correo", "correos", "bandeja"],
+    "calendar": ["calendar", "calendario", "agenda", "meeting", "meetings", "reunión", "reunion", "event", "events", "evento", "eventos",
+                 "schedule", "availability", "disponibilidad", "appointment"],
+    "drive": ["drive", "document", "documents", "spreadsheet", "sheet", "sheets", "slides", "documento", "planilla", "hoja de cálculo"],
+    "slack": ["slack", "channel", "canal", "dm", "thread"],
+    "github": ["github", "repo", "repository", "repositorio", "pull request", "pr", "issue", "issues", "commit", "branch", "rama"],
+    "file": ["file", "files", "folder", "directory", "path", "archivo", "archivos", "carpeta", "directorio", "ruta"],
+    "memory": ["remember", "memory", "knowledge graph", "recordá", "recorda", "recuerda", "memoria"],
+}
+
+
+def family_words(name: str, spec: Dict) -> Optional[List[str]]:
+    """Words that make a connector relevant, or None when the router cannot tell (then it is always attached).
+    `when` in the spec replaces the built-in words; the connector's own name always counts."""
+    if spec.get("always"):
+        return None
+    words = list(spec.get("when") or [])
+    if not words:
+        for fam, fam_words in KEYWORDS.items():
+            if fam in name:
+                words += fam_words
+    return list({*words, name}) if words else None
+
+
+def relevant(task: str, name: str, spec: Dict) -> bool:
+    words = family_words(name, spec)
+    if words is None:
+        return True
+    return any(re.search(r"(?<!\w)" + re.escape(w) + r"(?!\w)", task, re.I) for w in words)
+
+
+def select(task: str, servers: Optional[Dict[str, Dict]] = None) -> List[str]:
+    """Names of the enabled connectors this task needs. Attaching all of them to every call would add their tool descriptions
+    (thousands of tokens) and startup time even to a task that never uses them."""
+    servers = enabled_servers() if servers is None else servers
+    return [n for n, s in servers.items() if relevant(task, n, s)]
+
+
+def active_servers() -> Dict[str, Dict]:
+    """What the proxy exposes: the enabled connectors, narrowed to this call's selection (environment, or the file written for agy)."""
+    servers = enabled_servers()
+    chosen: Optional[List[str]] = None
+    if ENV_SELECTION in os.environ:
+        chosen = [n for n in os.environ[ENV_SELECTION].split(",") if n]
+    else:
+        try:
+            data = json.loads(selection_path().read_text(encoding="utf-8"))
+            chosen = [n for n in data.get("servers", []) if isinstance(n, str)] if isinstance(data, dict) else None
+        except (OSError, ValueError):
+            chosen = None
+    return servers if chosen is None else {n: s for n, s in servers.items() if n in chosen}
+
+
+def selection_path():
+    return state.home() / "connectors.active.json"
+
+
+def write_selection(names: List[str]) -> None:
+    """agy is registered once with a fixed environment, so the call's selection travels in a file that the router removes afterwards."""
+    state.home().mkdir(parents=True, exist_ok=True)
+    selection_path().write_text(json.dumps({"servers": names}), encoding="utf-8")
+
+
+def clear_selection() -> None:
+    try:
+        selection_path().unlink()
+    except OSError:
+        pass
+
+
 # ---------- names exposed to the models ----------
 
 def exposed_name(server: str, tool: str, taken: Optional[set] = None) -> str:
@@ -308,7 +384,7 @@ class Proxy:
     """One MCP server that exposes the tools of every enabled connector, named `<server>__<tool>`."""
 
     def __init__(self, servers: Optional[Dict[str, Dict]] = None, factory: Callable = make_client, log: Optional[Callable[[Dict], None]] = None) -> None:
-        self.servers = servers if servers is not None else enabled_servers()
+        self.servers = servers if servers is not None else active_servers()
         self.factory, self.log = factory, log or (lambda event: None)
         self.clients: Dict[str, Any] = {}
         self.routes: Dict[str, Tuple[str, str]] = {}
@@ -431,12 +507,14 @@ def _toml(value: Any) -> str:
     return json.dumps(value)
 
 
-def cli_args(parser: str) -> Tuple[List[str], int]:
+def cli_args(parser: str, selected: Optional[List[str]] = None) -> Tuple[List[str], int]:
     """(arguments to insert, position in the command) that make a CLI load the proxy for ONE call, without touching its config files.
     claude gets only this server allowed (never a blanket 'allow everything'); codex auto-approves only this server's tools.
     agy has no per-call option: it uses the one-time registration done by `connectors install agy`."""
     cmd = proxy_command()
     env = {"ROUTER_HOME": str(state.home())}  # the CLIs start MCP servers with a trimmed environment: say where the registry lives
+    if selected is not None:
+        env[ENV_SELECTION] = ",".join(selected)
     if parser == "claude":
         cfg = {"mcpServers": {PROXY_NAME: {"command": cmd[0], "args": cmd[1:], "env": env}}}
         return ["--mcp-config", json.dumps(cfg), "--allowedTools", f"mcp__{PROXY_NAME}"], 1
@@ -448,8 +526,8 @@ def cli_args(parser: str) -> Tuple[List[str], int]:
     return [], 1
 
 
-def inject(parser: str, template: List[str]) -> List[str]:
-    extra, at = cli_args(parser)
+def inject(parser: str, template: List[str], selected: Optional[List[str]] = None) -> List[str]:
+    extra, at = cli_args(parser, selected)
     return template[:at] + extra + template[at:]
 
 

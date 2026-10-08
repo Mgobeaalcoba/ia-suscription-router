@@ -87,8 +87,8 @@ def ask(
     `route_text` lets you classify with a different text than the one sent (e.g. a short follow-up inherits the previous topic).
     `attachments`: text ones are appended as context; images/PDFs/binaries/folders are referenced by path and
     force the use of a model that can open files.
-    `connectors`: give the model the registered MCP connectors (Gmail, Calendar…) through the router's proxy;
-    None = automatic (on when at least one enabled connector is registered)."""
+    `connectors`: the registered MCP connectors (Gmail, Calendar…) the model gets through the router's proxy. None = automatic: only
+    those the task needs (see connectors.select); True = every enabled connector; False = none."""
     inline, referenced = att_mod.split_for_prompt(attachments or [])
     prompt, ctx_len, warnings = build_prompt(task, list(context_files or []) + inline)
     prompt = preamble + prompt + att_mod.reference_block(referenced)
@@ -105,7 +105,8 @@ def ask(
         order = [r["name"] for r in decision["ranking"] if r["usable"]][:max_attempts]
 
     att_dirs = sorted({str(a.path if a.kind == "dir" else a.path.parent) for a in referenced})
-    use_mcp = connectors_mod.has_connectors() if connectors is None else bool(connectors)
+    enabled = connectors_mod.enabled_servers()
+    use_mcp = list(enabled) if connectors is True else [] if connectors is False else connectors_mod.select(route_text or task, enabled)
     result: Dict = {"decision": decision, "order": order, "warnings": warnings, "attempts": [], "ok": False, "output": "", "connectors": use_mcp}
     if dry_run:
         result["dry_run"] = True
@@ -133,6 +134,21 @@ def ask(
             state.set_cooldown(name, cfg.get("auth_cooldown_minutes", 60))
     result["error"] = "all attempts failed"
     return result
+
+
+def result_json(res: Dict, cfg: Optional[Dict] = None) -> Dict:
+    """The result of `ask` as plain data for scripts: the answer, who gave it, tokens, an estimated list-price cost and why it was routed."""
+    from . import scoring
+    used = res.get("model_used")
+    dec = res["decision"]
+    out = {"ok": res["ok"], "model": used, "model_id": res.get("model_id"), "output": res.get("output", ""), "tokens": res.get("tokens"),
+           "seconds": round(sum(a["seconds"] for a in res["attempts"]), 2), "error": res.get("error"), "connectors": res.get("connectors", []),
+           "routing": {"weights": dec["weights"], "chosen": dec["chosen"], "metrics": dec.get("metrics", False),
+                       "ranking": [{"model": r["name"], "score": r["score"], "usable": r["usable"]} for r in dec["ranking"]]},
+           "attempts": [{"model": a["model"], "error": a["error"], "seconds": a["seconds"]} for a in res["attempts"]],
+           "warnings": res.get("warnings", [])}
+    out["estimated_cost_usd"] = scoring.estimate_cost(cfg, used, res.get("tokens")) if cfg and used else None
+    return out
 
 
 def format_usage(res: Dict) -> str:

@@ -219,12 +219,13 @@ class InjectionTests(Base):
         adapters.run_cli("claude", spec, "hi", usage=True)
         self.assertNotIn("--mcp-config", seen["argv"])
         seen.clear()
-        adapters.run_cli("claude", spec, "hi", usage=True, mcp=True)
+        adapters.run_cli("claude", spec, "hi", usage=True, mcp=["gmail"])
         self.assertIn("--mcp-config", seen["argv"])
+        self.assertIn("IA_ROUTER_CONNECTORS", seen["argv"][seen["argv"].index("--mcp-config") + 1])
         seen.clear()
         os.environ["ROUTER_CMD_CLAUDE"] = json.dumps(["claude", "-p", "{prompt}"])
         self.addCleanup(os.environ.pop, "ROUTER_CMD_CLAUDE", None)
-        adapters.run_cli("claude", spec, "hi", usage=True, mcp=True)
+        adapters.run_cli("claude", spec, "hi", usage=True, mcp=["gmail"])
         self.assertNotIn("--mcp-config", seen["argv"])
 
 
@@ -266,25 +267,87 @@ class AgySettingsTests(Base):
         self.assertEqual(self.path.read_text(encoding="utf-8"), "{oops")
 
 
+class SelectionTests(Base):
+    SERVERS = {"gmail": {"command": FAKE}, "calendar": {"command": FAKE}, "files": {"command": FAKE}, "crm": {"command": FAKE},
+               "mail-archive": {"command": FAKE, "when": ["archive"]}, "always-on": {"command": FAKE, "always": True}}
+
+    def test_a_task_gets_only_the_connectors_it_needs(self):
+        sel = lambda t: C.select(t, self.SERVERS)
+        self.assertEqual(sel("summarize my unread emails from today"), ["gmail", "crm", "always-on"])
+        self.assertEqual(sel("put a 30 minute meeting on my calendar tomorrow"), ["calendar", "crm", "always-on"])
+        self.assertEqual(sel("Fix this bug in my Python function"), ["crm", "always-on"])
+
+    def test_spanish_tasks_work_too(self):
+        self.assertIn("gmail", C.select("resumí los correos sin leer", self.SERVERS))
+        self.assertIn("calendar", C.select("agendá una reunión mañana", self.SERVERS))
+        self.assertIn("files", C.select("leé el archivo de la carpeta", self.SERVERS))
+
+    def test_unknown_connectors_are_always_attached_never_silently_dropped(self):
+        self.assertIn("crm", C.select("anything at all", self.SERVERS))
+        self.assertIsNone(C.family_words("crm", {}))
+
+    def test_when_replaces_the_builtin_words_and_the_name_always_counts(self):
+        self.assertNotIn("mail-archive", C.select("check my email", self.SERVERS))      # `when` replaced the mail words
+        self.assertIn("mail-archive", C.select("search the archive", self.SERVERS))
+        self.assertIn("mail-archive", C.select("open mail-archive please", self.SERVERS))
+
+    def test_whole_words_only(self):
+        self.assertEqual(C.select("my profile is nice", {"files": {"command": FAKE}}), [])   # "file" inside "profile" must not match
+        self.assertEqual(C.select("read the file", {"files": {"command": FAKE}}), ["files"])
+
+    def test_the_proxy_exposes_only_the_calls_selection(self):
+        C.add("one", command=FAKE)
+        C.add("two", command=FAKE)
+        os.environ[C.ENV_SELECTION] = "two"
+        self.addCleanup(os.environ.pop, C.ENV_SELECTION, None)
+        self.assertEqual(list(C.active_servers()), ["two"])
+        os.environ[C.ENV_SELECTION] = ""
+        self.assertEqual(C.active_servers(), {})                                         # an empty selection means none, not all
+        del os.environ[C.ENV_SELECTION]
+        self.assertEqual(sorted(C.active_servers()), ["one", "two"])                     # no selection at all: everything enabled
+        C.write_selection(["one"])
+        self.assertEqual(list(C.active_servers()), ["one"])                              # the file used for agy
+        C.clear_selection()
+        self.assertEqual(sorted(C.active_servers()), ["one", "two"])
+
+    def test_the_selection_travels_in_the_cli_arguments(self):
+        claude = C.inject("claude", ["claude", "-p", "x"], ["gmail", "calendar"])
+        cfg = json.loads(claude[claude.index("--mcp-config") + 1])
+        self.assertEqual(cfg["mcpServers"][C.PROXY_NAME]["env"][C.ENV_SELECTION], "gmail,calendar")
+        codex = " ".join(C.inject("codex", ["codex", "exec", "x"], ["gmail"]))
+        self.assertIn(C.ENV_SELECTION + ' = "gmail"', codex)
+
+
 class AskTests(Base):
     def setUp(self):
         super().setUp()
         self.cfg = core.load_config()
-
-    def test_automatic_mode_follows_the_registry(self):
-        self.assertFalse(core.ask("hello", self.cfg, dry_run=True)["connectors"])
         C.add("gmail", command=FAKE)
-        self.assertTrue(core.ask("hello", self.cfg, dry_run=True)["connectors"])
-        self.assertFalse(core.ask("hello", self.cfg, dry_run=True, connectors=False)["connectors"])
+        C.add("calendar", command=FAKE)
+
+    def test_automatic_mode_attaches_only_what_the_task_needs(self):
+        ask = lambda t, **k: core.ask(t, self.cfg, dry_run=True, **k)["connectors"]
+        self.assertEqual(ask("read my unread email"), ["gmail"])
+        self.assertEqual(ask("Fix this bug in my Python function"), [])
+        self.assertEqual(ask("email my calendar to Ana"), ["gmail", "calendar"])
+
+    def test_all_and_none_override_the_selection(self):
+        self.assertEqual(core.ask("Fix this bug", self.cfg, dry_run=True, connectors=True)["connectors"], ["gmail", "calendar"])
+        self.assertEqual(core.ask("read my email", self.cfg, dry_run=True, connectors=False)["connectors"], [])
+
+    def test_a_disabled_connector_is_never_attached(self):
         C.set_enabled("gmail", False)
-        self.assertFalse(core.ask("hello", self.cfg, dry_run=True)["connectors"])
-        self.assertTrue(core.ask("hello", self.cfg, dry_run=True, connectors=True)["connectors"])
+        self.assertEqual(core.ask("read my email", self.cfg, dry_run=True)["connectors"], [])
+        self.assertEqual(core.ask("read my email", self.cfg, dry_run=True, connectors=True)["connectors"], ["calendar"])
 
-    def test_a_real_task_still_runs_with_connectors_on(self):
-        C.add("gmail", command=FAKE)
-        res = core.ask("Fix this bug in my Python function", self.cfg)
+    def test_a_short_followup_is_matched_with_the_topic_it_inherits(self):
+        res = core.ask("do it now", self.cfg, dry_run=True, route_text="read my unread email\ndo it now")
+        self.assertEqual(res["connectors"], ["gmail"])
+
+    def test_a_real_task_still_runs(self):
+        res = core.ask("read my unread email", self.cfg)
         self.assertTrue(res["ok"])
-        self.assertTrue(res["connectors"])
+        self.assertEqual(res["connectors"], ["gmail"])
 
 
 if __name__ == "__main__":

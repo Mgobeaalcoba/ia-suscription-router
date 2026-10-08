@@ -29,7 +29,7 @@ HELP = """Just talk normally: each message is a task and is routed to the best m
   /priorities        questions: what you prioritize for each kind of task (accuracy, speed, cost)
   /model X           pin a model (X = claude|codex|... or auto)         /stats   success, latency and tokens
   /explain on|off    show the routing table on every message            /md on|off   rendered or raw markdown
-  /connectors [on|off] MCP connectors (Gmail, Calendar…) the models can use; manage them with `ia-router connectors`
+  /connectors [auto|on|off]  MCP connectors (Gmail, Calendar…): auto = only the ones a task needs, on = all, off = none
   /ask text          force "this is a task"                             /clear   forget the conversation
   /help              this help                                          /exit    quit"""
 
@@ -39,7 +39,7 @@ COMMANDS = [
     editor_mod.Command("/setup", "check your CLIs and get the steps for the missing ones"), editor_mod.Command("/priorities", "what you prioritize for each kind of task (questions)"), editor_mod.Command("/model", "pin a model or auto"),
     editor_mod.Command("/stats", "success, latency and tokens per model"), editor_mod.Command("/explain", "show the routing table (on|off)"),
     editor_mod.Command("/md", "rendered or raw markdown (on|off)"), editor_mod.Command("/ask", "force: this is a task"),
-    editor_mod.Command("/connectors", "MCP connectors the models can use (on|off)"), editor_mod.Command("/clear", "forget the conversation"), editor_mod.Command("/exit", "quit"),
+    editor_mod.Command("/connectors", "MCP connectors the models can use (auto|on|off)"), editor_mod.Command("/clear", "forget the conversation"), editor_mod.Command("/exit", "quit"),
 ]
 
 # ---------- message interpretation ----------
@@ -86,7 +86,7 @@ class Chat:
         self.pinned = "auto"
         self.explain = False
         self.markdown = True
-        self.connectors: Optional[bool] = None   # None = automatic: on when an enabled connector is registered
+        self.connectors: Optional[bool] = None   # None = automatic (only the connectors a task needs), True = all, False = none
 
     # --- utilities ---
     def dim(self, s: str) -> str:
@@ -200,15 +200,15 @@ class Chat:
         elif cmd == "setup":
             setup_mod.run(cfg, say=self.say, ask_yes=self.ask_yes, explicit=True)
         elif cmd == "connectors":
-            if arg in ("on", "off"):
-                self.connectors = arg == "on"
+            if arg in ("auto", "on", "off"):
+                self.connectors = None if arg == "auto" else arg == "on"
             servers = connectors_mod.load()
-            active = connectors_mod.has_connectors() if self.connectors is None else self.connectors
+            mode = "auto: each task gets only the connectors it needs" if self.connectors is None else "on: every enabled connector on every task" if self.connectors else "off"
             if not servers:
                 self.say("No connectors yet. Add an MCP server from your shell, e.g.: ia-router connectors add NAME -- COMMAND…")
             else:
                 self.say("\n".join(f"{n:<14} {'on ' if s.get('enabled', True) else 'off'}  {s.get('url') or ' '.join(s.get('command') or [])[:60]}" for n, s in servers.items()))
-                self.say(f"Connectors are {'ON' if active else 'OFF'} for the models (/connectors on|off). Manage them with `ia-router connectors`.")
+                self.say(f"Mode: {mode} (/connectors auto|on|off). Manage them with `ia-router connectors`.")
         elif cmd == "clear":
             self.history.clear()
             self.say("Conversation forgotten.")

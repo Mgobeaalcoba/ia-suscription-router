@@ -74,7 +74,7 @@ def run_cli(
     cwd: Optional[str] = None,
     usage: bool = False,
     extra_dirs: Optional[List[str]] = None,
-    mcp: bool = False,
+    mcp: Optional[List[str]] = None,
 ) -> Dict:
     """Runs the model's CLI and returns a normalized dict.
 
@@ -89,13 +89,19 @@ def run_cli(
     if usage:
         template = _with_usage_args(name, spec, template, logfile)
     template = _with_dirs(name, spec, template, list(extra_dirs or []))
-    if mcp and not os.environ.get(f"ROUTER_CMD_{name.upper()}"):  # a custom command is respected as is
-        template = connectors_mod.inject((spec.get("usage") or {}).get("parser", ""), template)
+    parser = (spec.get("usage") or {}).get("parser", "")
+    use_mcp = bool(mcp) and not os.environ.get(f"ROUTER_CMD_{name.upper()}")  # a custom command is respected as is
+    if use_mcp:
+        template = connectors_mod.inject(parser, template, list(mcp or []))
+        if parser == "agy":
+            connectors_mod.write_selection(list(mcp or []))
     argv = [a.replace("{prompt}", prompt) for a in template]
     t0 = time.time()
     try:
         return _run(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, usage, logfile)
     finally:
+        if use_mcp and parser == "agy":
+            connectors_mod.clear_selection()
         if logfile:
             try:
                 os.unlink(logfile)
