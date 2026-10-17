@@ -145,3 +145,9 @@ Rules:
 ## Commits
 
 Messages in English with a `feat:`, `fix:`, `docs:` or `test:` prefix, explaining the *why*. External pull requests require signed-off commits (`git commit -s`, DCO; `tools/check_dco.sh` verifies it in CI): see `CONTRIBUTING.md`. One coherent change per commit. Pushing or publishing things is the repo owner's decision.
+
+## Session memory
+
+- memory/STATE.md — current snapshot; memory/LOG.md — append-only history (old entries are never edited).
+- Bridges: CLAUDE.md, GEMINI.md and .github/copilot-instructions.md point to this file.
+- When closing a session with changes: update STATE, add the LOG entry and commit (scripts/scan_secrets.py stays manual for now: pre-existing findings to review).
