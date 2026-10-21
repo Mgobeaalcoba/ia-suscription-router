@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Escanea el repo buscando patrones de credenciales. Sale con 1 si encuentra algo.
+"""Scan the repository for credential-like patterns. Exit with 1 on findings.
 
-v3.2: saltea binarios (por extensión y por contenido) y dumps `.b64`; admite una
-lista blanca opcional en `scripts/secret_scan_allowlist.txt` (una expresión
-regular por línea, `#` para comentarios): las coincidencias que matcheen se
-ignoran y quedan documentadas en ese archivo."""
+v3.2: skips binaries (by extension and by content) and `.b64` dumps; supports
+an optional allowlist in `scripts/secret_scan_allowlist.txt` (one regular
+expression per line, `#` for comments): matching findings are ignored and
+documented in that file."""
 import pathlib
 import re
 import sys
@@ -34,7 +34,7 @@ SKIP_FILES = {"scan_secrets.py", "install_hooks.sh", "secret_scan_allowlist.txt"
 
 
 def read_text(path):
-    """Devuelve el texto del archivo o None si parece binario."""
+    """Return file text, or None when the file looks binary."""
     try:
         with path.open("rb") as fh:
             head = fh.read(4096)
@@ -47,7 +47,7 @@ def read_text(path):
 
 
 def load_allowlist(root):
-    """Reglas de la lista blanca (regex por línea; texto plano si no compila)."""
+    """Allowlist rules (regex per line; plain text when regex compile fails)."""
     path = root / "scripts" / "secret_scan_allowlist.txt"
     rules = []
     if path.exists():
@@ -84,7 +84,7 @@ def main() -> int:
                     continue
                 print(f"[!] {path.relative_to(root)}: {token[:60]}")
                 bad += 1
-    print("OK: sin secretos detectados" if not bad else f"{bad} hallazgo(s)")
+    print("OK: no secrets detected" if not bad else f"{bad} finding(s)")
     return 1 if bad else 0
 
 
