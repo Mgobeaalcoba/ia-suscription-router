@@ -2,6 +2,16 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are published on [PyPI](https://pypi.org/project/ia-router/) and [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
 
+## 0.9.0 — 2026-10-27
+
+### Changed
+- **Arena metrics come from the official dataset, not from arena.ai.** arena.ai now answers automated readers with a Cloudflare challenge, so `metrics refresh` reads the CC BY 4.0 dataset `lmarena-ai/leaderboard-dataset` through the Hugging Face datasets server: about 130 requests of 100 rows, one at a time, with retries on rate limiting. A full download takes about ten minutes.
+- **The update runs in the background in the chat.** Once you say yes, the chat keeps answering with the data it has, and the next routing uses the new data as soon as it is saved. A failed download is kept (`refresh_error`) and does not replace the data you have.
+- The bundled Arena snapshot is regenerated from the dataset (2026-10-27). The prices Arena published before are kept, matched by model name: the dataset itself does not publish them.
+
+### Fixed
+- The test suite no longer reaches the network or the real CLIs: a leftover `PATH` from one test module made later ones run the real `claude`, `codex` and `agy`, and an old fixture date made the chat ask to update.
+
 ## 0.8.0 — 2026-10-27
 
 ### Added
