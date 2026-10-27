@@ -4,7 +4,7 @@ A router that splits your tasks across the **official CLIs** of the AI subscript
 
 It opens like `claude`: you type a task and it is routed on its own to the best model according to the metrics. If you want, you answer a few questions about what you prioritize for each kind of task (accuracy, speed or cost) and the routing is rebuilt.
 
-- **It already ships with metrics:** the software bundles the latest snapshot of [Arena](https://arena.ai/leaderboard); it routes with data from the first use, with no network.
+- **It already ships with metrics:** the software bundles the latest snapshot of [Arena](https://arena.ai/leaderboard) (from its official dataset); it routes with data from the first use, with no network.
 - **Updating is your action, and it is visible:** on startup, if the metrics are more than 7 days old, it offers to update them, showing every step and **what changed in the routing**.
 - **No external dependencies:** only the Python standard library (3.9 or higher; the tests pass on 3.9 and 3.14).
 - **It never touches OAuth tokens:** each CLI uses its own login and its own subscription. "Allow everything" flags are never turned on.
@@ -127,7 +127,7 @@ ia ❯ /metrics refresh                              ← update the metrics (wit
 ## Update the metrics and turn on speed/cost (`.env`)
 
 ```bash
-ia-router metrics refresh        # reads ~11 public arena.ai pages (≈ 1 minute)
+ia-router metrics refresh        # downloads the Arena dataset (≈ 10 minutes, in the background in the chat)
 ```
 
 Arena provides accuracy. To add **speed and cost** (and be able to prioritize them) use the [Artificial Analysis](https://artificialanalysis.ai/) API, which has a **free** plan (1,000 requests per day):
@@ -202,7 +202,7 @@ The same router in a local browser tab, for when you would rather not live in a 
 | `ia_router/usage.py` · `sessions.py` · `stream.py` | Usage meter, saved sessions and live streaming output. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | `.env` reader, state and log, MCP server. |
 | `tools/update_snapshot.py` | For whoever maintains the repo: regenerates the Arena snapshot before publishing. |
-| `tests/` | 444 tests and fake CLIs (`tests/fake_bin`). |
+| `tests/` | 449 tests and fake CLIs (`tests/fake_bin`). |
 
 ## Connectors: let any model use your other apps (MCP)
 
@@ -233,7 +233,7 @@ Tools: `route_task`, `ask_model`, `list_models`.
 
 | Topic | Detail |
 |---|---|
-| Arena | It measures human preference, not correct answers, and publishes variants per effort level that may not match your CLI's (marked as approximate). It reads public arena.ai pages: if their format changes, it says so and continues with what it had. |
+| Arena | It measures human preference, not correct answers, and publishes variants per effort level that may not match your CLI's (marked as approximate). It reads the official Arena dataset (CC BY 4.0): if it changes its format, it says so and continues with what it had. |
 | Frontier models | Accuracy differences usually fall within the margin of error; there speed and cost break the tie, and they require the Artificial Analysis key. |
 | Artificial Analysis | Verified against its real API. It does not publish every index for every model: the router uses the benchmarks that cover yours. If your CLI does not report its effort level, it picks the usual one and marks it as approximate. |
 | Cost | It is the list price per token: a proxy for quota consumption, not your real quota. |

@@ -254,14 +254,14 @@ class RefreshReportTests(Home):
 
     def fake_refresh(self, cfg, say=print, get=None, key=None, force=False, sleep=None):
         M.save_cache({"pages": self.new_data(), "arena_at": "2026-10-09T00:00:00"})
-        say("Reading the arena.ai leaderboards…")
+        say("Reading the Arena leaderboards…")
 
     def test_report_shows_each_step_and_what_changed(self):
         out = []
         with mock.patch.object(M, "refresh", self.fake_refresh):
             self.assertTrue(S.refresh_and_report(self.cfg, out.append))
         text = "\n".join(out)
-        self.assertIn("Reading the arena.ai leaderboards", text)
+        self.assertIn("Reading the Arena leaderboards", text)
         self.assertIn("Metrics up to date: Arena 2026-10-09 (updated)", text)
         self.assertIn("What changed in the routing", text)
         self.assertIn("now picks", text)

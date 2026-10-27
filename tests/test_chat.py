@@ -59,6 +59,10 @@ class Base(unittest.TestCase):
         p.start()
         self.addCleanup(p.stop)
         M._memo.clear()
+        # no test may reach the network: a stale snapshot makes startup ask to update, and an unanswered question means yes
+        guard = mock.patch("ia_router.metrics.refresh_in_background", return_value=object())
+        guard.start()
+        self.addCleanup(guard.stop)
         if self.ids:
             for n, mid in F.IDS.items():
                 state.remember_model_id(n, mid)
@@ -184,8 +188,9 @@ class CommandTests(Base):
 
     def test_metrics_refresh_goes_through_the_visible_report(self):
         c = self.chat()
-        with mock.patch.object(S, "refresh_and_report", return_value=True) as ref:
+        with mock.patch("ia_router.metrics.refresh_in_background", return_value=object()) as ref:
             c.handle("/metrics refresh")
+            self.assertIn("in the background", self.text())   # the chat does not wait for the download
             self.assertFalse(ref.call_args.kwargs["force"])
             c.handle("/metrics force")
             self.assertTrue(ref.call_args.kwargs["force"])
@@ -242,7 +247,7 @@ class StartupTests(Base):
 
     def test_stale_metrics_offer_an_update_once_per_day(self):
         self.restart(ids=True, stale=True)
-        with mock.patch.object(S, "refresh_and_report", return_value=True) as ref:
+        with mock.patch("ia_router.metrics.refresh_in_background", return_value=object()) as ref:
             c = self.run_startup("s")
             self.assertIn("The metrics are from 2020-01-01", self.text())
             self.assertIn("bundled with this version", self.text())
@@ -254,7 +259,7 @@ class StartupTests(Base):
 
     def test_declining_the_update_changes_nothing_and_does_not_nag(self):
         self.restart(ids=True, stale=True)
-        with mock.patch.object(S, "refresh_and_report") as ref:
+        with mock.patch("ia_router.metrics.refresh_in_background") as ref:
             self.run_startup("n")
             ref.assert_not_called()
             self.run_startup()
@@ -263,7 +268,7 @@ class StartupTests(Base):
 
     def test_fresh_metrics_are_not_questioned(self):
         self.restart(ids=True)
-        with mock.patch.object(S, "refresh_and_report") as ref:
+        with mock.patch("ia_router.metrics.refresh_in_background") as ref:
             self.run_startup("n")
             ref.assert_not_called()
         self.assertNotIn("The metrics are from", self.text())
@@ -300,7 +305,7 @@ class StartupTests(Base):
 
     def test_without_speed_or_cost_the_questions_are_not_offered_and_a_hint_appears_once(self):
         self.restart(ids=True)
-        self.snap.write_text(json.dumps(F.snapshot(no_price=("gpt-6.1-sol-high", "gpt-6.1-sol-max"))))   # Arena does not publish codex's price
+        self.snap.write_text(json.dumps(F.snapshot(date=time.strftime("%Y-%m-%dT%H:%M:%S"), no_price=("gpt-6.1-sol-high", "gpt-6.1-sol-max"))))   # Arena does not publish codex's price
         M._memo.clear()
         with mock.patch.object(priorities, "run") as run:
             self.run_startup()

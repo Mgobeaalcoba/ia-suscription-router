@@ -2,6 +2,14 @@
 
 > New entries at the top. Format: YYYY-MM-DD · agent · title. Append-only history: old entries are never edited.
 
+## 2026-10-27 · Claude · Arena from the official dataset, background update, 0.9.0
+
+- arena.ai answers a Cloudflare challenge (403, `cf-mitigated: challenge`) to the snapshot script: not bypassed. Source moved to the CC BY 4.0 dataset through datasets-server (`metrics.fetch_arena`): 46 categories, 12,930 rows, ~10 min per full read.
+- Validated against the bundled snapshot: same top models, same matching for the user's models. Prices are matched by normalized name (slug vs display name): 282 of 418 carried over.
+- Chat update runs in a thread (`metrics.refresh_in_background`) after yes; `active()` picks the new cache on the next call.
+- Test isolation bug: `test_setup` restored an import-time PATH and dropped `tests/fake_bin` for later modules; `test_chat` then ran the REAL claude/codex/agy (quota spent: one turn reported ~382k input tokens). Fixed; the full suite now runs in ~44 s instead of 220-490 s. A chat test with a stale fixture date also started a real download: fixed, and network guards added in `test_chat` and `test_setup`.
+- 0.9.0 released (see CHANGELOG).
+
 ## 2026-10-27 · Claude · agy commands only with explicit approval
 
 - Owner request: agy may run commands, but only with explicit per-command approval in the chat.

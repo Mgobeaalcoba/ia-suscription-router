@@ -1,14 +1,14 @@
 """Objective metrics that feed the routing. It is the single source of truth: there are no hand estimates except as a last resort.
 
-  Arena (arena.ai)              ACCURACY and list price. Elo per category (human preference in blind comparisons, with
-                                style control and confidence interval). Public pages of arena.ai/leaderboard (its robots.txt
-                                allows them); same data as the CC BY 4.0 dataset `lmarena-ai/leaderboard-dataset`.
+  Arena (CC BY 4.0)             ACCURACY. Elo per category (human preference in blind comparisons, with style control and
+                                confidence interval) from the official dataset `lmarena-ai/leaderboard-dataset`, read through
+                                the Hugging Face datasets server. arena.ai itself blocks automated reads (Cloudflare challenge).
   Artificial Analysis (optional) SPEED (tokens/s), price and correct-answer benchmarks (coding and math indexes, GPQA,
                                 HLE…). API with a free key in ARTIFICIAL_ANALYSIS_API_KEY (see `.env.example`); it asks for attribution.
 
 This version of the software EMBEDS the latest Arena snapshot (`data/arena.json`, regenerated with `tools/update_snapshot.py`),
 so it routes with metrics from the first use, with no network. `metrics refresh` downloads a newer one to ~/.ia-router/metrics.json;
-the most recent one always wins. Nothing is queried on its own: updating is a user action.
+the most recent one always wins. Nothing is queried on its own: updating is a user action (once you say yes, it runs in the background).
 
 Rules to avoid fooling yourself:
   - matching is by the REAL id of the model each CLI uses and its effort level (-high, -max…); if Arena does not publish that level the
@@ -23,15 +23,16 @@ import math
 import os
 import re
 import subprocess
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from . import state
 
-ARENA_PAGE = "https://arena.ai/leaderboard"  # the per-category pages are /leaderboard/text/<category>
 AA_URL = "https://artificialanalysis.ai/api/v2/data/llms/models"
 SNAPSHOT = Path(__file__).resolve().parent / "data" / "arena.json"
 STALE_DAYS = 7
@@ -153,60 +154,77 @@ def pick_variant(entries: List[Tuple[str, Optional[str]]], wanted: Optional[str]
     return entries[0][0], entries[0][1], False
 
 
-# ---------- Arena: public pages ----------
+# ---------- Arena: the official dataset, through the Hugging Face datasets server ----------
+# arena.ai answers automated readers with a Cloudflare challenge, so the router reads the same leaderboard from the CC BY 4.0
+# dataset. Its rows carry rating, interval, votes and category, but no prices: those come from the data already on this machine.
 
-def arena_pages() -> List[Tuple[str, str, str]]:
-    """(subset, category, URL) of the arena.ai pages that feed ARENA_MAP, without repeats."""
-    pages, seen = [], set()
-    for pairs in ARENA_MAP.values():
-        for sub, cat in pairs:
-            if (sub, cat) in seen:
-                continue
-            seen.add((sub, cat))
-            if sub == "text":
-                url = f"{ARENA_PAGE}/text" + ("" if cat == "overall" else "/" + cat.replace("_", "-"))
-            else:
-                url = f"{ARENA_PAGE}/" + {"webdev": "code/webdev"}.get(sub, sub)
-            pages.append((sub, cat, url))
-    return sorted(pages)
+DATASET = "lmarena-ai/leaderboard-dataset"
+DATASET_API = "https://datasets-server.huggingface.co/rows"
+DATASET_SPLIT = "latest"
+DATASET_SUBSETS = ("text", "webdev", "vision", "search")   # the subsets ARENA_MAP reads
+DATASET_PAGE = 100          # the largest page the server returns
+DATASET_PAUSE = 1.5         # seconds between requests: one at a time, with a pause (AGENTS.md: the server answers 429 under bursts)
 
 
-def parse_leaderboard(html: str) -> List[Dict]:
-    """Leaderboard entries that arena.ai embeds in the HTML (Next.js data): [{modelDisplayName, rating, ratingUpper, …}]."""
-    chunks = re.findall(r'self\.__next_f\.push\(\[1,"(.*?)"\]\)</script>', html, re.S)
+def dataset_url(config: str, offset: int) -> str:
+    return DATASET_API + "?" + urllib.parse.urlencode({"dataset": DATASET, "config": config, "split": DATASET_SPLIT,
+                                                       "offset": offset, "length": DATASET_PAGE})
+
+
+def prices_from(pages: Dict[str, List[list]]) -> Dict[str, Tuple[Optional[float], Optional[float]]]:
+    """{model: (price_in, price_out)} from compact pages that carry prices, so a refresh keeps the prices Arena published before."""
+    out: Dict[str, Tuple[Optional[float], Optional[float]]] = {}
+    for rows in (pages or {}).values():
+        for r in rows:
+            if len(r) > 6 and r[5] is not None and norm(r[0]) not in out:   # by the normalized name: the snapshot and the dataset spell it differently
+                out[norm(r[0])] = (r[5], r[6])
+    return out
+
+
+def _dataset_row(item: Dict) -> Dict:
     try:
-        txt = "".join(json.loads('"' + c + '"') for c in chunks)
-        m = re.search(r'"leaderboard":\{"arenaSlug":"[^"]+","leaderboardSlug":"[^"]+","params":\{[^}]*\},', txt)
-        i = txt.index('"entries":[', m.start()) + len('"entries":')
-        entries, _ = json.JSONDecoder().raw_decode(txt[i:])
-    except (ValueError, AttributeError) as exc:
-        raise ValueError("arena.ai changed the page format: I cannot find the leaderboard table") from exc
-    if not isinstance(entries, list) or not entries or "rating" not in entries[0]:
-        raise ValueError("the arena.ai leaderboard table does not have the expected format")
-    return entries
+        r = item["row"]
+        return {"model": r["model_name"], "rating": r["rating"], "lower": r["rating_lower"], "upper": r["rating_upper"],
+                "votes": r["vote_count"], "category": r["category"]}
+    except (KeyError, TypeError) as exc:
+        raise ValueError("the Arena dataset does not have the expected format") from exc
 
 
-def fetch_arena(pages: Optional[List[Tuple[str, str, str]]] = None, get: Callable[..., str] = http_get, say: Callable[[str], None] = lambda s: None,
-                sleep: Callable[[float], None] = time.sleep) -> Dict[str, List[list]]:
-    """{"text/coding": [[model, rating, lower, upper, votes, price_in, price_out], …], …} reading the arena.ai pages:
-    one per category (~11 requests of 2-3 MB), one at a time and with a pause. If one fails it is reported and the rest continue."""
+def fetch_arena(prices: Optional[Dict[str, Tuple[Optional[float], Optional[float]]]] = None, get: Callable[..., str] = http_get,
+                say: Callable[[str], None] = lambda s: None, sleep: Callable[[float], None] = time.sleep) -> Dict[str, List[list]]:
+    """{"text/coding": [[model, rating, lower, upper, votes, price_in, price_out], …], …} for every subset ARENA_MAP reads.
+    Pages of 100 rows, one request at a time with a pause. A subset that fails is reported and the rest continue (its rows are dropped)."""
+    prices = prices or {}
     out: Dict[str, List[list]] = {}
-    failed = 0
-    pages = pages if pages is not None else arena_pages()
-    for k, (sub, cat, url) in enumerate(pages):
-        if k:
-            sleep(1.0)
+    failed, first = 0, True
+    for config in DATASET_SUBSETS:
+        rows: List[Dict] = []
+        offset, total = 0, None
         try:
-            entries = parse_leaderboard(get_with_retry(get, url, sleep=sleep, timeout=90))
-        except (OSError, ValueError) as exc:
+            while total is None or offset < total:
+                if not first:
+                    sleep(DATASET_PAUSE)
+                first = False
+                data = json.loads(get_with_retry(get, dataset_url(config, offset), tries=6, sleep=sleep, timeout=60))
+                total = int(data.get("num_rows_total") or 0)
+                items = data.get("rows") or []
+                if not items:
+                    break
+                rows += [_dataset_row(i) for i in items]
+                offset += len(items)
+        except (OSError, ValueError, TypeError) as exc:
             failed += 1
-            say(f"  ⚠ Arena {sub}/{cat}: {str(exc)[:110]}")
+            say(f"  ⚠ Arena {config}: {str(exc)[:110]}")
             continue
-        out[f"{sub}/{cat}"] = [[e["modelDisplayName"], e["rating"], e.get("ratingLower"), e.get("ratingUpper"), e.get("votes"),
-                                e.get("inputPricePerMillion"), e.get("outputPricePerMillion")] for e in entries if "modelDisplayName" in e]
-        say(f"Arena · {sub}/{cat}: {len(entries)} models")
-    if pages and failed == len(pages):
-        raise OSError("could not read any arena.ai page")
+        if not rows:
+            say(f"  ⚠ Arena {config}: no rows")
+            continue
+        for r in rows:
+            p = prices.get(norm(r["model"]), (None, None))
+            out.setdefault(f"{config}/{r['category']}", []).append([r["model"], r["rating"], r["lower"], r["upper"], r["votes"], p[0], p[1]])
+        say(f"Arena · {config}: {len(rows)} rows")
+    if failed == len(DATASET_SUBSETS):
+        raise OSError("could not read any Arena subset")
     return out
 
 
@@ -316,7 +334,7 @@ def cache_path() -> Path:
     return state.home() / "metrics.json"
 
 
-CACHE_KEYS = ("pages", "arena_at", "aa", "aa_at")
+CACHE_KEYS = ("pages", "arena_at", "aa", "aa_at", "refresh_error")
 
 
 def load_cache() -> Dict:
@@ -497,9 +515,11 @@ def refresh(cfg: Dict, say: Callable[[str], None] = print, get: Callable[..., st
         say(f"Your metrics are {age * 24:.1f} h old: not querying again (use --force to insist).")
         return cache
     if not fresh or force:
-        say("Reading the arena.ai leaderboards (one page per category, ~11 requests of 2-3 MB, about a minute)…")
-        cache["pages"] = fetch_arena(get=get, say=say, sleep=sleep)
+        say("Reading the Arena leaderboards from the official dataset (about 130 pages of 100 rows, a few minutes)…")
+        prices = prices_from(active().get("pages") or {})   # the dataset has no prices: keep the ones already known
+        cache["pages"] = fetch_arena(prices=prices, get=get, say=say, sleep=sleep)
         cache["arena_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        cache.pop("refresh_error", None)
     if key:
         try:
             say("Querying Artificial Analysis (speed, price and benchmarks)…")
@@ -512,3 +532,29 @@ def refresh(cfg: Dict, say: Callable[[str], None] = print, get: Callable[..., st
     save_cache(cache)
     _memo.clear()
     return cache
+
+
+_refreshing = threading.Lock()   # one background download at a time
+
+
+def refresh_in_background(cfg: Dict, key: Optional[str] = None, force: bool = False, get: Callable[..., str] = http_get,
+                          sleep: Callable[[float], None] = time.sleep) -> Optional[threading.Thread]:
+    """Runs refresh() in a thread and returns at once, so the chat keeps working with the data it has. When the download is saved,
+    the next routing decision uses it (active() reads the cache each time). A failure is kept in the cache as `refresh_error`.
+    Returns the thread, or None if a download is already running."""
+    if not _refreshing.acquire(blocking=False):
+        return None
+
+    def work() -> None:
+        try:
+            refresh(cfg, say=lambda s: None, get=get, key=key, force=force, sleep=sleep)
+        except Exception as exc:  # a background thread must not die silently: the reason is kept for `/metrics`
+            cache = load_cache()
+            cache["refresh_error"] = f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {str(exc)[:200]}"
+            save_cache(cache)
+        finally:
+            _refreshing.release()
+
+    thread = threading.Thread(target=work, name="ia-router-metrics", daemon=True)
+    thread.start()
+    return thread

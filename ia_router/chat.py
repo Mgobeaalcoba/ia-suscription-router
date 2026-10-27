@@ -101,6 +101,13 @@ class Chat:
     def say(self, s: str = "") -> None:
         self.write(s)
 
+    def start_background_update(self, cfg: Dict, force: bool = False) -> None:
+        """The download runs in a thread: the chat keeps answering with the data it has, and the next routing uses the new one."""
+        if metrics.refresh_in_background(cfg, force=force) is None:
+            self.say(self.dim("The metrics are already updating in the background."))
+        else:
+            self.say(self.dim("Updating the metrics in the background."))
+
     def approve_command(self, command: str) -> bool:
         """agy asked to run a command: it runs only if the user says yes right now, for this one command."""
         self.say(self.dim(f"agy asks to run: {command}"))
@@ -216,8 +223,7 @@ class Chat:
             self.say(scoring.render_table(cfg, [arg] if arg else None) + (("\n\n" + scoring.explain(cfg, arg)) if arg else ""))
         elif cmd == "metrics":
             if arg in ("refresh", "force"):
-                scoring.refresh_and_report(core.load_config(apply_scoring=False), self.say, force=arg == "force")
-                cfg = core.load_config()
+                self.start_background_update(core.load_config(apply_scoring=False), force=arg == "force")
             self.say(("\n" if arg else "") + scoring.describe_sources(cfg))
         elif cmd == "priorities":
             if priorities.run(cfg, say=self.say, color=self.color):
@@ -346,8 +352,8 @@ class Chat:
             days = int(metrics.age_days(data.get("arena_at")) or 0)
             self.say(f"The metrics are from {(data.get('arena_at') or '?')[:10]} ({days} days ago, {data.get('arena_origin')}).")
             state.set_flag("asked_refresh", today)
-            if self.ask_yes("Update them? (reads public arena.ai pages, about a minute)"):
-                scoring.refresh_and_report(cfg, self.say)
+            if self.ask_yes("Update them? (runs in the background: keep working meanwhile)"):
+                self.start_background_update(cfg)
         cfg = core.load_config()
         if not cfg.get("_scored"):
             return

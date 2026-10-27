@@ -173,57 +173,85 @@ class RetryTests(unittest.TestCase):
 
 
 class FetchTests(unittest.TestCase):
-    def test_reads_each_category_page_once_with_a_pause(self):
+    def test_reads_every_subset_in_pages_with_a_pause_between_requests(self):
         get, calls = F.fake_arena_get(F.sample_pages())
         waits = []
         out = M.fetch_arena(get=get, sleep=waits.append)
-        self.assertEqual(len(calls), len(M.arena_pages()))
-        self.assertEqual(waits.count(1.0), len(calls) - 1)
         self.assertIn("text/coding", out)
+        self.assertIn("webdev/overall", out)
+        self.assertEqual(waits.count(M.DATASET_PAUSE), len(calls) - 1)   # one at a time, with a pause
+        self.assertTrue(all(f"config={c}" in u for c in M.DATASET_SUBSETS for u in calls if f"config={c}" in u))
         row = next(r for r in out["text/coding"] if r[0] == "claude-sonnet-5.5-xhigh")
-        self.assertEqual((row[1], row[4], row[5], row[6]), (1520, 1000, 2, 10))   # rating, votes, prices
+        self.assertEqual((row[1], row[4]), (1520, 1000))                 # rating and votes come from the dataset
+        self.assertEqual((row[5], row[6]), (None, None))                 # the dataset has no prices
 
-    def test_a_failing_page_is_reported_and_the_rest_continue(self):
+    def test_pages_of_one_hundred_rows_until_the_total_is_reached(self):
+        many = {"text/overall": [F.row(f"model-{i}", 1000 + i) for i in range(230)]}
+        get, calls = F.fake_arena_get(many)
+        out = M.fetch_arena(get=get, sleep=lambda s: None)
+        self.assertEqual(len(out["text/overall"]), 230)
+        text_calls = [u for u in calls if "config=text&" in u]
+        self.assertEqual(len(text_calls), 3)                              # 100 + 100 + 30
+
+    def test_prices_already_known_are_kept(self):
+        get, _ = F.fake_arena_get(F.sample_pages())
+        prices = M.prices_from({"text/coding": [["claude-sonnet-5.5-xhigh", 1500, 1, 2, 10, 2, 10]]})
+        out = M.fetch_arena(prices=prices, get=get, sleep=lambda s: None)
+        row = next(r for r in out["text/coding"] if r[0] == "claude-sonnet-5.5-xhigh")
+        self.assertEqual((row[5], row[6]), (2, 10))
+
+    def test_known_prices_match_across_spellings(self):
+        # the snapshot writes slugs ("claude-sonnet-5.5-xhigh") and the dataset display names ("Claude Sonnet 5.5 (xHigh)")
+        prices = M.prices_from({"text/coding": [["claude-sonnet-5.5-xhigh", 1500, 1, 2, 10, 2, 10]]})
+        get, _ = F.fake_arena_get({"text/coding": [["Claude Sonnet 5.5 (xHigh)", 1500, 1490, 1510, 10, None, None]]})
+        out = M.fetch_arena(prices=prices, get=get, sleep=lambda s: None)
+        self.assertEqual(out["text/coding"][0][5:], [2, 10])
+
+    def test_a_failing_subset_is_reported_and_the_rest_continue(self):
         msgs = []
-        out = M.fetch_arena(get=F.fake_arena_get(F.sample_pages(), fail={"/text/coding": 404})[0], say=msgs.append, sleep=lambda s: None)
-        self.assertTrue(any("text/coding" in m and "⚠" in m for m in msgs))
-        self.assertNotIn("text/coding", out)
+        out = M.fetch_arena(get=F.fake_arena_get(F.sample_pages(), fail={"config=webdev": 404})[0], say=msgs.append, sleep=lambda s: None)
+        self.assertTrue(any("webdev" in m and "⚠" in m for m in msgs))
+        self.assertNotIn("webdev/overall", out)
         self.assertIn("text/math", out)
 
-    def test_empty_page_is_a_warning_not_a_crash(self):
+    def test_empty_subset_is_a_warning_not_a_crash(self):
         msgs = []
         out = M.fetch_arena(get=F.fake_arena_get(F.sample_pages())[0], say=msgs.append, sleep=lambda s: None)   # search is empty in the fixture
-        self.assertTrue(any("search" in m and "⚠" in m for m in msgs))
+        self.assertTrue(any("search" in m and "no rows" in m for m in msgs))
         self.assertNotIn("search/overall", out)
 
-    def test_all_pages_failing_raises(self):
+    def test_all_subsets_failing_raises(self):
         with self.assertRaises(OSError):
-            M.fetch_arena(get=F.fake_arena_get(F.sample_pages(), fail={"arena.ai": 500})[0], sleep=lambda s: None)
+            M.fetch_arena(get=F.fake_arena_get(F.sample_pages(), fail={"datasets-server": 500})[0], sleep=lambda s: None)
 
     def test_rate_limit_is_retried_with_a_wait(self):
         waits = []
         self.assertTrue(M.fetch_arena(get=F.fake_arena_get(F.sample_pages(), fail={1: 429})[0], sleep=waits.append))
         self.assertIn(8, waits)
 
-    def test_unexpected_page_format_gives_a_clear_error(self):
-        for html in ("<html>nada</html>", "<script>self.__next_f.push([1,\"{}\"])</script>", F.page_html([])):
-            with self.assertRaises(ValueError) as cm:
-                M.parse_leaderboard(html)
-            self.assertIn("format", str(cm.exception))
+    def test_unexpected_format_gives_a_clear_error(self):
+        def bad_get(url, headers=None, timeout=None):
+            return '{"num_rows_total": 1, "rows": [{"row": {"model_name": "x"}}]}'
+        out = {}
+        msgs = []
+        for config in M.DATASET_SUBSETS:
+            pass
+        with self.assertRaises(OSError):   # every subset fails the same way: nothing usable
+            M.fetch_arena(get=bad_get, say=msgs.append, sleep=lambda s: None)
+        self.assertTrue(any("expected format" in m for m in msgs))
 
-    def test_pages_cover_the_whole_category_map(self):
-        pages = {(s, c): u for s, c, u in M.arena_pages()}
+    def test_dataset_urls_are_paged_and_name_the_split(self):
+        u = M.dataset_url("text", 200)
+        self.assertIn("datasets-server.huggingface.co/rows", u)
+        self.assertIn("config=text", u)
+        self.assertIn("split=latest", u)
+        self.assertIn("offset=200", u)
+        self.assertIn(f"length={M.DATASET_PAGE}", u)
+
+    def test_every_category_of_the_map_reads_a_subset_the_fetch_covers(self):
         for pairs in M.ARENA_MAP.values():
-            for pair in pairs:
-                self.assertIn(pair, pages)
-        self.assertEqual(pages[("text", "overall")], "https://arena.ai/leaderboard/text")
-        self.assertEqual(pages[("text", "hard_prompts")], "https://arena.ai/leaderboard/text/hard-prompts")
-        self.assertEqual(pages[("webdev", "overall")], "https://arena.ai/leaderboard/code/webdev")
-
-    def test_parses_escapes_and_unicode(self):
-        html = F.page_html([['modèl-ñ "x"', 1500.5, 1490, 1510, 10, None, None]])
-        self.assertEqual(M.parse_leaderboard(html)[0]["modelDisplayName"], 'modèl-ñ "x"')
-
+            for sub, _cat in pairs:
+                self.assertIn(sub, M.DATASET_SUBSETS)
 
 class MatchTests(unittest.TestCase):
     def match(self, ids=None, overrides=None, **kw):
@@ -346,8 +374,9 @@ class ActiveDataTests(Home):
     def test_bundled_snapshot_is_valid_and_complete(self):
         real = json.loads((ROOT / "ia_router" / "data" / "arena.json").read_text(encoding="utf-8"))
         self.assertRegex(real["fetched_at"], r"^\d{4}-\d{2}-\d{2}T")
-        for sub, cat, _ in M.arena_pages():
-            self.assertTrue(real["pages"].get(f"{sub}/{cat}"), f"{sub}/{cat} is missing from the bundled snapshot")
+        for pairs in M.ARENA_MAP.values():
+            for sub, cat in pairs:
+                self.assertTrue(real["pages"].get(f"{sub}/{cat}"), f"{sub}/{cat} is missing from the bundled snapshot")
         self.assertIn("CC BY 4.0", real["attribution"])
         self.assertGreaterEqual(len(real["pages"]["text/overall"][0]), 7)
 
@@ -406,11 +435,33 @@ class RefreshTests(Home):
         super().setUp()
         self.get = F.fake_arena_get(F.sample_pages())
 
+    def test_background_refresh_saves_the_new_data_and_reports_failures(self):
+        get, _ = F.fake_arena_get(F.sample_pages())
+        t = M.refresh_in_background(self.cfg, get=get, sleep=lambda s: None)
+        self.assertIsNotNone(t)
+        t.join(5)
+        self.assertIn("text/coding", M.load_cache()["pages"])
+        self.assertNotIn("refresh_error", M.load_cache())
+        bad, _ = F.fake_arena_get(F.sample_pages(), fail={"datasets-server": 500})
+        cache = M.load_cache()
+        cache["arena_at"] = "2000-01-01T00:00:00"   # old enough to download again
+        M.save_cache(cache)
+        t = M.refresh_in_background(self.cfg, get=bad, sleep=lambda s: None)
+        t.join(5)
+        self.assertIn("refresh_error", M.load_cache())
+
+    def test_only_one_background_download_at_a_time(self):
+        M._refreshing.acquire()
+        try:
+            self.assertIsNone(M.refresh_in_background(self.cfg, get=F.fake_arena_get(F.sample_pages())[0], sleep=lambda s: None))
+        finally:
+            M._refreshing.release()
+
     def test_refresh_saves_in_the_user_cache_and_becomes_the_active_data(self):
         out = []
         c = M.refresh(self.cfg, out.append, self.get[0], sleep=lambda s: None)
         self.assertIn("text/coding", c["pages"])
-        self.assertTrue(any("arena.ai" in m for m in out))
+        self.assertTrue(any("Arena" in m for m in out))
         self.assertEqual(M.active()["arena_origin"], "updated on your machine")
         self.assertTrue(M.cache_path().exists())
 
@@ -476,7 +527,7 @@ class RefreshTests(Home):
     def test_total_failure_raises_and_keeps_the_previous_data(self):
         M.save_cache({"pages": {"text/overall": [["m", 1, 1, 1, 1, None, None]]}, "arena_at": "2020-01-01T00:00:00"})
         with self.assertRaises(OSError):
-            M.refresh(self.cfg, lambda s: None, F.fake_arena_get(F.sample_pages(), fail={"arena.ai": 500})[0], sleep=lambda s: None)
+            M.refresh(self.cfg, lambda s: None, F.fake_arena_get(F.sample_pages(), fail={"datasets-server": 500})[0], sleep=lambda s: None)
         self.assertEqual(M.load_cache()["arena_at"], "2020-01-01T00:00:00")
 
 

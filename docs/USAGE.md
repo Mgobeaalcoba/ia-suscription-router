@@ -10,7 +10,7 @@ All the examples assume you are in the repo folder:
 cd ~/Documents/ia-suscription-router
 ```
 
-The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 444 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
+The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 449 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
 
 ---
 
@@ -240,7 +240,7 @@ Everything in the chat also exists as commands for scripts (`setup`, `ask`, `rou
 
 | Source | What it provides | Access |
 |---|---|---|
-| **[Arena](https://arena.ai/leaderboard)** | **Accuracy**: Elo per category (human preference in blind comparisons, with style control and margin of error): coding, hard_prompts, expert, math, creative_writing, instruction_following, longer_query and the vision, search and webdev arenas. Also the **price** per million tokens, when it publishes it. | Public pages of `arena.ai/leaderboard` (its `robots.txt` allows them). It is the same data as the official `lmarena-ai/leaderboard-dataset` dataset (CC BY 4.0). No key. |
+| **[Arena](https://arena.ai/leaderboard)** (official dataset) | **Accuracy**: Elo per category (human preference in blind comparisons, with style control and margin of error): coding, hard_prompts, expert, math, creative_writing, instruction_following, longer_query and the vision, search and webdev arenas. Also the **price** per million tokens, when it publishes it. | Public pages of `arena.ai/leaderboard` (its `robots.txt` allows them). It is the same data as the official `lmarena-ai/leaderboard-dataset` dataset (CC BY 4.0). No key. |
 | **[Artificial Analysis](https://artificialanalysis.ai/)** | **Speed** (tokens/s), **price** and correct-answer benchmarks (coding and math indexes, GPQA, HLE…). | API with a **free key** (see 4.2). Optional. |
 
 **The software ships with the latest Arena snapshot** (`ia_router/data/arena.json`, 323 KB), so it needs no network to route with metrics. When you update (4.5), a newer one is saved to `~/.ia-router/metrics.json` and **the most recent of the two always applies**. Nothing is queried on its own: updating is your action.
@@ -322,7 +322,7 @@ What changed in the routing:
   · <category>: <model> <before>→<now>        (moves of 0.3 points or more)
 ```
 
-(If it fails, it tells you and continues with the metrics you had.) About 11 arena.ai pages are read, one at a time and with a pause, with retries on rate limiting: **about a minute**. The data is cached: if yours is less than 12 hours old it does not request it again (`--force` to insist). If the site changes the format of its pages, it reports a clear error and everything continues with what you had.
+(If it fails, it tells you and continues with the metrics you had.) The official Arena dataset is read through the Hugging Face datasets server: about 130 requests of 100 rows, one at a time with a pause, with retries on rate limiting: **about ten minutes**. In the chat it runs in the background: you keep working, and the next answer uses the new data as soon as it is saved. arena.ai itself blocks automated reads, so the router does not use it. The data is cached: if yours is less than 12 hours old it does not request it again (`--force` to insist). If the site changes the format of its pages, it reports a clear error and everything continues with what you had.
 
 ### 4.6 What each category looks at
 
@@ -837,7 +837,7 @@ A task can have several at once (for example `debugging×3, coding×2`). The cla
 | `scores` says "There are no metrics covering your models yet" | The router does not know which model each CLI uses. | `python3 cli.py doctor --probe` (or accept the detection when the chat starts). |
 | `/metrics` says "Arena → no match for that model" for a model | Arena does not have it under that name. | Force it with `"external"` in `models.json`, or use the exact name the leaderboard shows. |
 | `/priorities` says "nothing to prioritize" | Without Artificial Analysis there is no speed or cost data. | Turn it on (4.2) and run `metrics refresh`. |
-| `metrics refresh` fails or asks you to wait | arena.ai changed the format of its pages, or the site rate-limits requests (HTTP 429). | Try again later. Meanwhile the router continues with the metrics it had. |
+| `metrics refresh` fails or asks you to wait | The dataset server changed its format, or it rate-limits requests (HTTP 429). | Try again later. Meanwhile the router continues with the metrics it had. |
 | `Artificial Analysis: could not be queried` | Invalid key, daily quota exhausted (1,000 requests) or no network. | Check the key in `.env`; Arena keeps working. |
 | `doctor --probe` shows `auth=missing` | The CLI is installed but not logged in. | Log in to that CLI (run it with no arguments). Then `python3 cli.py reset-cooldowns`. |
 | `agy` or `gemini` say *"This client is no longer supported"* | Google discontinued Gemini CLI. | Use `agy` (Antigravity) instead. |

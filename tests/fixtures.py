@@ -1,4 +1,4 @@
-"""Shared test data: a toy leaderboard in metrics.py's compact format and the arena.ai HTML pages."""
+"""Shared test data: a toy leaderboard in metrics.py's compact format and a fake Hugging Face datasets server."""
 import json
 
 IDS = {"claude": "claude-sonnet-5-5", "codex": "gpt-6.1-sol", "antigravity": "Gemini 3.8 Flash (High)"}
@@ -50,17 +50,10 @@ def aa_api_payload():
     return json.dumps({"status": 200, "data": out})
 
 
-def page_html(entries):
-    """HTML of an arena.ai page with the table embedded as Next.js data (same format as the real site)."""
-    ents = [{"rank": i + 1, "modelKey": "k", "modelDisplayName": e[0], "rating": e[1], "ratingLower": e[2], "ratingUpper": e[3], "votes": e[4],
-             "license": "Proprietary", "inputPricePerMillion": e[5], "outputPricePerMillion": e[6]} for i, e in enumerate(entries)]
-    payload = ('{"a":1,"leaderboard":{"arenaSlug":"text","leaderboardSlug":"x","params":{"category":"x","styleControl":true},"category":"$44:0:1",'
-               '"id":"i","entries":%s},"b":2}' % json.dumps(ents))
-    return "<html><head></head><body><script>self.__next_f.push([1," + json.dumps(payload) + "])</script></body></html>"
-
-
 def fake_arena_get(pages, fail=None):
-    """Fake arena.ai get() that serves each category's page. `fail` = {url_fragment | call_number: HTTP status}."""
+    """Fake datasets-server get(): serves the sample pages as the rows of the Arena dataset, in pages of `length` like the real API.
+    `fail` = {url_fragment | call_number: HTTP status}. Returns (get, calls)."""
+    from urllib.parse import parse_qs, urlparse
     from ia_router import metrics as M
     calls = []
 
@@ -69,12 +62,15 @@ def fake_arena_get(pages, fail=None):
         for key, status in (fail or {}).items():
             if (isinstance(key, int) and len(calls) == key) or (isinstance(key, str) and key in url):
                 raise M.HttpError(status, url)
-        path = url.split("/leaderboard", 1)[1]
-        if path.startswith("/text"):
-            key = "text/" + (path[len("/text/"):].replace("-", "_") if path != "/text" else "overall")
-        elif path.startswith("/code/webdev"):
-            key = "webdev/overall"
-        else:
-            key = path.strip("/") + "/overall"
-        return page_html(pages.get(key, []))
+        q = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+        rows = []
+        for key, items in pages.items():
+            sub, _, cat = key.partition("/")
+            if sub != q["config"]:
+                continue
+            for r in items:
+                rows.append({"row": {"model_name": r[0], "rating": r[1], "rating_lower": r[2], "rating_upper": r[3], "vote_count": r[4],
+                                     "category": cat, "organization": "x", "license": "x"}})
+        off, n = int(q["offset"]), int(q["length"])
+        return json.dumps({"num_rows_total": len(rows), "rows": rows[off:off + n], "features": []})
     return get, calls

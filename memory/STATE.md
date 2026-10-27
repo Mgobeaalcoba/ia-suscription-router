@@ -2,7 +2,7 @@
 
 > Current snapshot. Updated at every close; history lives in LOG.md.
 
-**Updated:** 2026-10-27 · agy permission_denied handling
+**Updated:** 2026-10-27 · Arena dataset + background update, 0.9.0
 
 ## State
 
@@ -11,7 +11,7 @@
 
 ## Next step
 
-1. Review and commit the agy changes (not committed yet): RUN protocol with per-command approval in chat, CLI and UI.
+1. Consider a guard that makes any real CLI call fail during tests (the isolation bug went unnoticed for a while).
 
 ## Pending
 

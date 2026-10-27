@@ -1,10 +1,10 @@
 import json, os, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 FAKE_BIN = str(ROOT / "tests" / "fake_bin")
-REAL_PATH = os.environ["PATH"]
 
 from ia_router import chat, core, setup as S, state  # noqa: E402
 
@@ -14,7 +14,8 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         os.environ["ROUTER_HOME"] = self.tmp.name
-        self.addCleanup(lambda: os.environ.__setitem__("PATH", REAL_PATH))
+        saved_path = os.environ["PATH"]   # what the other test modules set up (fake CLIs first): put it back as it was
+        self.addCleanup(lambda: os.environ.__setitem__("PATH", saved_path))
         self.out = []
 
     def path(self, *names):
@@ -118,6 +119,9 @@ class FlowTests(Base):
 
 class ChatIntegrationTests(Base):
     def make(self, cfg_names, answers=()):
+        guard = mock.patch("ia_router.metrics.refresh_in_background", return_value=object())   # never reach the network from a test
+        guard.start()
+        self.addCleanup(guard.stop)
         self.path(*cfg_names)
         answers = list(answers)
         c = chat.Chat(read=lambda prompt="": answers.pop(0) if answers else "", write=self.say, color=False)
