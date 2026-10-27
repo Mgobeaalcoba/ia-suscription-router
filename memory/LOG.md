@@ -2,6 +2,12 @@
 
 > New entries at the top. Format: YYYY-MM-DD · agent · title. Append-only history: old entries are never edited.
 
+## 2026-10-27 · Claude · real-CLI guard in tests, docs, 0.10.0
+
+- `adapters.guard_real_cli` refuses `claude`/`codex`/`agy` outside `tests/fake_bin` when `IA_ROUTER_BLOCK_REAL_CLIS` is set; checked at both launches and the probe. Every test module sets it at import. Suite: 452 tests, OK, ~44 s.
+- Docs updated for the guard and counts (AGENTS, CONTRIBUTING, README, USAGE). Captured outputs in USAGE stay as they were (2026-10-05 data).
+- Released 0.10.0.
+
 ## 2026-10-27 · Claude · Arena from the official dataset, background update, 0.9.0
 
 - arena.ai answers a Cloudflare challenge (403, `cf-mitigated: challenge`) to the snapshot script: not bypassed. Source moved to the CC BY 4.0 dataset through datasets-server (`metrics.fetch_arena`): 46 categories, 12,930 rows, ~10 min per full read.

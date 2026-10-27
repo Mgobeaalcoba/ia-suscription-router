@@ -1,11 +1,47 @@
+import os as _guard_os; _guard_os.environ.setdefault("IA_ROUTER_BLOCK_REAL_CLIS", "1")  # tests never run a real model CLI
 import json, os, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.environ["PATH"] = str(ROOT / "tests" / "fake_bin") + os.pathsep + os.environ["PATH"]
 
-from ia_router import core, state  # noqa: E402
+from ia_router import adapters, core, state  # noqa: E402
+
+
+class RealCliGuardTests(unittest.TestCase):
+    """With the guard on, a model CLI outside tests/fake_bin never runs: the test fails before anything is executed."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.marker = Path(self.tmp.name) / "ran"
+        real = Path(self.tmp.name) / "bin"
+        real.mkdir()
+        exe = real / "claude"   # stands in for a real CLI: if it ever runs, it leaves a marker
+        exe.write_text(f"#!/bin/sh\ntouch {self.marker}\necho real\n")
+        exe.chmod(0o755)
+        old_path = os.environ["PATH"]
+        os.environ["PATH"] = str(real) + os.pathsep + old_path
+        self.addCleanup(os.environ.__setitem__, "PATH", old_path)
+        patch = mock.patch.dict(os.environ, {adapters.BLOCK_REAL_CLIS: "1"})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_a_real_model_cli_is_refused_before_it_runs(self):
+        with self.assertRaises(RuntimeError) as cm:
+            adapters.run_cli("claude", {"cmd": ["claude", "-p", "{prompt}"], "usage": {"parser": "claude"}}, "hi", usage=True)
+        self.assertIn("tests/fake_bin", str(cm.exception))
+        self.assertFalse(self.marker.exists())
+
+    def test_the_fake_clis_still_run(self):
+        adapters.guard_real_cli(str(adapters.FAKE_BIN / "claude"))   # no exception
+        adapters.guard_real_cli("ls")                                  # not a model CLI: never blocked
+
+    def test_normal_use_is_not_affected_when_the_guard_is_off(self):
+        with mock.patch.dict(os.environ, {adapters.BLOCK_REAL_CLIS: ""}):
+            adapters.guard_real_cli(str(self.marker.parent / "bin" / "claude"))   # no exception
 
 
 class CoreTests(unittest.TestCase):

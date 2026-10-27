@@ -10,7 +10,7 @@ All the examples assume you are in the repo folder:
 cd ~/Documents/ia-suscription-router
 ```
 
-The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 449 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
+The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 452 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
 
 ---
 
@@ -243,7 +243,7 @@ Everything in the chat also exists as commands for scripts (`setup`, `ask`, `rou
 | **[Arena](https://arena.ai/leaderboard)** (official dataset) | **Accuracy**: Elo per category (human preference in blind comparisons, with style control and margin of error): coding, hard_prompts, expert, math, creative_writing, instruction_following, longer_query and the vision, search and webdev arenas. Also the **price** per million tokens, when it publishes it. | Public pages of `arena.ai/leaderboard` (its `robots.txt` allows them). It is the same data as the official `lmarena-ai/leaderboard-dataset` dataset (CC BY 4.0). No key. |
 | **[Artificial Analysis](https://artificialanalysis.ai/)** | **Speed** (tokens/s), **price** and correct-answer benchmarks (coding and math indexes, GPQA, HLE…). | API with a **free key** (see 4.2). Optional. |
 
-**The software ships with the latest Arena snapshot** (`ia_router/data/arena.json`, 323 KB), so it needs no network to route with metrics. When you update (4.5), a newer one is saved to `~/.ia-router/metrics.json` and **the most recent of the two always applies**. Nothing is queried on its own: updating is your action.
+**The software ships with the latest Arena snapshot** (`ia_router/data/arena.json`, about 1.2 MB), so it needs no network to route with metrics. When you update (4.5), a newer one is saved to `~/.ia-router/metrics.json` and **the most recent of the two always applies**. Nothing is queried on its own: updating is your action.
 
 ### 4.2 Turn on Artificial Analysis (speed and cost)
 

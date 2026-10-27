@@ -1,3 +1,4 @@
+import os as _guard_os; _guard_os.environ.setdefault("IA_ROUTER_BLOCK_REAL_CLIS", "1")  # tests never run a real model CLI
 import http.server, json, os, stat, subprocess, sys, tempfile, threading, unittest
 from pathlib import Path
 

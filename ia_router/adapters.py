@@ -37,6 +37,23 @@ AUTH_RE = re.compile(
     r"no longer supported|ineligible|invalid api key|api key (is )?(not set|missing|required)|authentication (required|failed)|GEMINI_API_KEY",
     re.I,
 )
+# Tests set BLOCK_REAL_CLIS: then no model CLI may run unless it is one of the fakes in tests/fake_bin. A test that would spend
+# quota or touch a real login fails loudly instead. Normal use never sets it.
+BLOCK_REAL_CLIS = "IA_ROUTER_BLOCK_REAL_CLIS"
+MODEL_CLIS = ("claude", "codex", "agy")
+FAKE_BIN = Path(__file__).resolve().parent.parent / "tests" / "fake_bin"
+
+
+def guard_real_cli(argv0: str) -> None:
+    """Raises if the test guard is on and argv0 would run a real model CLI (anything outside tests/fake_bin)."""
+    if not os.environ.get(BLOCK_REAL_CLIS) or os.path.basename(argv0) not in MODEL_CLIS:
+        return
+    exe = shutil.which(argv0)
+    if exe is None or Path(exe).resolve().parent == FAKE_BIN:
+        return
+    raise RuntimeError(f"a test tried to run the real {os.path.basename(argv0)} ({exe}); the test must use tests/fake_bin")
+
+
 # Above this size the prompt goes through stdin so it does not exceed the argv limit.
 STDIN_THRESHOLD = 100_000
 
@@ -196,6 +213,7 @@ def _run_stream(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, parser, l
     The final answer, tokens and errors are interpreted exactly as in the non-streaming path."""
     import threading
     on_text, on_status = stream.get("on_text") or (lambda s: None), stream.get("on_status") or (lambda s: None)
+    guard_real_cli(argv[0])
     try:
         proc = subprocess.Popen(argv, stdin=subprocess.PIPE if use_stdin else subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, cwd=cwd, bufsize=1)
@@ -247,6 +265,7 @@ def _run_stream(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, parser, l
 
 
 def _run(name, spec, argv, prompt, use_stdin, timeout, cwd, t0, usage, logfile) -> Dict:
+    guard_real_cli(argv[0])
     try:
         proc = subprocess.run(
             argv,

@@ -22,14 +22,14 @@ Open an [*issue*](https://github.com/Mgobeaalcoba/ia-suscription-router/issues/n
 ```bash
 git clone https://github.com/Mgobeaalcoba/ia-suscription-router.git
 cd ia-suscription-router
-python3 -m unittest discover -s tests     # must end in OK (449 tests, ~15 s)
+python3 -m unittest discover -s tests     # must end in OK (452 tests, ~45 s)
 ```
 
 There is nothing to install: the project uses **only the Python standard library** and is compatible with **Python 3.9** (try it with `/usr/bin/python3` on macOS). Do not add dependencies.
 
 ## Rules checked on every pull request
 
-1. **Tests:** every behavior change comes with tests. Tests **use no network, call no real CLIs and do not touch `~/.ia-router`** (they use `tests/fake_bin`, a temporary `ROUTER_HOME` and `tests/fixtures.py`).
+1. **Tests:** every behavior change comes with tests. Tests **use no network, call no real CLIs and do not touch `~/.ia-router`** (every test module turns on `IA_ROUTER_BLOCK_REAL_CLIS`, which makes a real `claude`, `codex` or `agy` fail the test) (they use `tests/fake_bin`, a temporary `ROUTER_HOME` and `tests/fixtures.py`).
 2. **No secrets:** never push a `.env`, keys, tokens or personal data. The `.env` is ignored by git; only `.env.example` is versioned.
 3. **No unrequested spending:** nothing may consume a model's quota or query the network without the user asking.
 4. **Documentation up to date:** if a command, a state file or a rule changes, update `README.md`, `docs/USAGE.md` and `AGENTS.md` in the same change. The outputs shown in the guide must be **real**: capture them, do not invent them.

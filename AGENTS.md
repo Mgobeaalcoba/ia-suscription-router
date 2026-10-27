@@ -11,7 +11,7 @@ A Python router that splits tasks across the **official CLIs** of the AI subscri
 ## Commands
 
 ```bash
-python3 -m unittest discover -s tests       # the whole suite (449 tests, ~15 s); it must end in OK
+python3 -m unittest discover -s tests       # the whole suite (452 tests, ~45 s); it must end in OK
 python3 -m unittest tests.test_scoring      # one file
 /usr/bin/python3 -m unittest discover -s tests   # on macOS: system Python 3.9 (the minimum supported)
 python3 cli.py doctor                        # installed CLIs and which model each one uses (spends no quota)
@@ -30,7 +30,7 @@ There is no build or linter configured. Do not add dependencies.
 2. **Never touch OAuth tokens** or read the CLIs' credentials. Each CLI uses its own login.
 3. **Never turn on "allow everything" flags** (`--dangerously-skip-permissions` and similar).
 4. **Secrets: only `.env` (ignored by git) or the environment.** The real `.env` is **never versioned or printed**; `.env.example` (without keys) is versioned. The Artificial Analysis key travels through **`curl`'s stdin, never through argv** (it would show up in `ps`; see `metrics.http_get`). Do not log it. Tests must not read or write the real `.env` (they patch `envfile.REPO_ENV`).
-5. **Tests use no network, call no real CLIs and do not touch `~/.ia-router`.** They use `tests/fake_bin/*` (fake CLIs that emulate the real JSON), a temporary `ROUTER_HOME`, `tests/fixtures.py` (a toy leaderboard) and injectable `get`/`sleep` functions.
+5. **Tests use no network, call no real CLIs and do not touch `~/.ia-router`.** They use `tests/fake_bin/*` (fake CLIs that emulate the real JSON), a temporary `ROUTER_HOME`, `tests/fixtures.py` (a toy leaderboard and a fake datasets server) and injectable `get`/`sleep` functions. Every test module sets `IA_ROUTER_BLOCK_REAL_CLIS=1` when it is imported: then `adapters.guard_real_cli` refuses to run `claude`, `codex` or `agy` unless the executable is in `tests/fake_bin`, so a broken isolation fails loudly instead of spending quota. Never remove that line from a test module.
 6. **Network and quota are the user's decisions.** No real model call nor metrics update runs on its own or in tests. The chat always **asks before** spending anything (detecting models, updating). If you need to verify against the real services, warn before spending quota and use a separate `ROUTER_HOME`.
 7. **Respect public services:** one request at a time, with a pause, retries with a wait on 429, and a cache (see `metrics.py`).
 8. **Everything is in English:** user-facing text, code comments, docs, tests, commit messages and PR descriptions. Identifiers and code follow the rest of the file; comments are sparse and explain the *why*. The only Spanish allowed is the **task-classifier keywords** in `router.PATTERNS`/`QUICK_PATTERN` the intent patterns in `chat._SHOW` and the connector keywords in `connectors.KEYWORDS`: the router deliberately classifies tasks written in English and in Spanish, so do not remove those. `tests/test_repo.py` (`LanguageTests`) fails if Spanish text slips into the docs or the source.
@@ -100,6 +100,7 @@ Invariants:
 - **The UI runs commands the user typed, so confirm them.** A free connector command is the one place the page can start a program: it needs `confirm: true` from the page's confirmation step, is split with `shlex` and never goes through a shell. Never return secret values (env, headers) to the page. Uploaded files live in `~/.ia-router/uploads` (0600, pruned after 7 days) and the page may only attach files from there.
 - **Averaging tokens** only over runs that have recorded tokens (`token_runs`).
 - **Pty tests** (`PtySmokeTests`, `test_select`) compare before/after and not the absolute state of the file system.
+- **Test isolation: never restore PATH to a value captured at import.** `test_setup` used to restore the PATH from import time, which dropped `tests/fake_bin` for the modules that ran after it, and `test_chat` then ran the real `claude`, `codex` and `agy` (quota spent). Save PATH in `setUp` and restore that. A test with a stale fixture date also made the chat offer an update, and an unanswered question means yes: keep fixture dates recent, and the download is mocked in `test_chat` and `test_setup`.
 - `pyte` (terminal emulator) was used **by hand** to look at real screens; it is not a dependency and it is not imported in tests.
 
 ## How to extend

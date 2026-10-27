@@ -23,6 +23,7 @@ def probe(cfg: Dict, only: Optional[List[str]] = None) -> Dict[str, Dict]:
         if row["installed"]:
             exe = adapters._cmd_template(name, spec, False)[0]
             try:
+                adapters.guard_real_cli(exe)
                 v = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=15, stdin=subprocess.DEVNULL)
                 row["version"] = (v.stdout or v.stderr).strip().splitlines()[0] if (v.stdout or v.stderr).strip() else "?"
             except (OSError, subprocess.TimeoutExpired):
