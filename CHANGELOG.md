@@ -2,9 +2,13 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are published on [PyPI](https://pypi.org/project/ia-router/) and [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
 
-## Unreleased
+## 0.8.0 — 2026-10-27
+
+### Added
+- **Antigravity (`agy`) runs a shell command only after you approve it.** Headless agy cannot ask for permission, so it used to fail with "auto-denied" and answer with nothing. Now it asks with a `RUN:` line and the router shows the exact command: in the chat, in `ia-router ask` on a terminal, or with the Allow once button in the UI. Each approval covers that single command; no permanent rule is written. Without an answer nothing runs (MCP server and scripts included).
 
 ### Changed
+- A denied tool that still happens is reported as a permission problem: the router moves to the next model without a cooldown, and the answer says what to do.
 - Documentation: installation steps for **macOS, Linux and Windows (through WSL 2)**, with the exact commands for each system (Homebrew or pipx, apt, dnf, pacman, and `wsl --install -d Ubuntu`). Native Windows (PowerShell or `cmd`) is not supported.
 
 ## 0.7.0 — 2026-10-08
