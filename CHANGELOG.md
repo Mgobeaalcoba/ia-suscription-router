@@ -2,6 +2,14 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are published on [PyPI](https://pypi.org/project/ia-router/) and [Homebrew](https://github.com/Mgobeaalcoba/homebrew-tap).
 
+## 0.10.0 — 2026-10-27
+
+### Added
+- A guard for the test suite: with `IA_ROUTER_BLOCK_REAL_CLIS` set, `claude`, `codex` and `agy` refuse to run unless they are the fakes in `tests/fake_bin`. Every test module sets it, so a broken isolation fails the test instead of spending quota. Normal use never sets it.
+
+### Fixed
+- The guard is checked at the three places a model CLI starts (both launches in `adapters.py` and the version probe in `probe.py`).
+
 ## 0.9.0 — 2026-10-27
 
 ### Changed
