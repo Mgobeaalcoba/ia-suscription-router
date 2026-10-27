@@ -2,7 +2,7 @@
 
 > Current snapshot. Updated at every close; history lives in LOG.md.
 
-**Updated:** 2026-10-17 · agentification
+**Updated:** 2026-10-27 · agy permission_denied handling
 
 ## State
 
@@ -11,7 +11,7 @@
 
 ## Next step
 
-1. (no pending steps recorded)
+1. Review and commit the agy changes (not committed yet): RUN protocol with per-command approval in chat, CLI and UI.
 
 ## Pending
 
@@ -19,4 +19,4 @@
 
 ## Blockers
 
-- (none)
+- (none for agy: the shell-command denial is avoided by the instruction and handled by fallback + hint.)

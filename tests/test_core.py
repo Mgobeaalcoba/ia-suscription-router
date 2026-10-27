@@ -70,6 +70,66 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(res["attempts"][0]["rate_limited"])
         self.assertGreater(state.cooldown_remaining("codex"), 0)
 
+    def test_permission_denial_is_not_a_cooldown_and_says_what_to_do(self):
+        # agy auto-denies a tool that needs a permission it cannot ask for: the task depends on what the model tried,
+        # so the model must not be parked for an hour and the user gets the real cause, not a bare "all attempts failed"
+        os.environ["FAKE_AGY_MODE"] = "permission"
+        res = core.ask("hello", self.cfg, model="antigravity")
+        self.assertFalse(res["ok"])
+        self.assertTrue(res["attempts"][0]["permission_denied"])
+        self.assertEqual(res["attempts"][0]["error"], "permission_denied")
+        self.assertEqual(state.cooldown_remaining("antigravity"), 0)
+        self.assertNotIn("antigravity", state.auth_missing())
+        self.assertIn("approve", res["hint"])
+        self.assertNotIn("dangerously", res["hint"])
+
+    def test_denied_json_with_success_status_is_a_permission_denial(self):
+        # the real agy reports a denied shell command with status SUCCESS and an empty answer; that must not look like "empty output"
+        os.environ["FAKE_AGY_MODE"] = "denied_json"
+        res = core.ask("hello", self.cfg, model="antigravity")
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["attempts"][0]["error"], "permission_denied")
+        self.assertIn("approve", res["hint"])
+
+    def test_agy_gets_the_run_protocol(self):
+        # headless agy cannot run commands itself: it is told to ask with a RUN line, which the router only runs after approval
+        os.environ["FAKE_AGY_ECHO"] = "1"
+        from ia_router import adapters
+        res = adapters.run_cli("antigravity", self.cfg["models"]["antigravity"], "list the files", usage=True)
+        self.assertTrue(res["output"].startswith(adapters.AGY_PROTOCOL))
+        self.assertTrue(res["output"].endswith("list the files"))
+
+    def test_approved_command_runs_once_and_its_output_reaches_the_model(self):
+        os.environ["FAKE_AGY_MODE"] = "run"
+        asked = []
+        res = core.ask("say hello", self.cfg, model="antigravity", approve=lambda c: asked.append(c) or True)
+        self.assertEqual(asked, ["echo hello"])
+        self.assertTrue(res["ok"])
+        self.assertIn("GOT_OUTPUT hello", res["output"])
+        self.assertEqual(res["commands"], [{"command": "echo hello", "approved": True, "returncode": 0}])
+        self.assertEqual(len(res["attempts"]), 2)
+
+    def test_refused_command_is_not_run_and_the_model_is_not_asked_again(self):
+        os.environ["FAKE_AGY_MODE"] = "run"
+        res = core.ask("say hello", self.cfg, model="antigravity", approve=lambda c: False)
+        self.assertTrue(res["ok"])
+        self.assertIn("was not approved", res["output"])
+        self.assertNotIn("RUN:", res["output"])
+        self.assertEqual(res["commands"], [{"command": "echo hello", "approved": False}])
+        self.assertEqual(len(res["attempts"]), 1)
+
+    def test_without_an_approver_nothing_runs(self):
+        os.environ["FAKE_AGY_MODE"] = "run"
+        res = core.ask("say hello", self.cfg, model="antigravity")
+        self.assertIn("RUN: echo hello", res["output"])
+        self.assertEqual(res["commands"], [])
+        self.assertEqual(len(res["attempts"]), 1)
+
+    def test_commands_have_no_shell(self):
+        out = core.run_command("echo a && echo b", None)
+        self.assertEqual(out, (0, "a && echo b\n"))
+        self.assertEqual(core.run_command("definitely-not-a-binary-xyz", None)[0], 127)
+
     def test_dry_run_does_not_execute(self):
         res = core.ask("hello", self.cfg, dry_run=True)
         self.assertTrue(res["dry_run"])

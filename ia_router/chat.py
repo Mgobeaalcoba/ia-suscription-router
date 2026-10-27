@@ -101,6 +101,11 @@ class Chat:
     def say(self, s: str = "") -> None:
         self.write(s)
 
+    def approve_command(self, command: str) -> bool:
+        """agy asked to run a command: it runs only if the user says yes right now, for this one command."""
+        self.say(self.dim(f"agy asks to run: {command}"))
+        return self.ask_yes("Allow this one command?", default=False)
+
     def ask_yes(self, question: str, default: bool = True) -> bool:
         try:
             ans = self.read(f"{question} [{'Y/n' if default else 'y/N'}]: ").strip().lower()
@@ -137,7 +142,8 @@ class Chat:
         try:
             res = core.ask(text, cfg, model=self.pinned, context_files=files, attachments=atts,
                            preamble=build_preamble(self.history), route_text=self.route_text(text), connectors=self.connectors,
-                           stream={"on_text": live.on_text, "on_status": live.on_status, "on_reset": live.reset} if live else None)
+                           stream={"on_text": live.on_text, "on_status": live.on_status, "on_reset": live.reset} if live else None,
+                           approve=self.approve_command)
         except ValueError as exc:
             self.say(f"Error: {exc}")
             return
@@ -152,6 +158,8 @@ class Chat:
             for a in res["attempts"]:
                 if a.get("error") == "auth_required":
                     self.say(f"{a['model']} is not logged in. {setup_mod.guide(a['model'], 'login')} Then run /setup to check.")
+            if res.get("hint"):
+                self.say(res["hint"])
             if not res["attempts"]:
                 self.say("No CLI is ready. Run /setup to see which ones are missing and how to fix them.")
             return

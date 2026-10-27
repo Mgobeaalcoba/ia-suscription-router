@@ -10,7 +10,7 @@ All the examples assume you are in the repo folder:
 cd ~/Documents/ia-suscription-router
 ```
 
-The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 436 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
+The outputs shown come from real runs (captured with claude 2.1.288, codex 0.160.0 and agy 1.2.16, and the Arena metrics of 2026-10-05). All 444 tests pass with Python 3.9 to 3.14, on Linux and macOS (GitHub Actions).
 
 ---
 
@@ -195,6 +195,8 @@ What you type goes in a box with a gradient border (like those of Claude Code, C
 | Images, PDFs, binaries and folders | The path is passed and the model opens it (Claude gets access to that folder with `--add-dir`; Codex reads it from its read-only sandbox). The task adds the `multimodal` category if there is an image or PDF. |
 
 **Antigravity cannot open files in non-interactive mode** (it asks for a permission it cannot ask for), so with non-text attachments the router drops it from the routing (`models.json`: `"reads_files": false`). If you pinned it with `/model antigravity`, it warns you instead of failing.
+
+**Antigravity and shell commands need your yes, each time.** In non-interactive mode Antigravity cannot ask for permission, so it cannot run shell commands by itself. When a task needs one, it asks with a `RUN: <command>` line and the router shows you the exact command: in the chat (and in `ia-router ask` on a terminal) you answer `y` or `n`; in the UI you click *Allow once* or *Deny*. Nothing runs without your answer, and each approval covers that single command (no permanent rule is written). Without an answer (scripts, the MCP server) nothing runs.
 
 **Editing.** Arrows, `Home`/`End` (or `Ctrl-A`/`Ctrl-E`), `Alt-←/→` to jump words, `Ctrl-W` deletes the word, `Ctrl-U` up to the start of the line, `Ctrl-K` to the end. **Multiple lines:** `Alt-Enter`, `Ctrl-J` or `\` + Enter; pasted text with line breaks is respected. **History:** `↑`/`↓` (saved between sessions in `~/.ia-router/history.jsonl`). **Commands:** when you type `/` the filtered list appears; `Tab` or Enter complete, `↑`/`↓` choose. **Quit:** `Ctrl-D` with the box empty, `Ctrl-C` twice, or `/exit`. `Ctrl-C` with text clears it.
 

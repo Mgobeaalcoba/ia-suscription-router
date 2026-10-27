@@ -13,6 +13,9 @@ if mode == "ratelimit":
 if mode == "auth":
     sys.stderr.write("Please set an Auth method in settings.json\n")
     sys.exit(41)
+if mode == "permission":  # what headless agy prints when a tool needs a permission it cannot ask for
+    sys.stderr.write('jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied. Add an allow-rule under permissions.allow in settings.json\n')
+    sys.exit(1)
 if mode == "fail":
     sys.stderr.write("boom\n")
     sys.exit(2)
@@ -51,6 +54,16 @@ elif name == "AGY" and "--output-format" in args:  # same as `agy -p --output-fo
     log = args[args.index("--log-file") + 1] if "--log-file" in args else None
     if log:
         open(log, "w").write('I1003 model_config_manager.go:327] Propagating selected model override to backend: label="Fake Flash (High)"\n')
+    if mode == "run":  # asks for a command once, then answers with what the command printed (the router sends it back after approval)
+        if "approved" in body:
+            text = "GOT_OUTPUT " + ("hello" if "hello" in body.split("Its output:")[-1] else "missing")
+        else:
+            text = "Checking.\nRUN: echo hello"
+    if mode == "denied_json":  # what the real CLI printed for a denied shell command: status SUCCESS, empty answer, denied_actions set
+        print(json.dumps({"status": "SUCCESS", "response": "", "usage": {"input_tokens": 500, "output_tokens": 5}, "denied_actions": [{"action": "command", "display_name": "RunCommand"}]}))
+        sys.exit(0)
+    if os.environ.get("FAKE_AGY_ECHO"):  # lets a test read back the prompt that really reached the CLI
+        text = body
     print(json.dumps({"status": "SUCCESS", "response": text, "usage": {"input_tokens": 500, "output_tokens": 40, "thinking_tokens": 30, "cache_read_tokens": 0}}))
 else:
     print(text)

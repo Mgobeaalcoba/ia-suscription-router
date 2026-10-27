@@ -11,7 +11,7 @@ A Python router that splits tasks across the **official CLIs** of the AI subscri
 ## Commands
 
 ```bash
-python3 -m unittest discover -s tests       # the whole suite (436 tests, ~15 s); it must end in OK
+python3 -m unittest discover -s tests       # the whole suite (444 tests, ~15 s); it must end in OK
 python3 -m unittest tests.test_scoring      # one file
 /usr/bin/python3 -m unittest discover -s tests   # on macOS: system Python 3.9 (the minimum supported)
 python3 cli.py doctor                        # installed CLIs and which model each one uses (spends no quota)
@@ -82,7 +82,7 @@ Invariants:
 ## Known pitfalls (they have already bitten us)
 
 - **The real model id is not always in the output.** Claude gives it in the JSON; **Codex** only in the session file (`~/.codex/sessions/**/rollout-*`), which is why `--ephemeral` is not used; **Antigravity** in its log (`--log-file`).
-- **Antigravity (`agy`) in non-interactive mode** does not read the prompt from stdin, does not open files by path and fails with "permission … auto-denied" if the model asks for a tool. `models.json` marks it `reads_files: false`.
+- **Antigravity (`agy`) in non-interactive mode** does not read the prompt from stdin, does not open files by path and fails with "permission … auto-denied" if the model asks for a tool (a shell command, typically). Shell commands therefore go through `core.run_command` only when the user approves each one in the chat (`approve` callback in `core.ask`: chat, CLI `ask` on a terminal, and the UI's Allow button). The model asks with a `RUN: <command>` line (`adapters.AGY_PROTOCOL`); no approver means nothing runs (MCP server, scripts). A denial that still happens is classified as `permission_denied`: next model, no cooldown, `hint`. `models.json` marks it `reads_files: false`.
 - **Claude needs `--add-dir`** to read attachments outside its working folder.
 - **python.org's Python on macOS ships without SSL certificates:** that is why downloads use `curl` and fall back to `urllib` only if it does not exist.
 - **Arena's dataset on Hugging Face** (`datasets-server`) returns 429 after ~30 pages: do not use that path; the per-category pages of `arena.ai/leaderboard/...` are read (see `metrics.arena_pages`). If the format of those pages changes, `parse_leaderboard` fails with a clear error.

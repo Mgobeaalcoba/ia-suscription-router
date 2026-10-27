@@ -387,3 +387,19 @@ class PageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ApprovalTests(unittest.TestCase):
+    def test_a_command_waits_for_the_users_answer_and_an_unknown_id_is_refused(self):
+        from ia_router import ui
+        events = []
+
+        def emit(ev):
+            events.append(ev)
+            # the page answers while the task waits
+            ui.answer_approval({"id": ev["id"], "allow": True})
+
+        self.assertTrue(ui._await_approval(emit, "git status"))
+        self.assertEqual(events[0]["command"], "git status")
+        with self.assertRaises(ValueError):
+            ui.answer_approval({"id": "nope", "allow": True})

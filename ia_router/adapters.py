@@ -23,6 +23,15 @@ RATE_LIMIT_RE = re.compile(
     r"resource.?exhausted|exceeded your|try again (later|in)",
     re.I,
 )
+# agy in headless mode auto-denies any tool that needs a permission it cannot ask for (a shell command, for instance).
+# The model then produces nothing. It depends on the task, so it is not a login problem and it does not stop the CLI.
+# Headless agy cannot grant shell commands (it auto-denies them), so the router runs a command itself, and only after the user
+# approves it in the chat. The model asks with a RUN line; the router never executes anything the model writes on its own.
+AGY_PROTOCOL = ("You cannot run commands in this session. If you need the output of one shell command to answer, end your reply "
+                "with a single line `RUN: <command>` and write nothing after it. It must be one plain command: no pipes, redirections or `&&`. The user must approve the command before it runs; "
+                "you will then receive its output.\n\n")
+RUN_RE = re.compile(r"^RUN:[ \t]*(.+?)[ \t]*$", re.M)
+PERMISSION_RE = re.compile(r"auto-denied|cannot prompt for|permissions\.allow", re.I)
 AUTH_RE = re.compile(
     r"set an auth method|not logged in|please (log ?in|sign in)|/login|unauthori[sz]ed|\b401\b|"
     r"no longer supported|ineligible|invalid api key|api key (is )?(not set|missing|required)|authentication (required|failed)|GEMINI_API_KEY",
@@ -66,6 +75,16 @@ def _with_dirs(name: str, spec: dict, template: List[str], dirs: List[str]) -> L
     return template[:at] + extra + template[at:]
 
 
+def requested_command(text: str) -> Optional[str]:
+    """The command the model asked to run (its last `RUN:` line), or None."""
+    found = RUN_RE.findall(text or "")
+    return found[-1] if found else None
+
+
+def strip_run_line(text: str) -> str:
+    return RUN_RE.sub("", text or "").rstrip()
+
+
 def run_cli(
     name: str,
     spec: dict,
@@ -81,6 +100,8 @@ def run_cli(
 
     With `usage=True` it asks the CLI for JSON output and extracts the real model and the tokens from it
     (`res["model_id"]`, `res["tokens"]`). If the JSON cannot be interpreted, it returns the raw text."""
+    if (spec.get("usage") or {}).get("parser") == "agy" and not prompt.startswith(AGY_PROTOCOL):
+        prompt = AGY_PROTOCOL + prompt
     use_stdin = len(prompt) > STDIN_THRESHOLD and bool(spec.get("cmd_stdin"))
     template = _cmd_template(name, spec, use_stdin)
     logfile = ""
@@ -248,6 +269,7 @@ def _finish(name, spec, argv, returncode, out, err, t0, usage, logfile) -> Dict:
     failed = returncode != 0
     limited = failed and bool(RATE_LIMIT_RE.search(out + "\n" + err))
     auth = failed and not limited and bool(AUTH_RE.search(out + "\n" + err))
+    denied = failed and not limited and not auth and bool(PERMISSION_RE.search(out + "\n" + err))
     info: Dict = {}
     if usage and (spec.get("usage") or {}).get("parser"):
         text, info, is_err = parse_usage(spec["usage"]["parser"], out, argv, logfile)
@@ -256,9 +278,19 @@ def _finish(name, spec, argv, returncode, out, err, t0, usage, logfile) -> Dict:
             failed = failed or is_err
             limited = failed and bool(RATE_LIMIT_RE.search(out + "\n" + err))
             auth = failed and not limited and bool(AUTH_RE.search(out + "\n" + err))
+            denied = failed and not limited and not auth and (bool(info.get("denied")) or bool(PERMISSION_RE.search(out + "\n" + err)))
     ok = not failed and bool(out)
-    error = None if ok else ("rate_limited" if limited else "auth_required" if auth else (err[-400:] or (out[-400:] if failed else "") or "empty output"))
-    res = _result(ok, out, err[-400:], returncode, t0, limited, error, auth)
+    if ok:
+        error = None
+    elif limited:
+        error = "rate_limited"
+    elif auth:
+        error = "auth_required"
+    elif denied:
+        error = "permission_denied"
+    else:
+        error = err[-400:] or (out[-400:] if failed else "") or "empty output"
+    res = _result(ok, out, err[-400:], returncode, t0, limited, error, auth, denied)
     res["model_id"] = info.get("model")
     res["tokens"] = info.get("tokens")
     return res
@@ -344,7 +376,9 @@ def parse_usage(parser: str, raw: str, argv: List[str], logfile: str = ""):
             u = d.get("usage") or {}
             model = _argv_model(argv) or (agy_model(logfile) if logfile else None)
             tokens = _tokens(u.get("input_tokens"), u.get("output_tokens"), u.get("cache_read_tokens"), u.get("thinking_tokens")) if u else None
-            return d.get("response", ""), {"model": model, "tokens": tokens}, d.get("status") not in (None, "SUCCESS")
+            # A tool the headless mode auto-denied can leave status SUCCESS with an empty answer: `denied_actions` is the real signal.
+            denied = bool(d.get("denied_actions"))
+            return d.get("response", ""), {"model": model, "tokens": tokens, "denied": denied}, denied or d.get("status") not in (None, "SUCCESS")
     except (ValueError, KeyError, TypeError, AttributeError):
         pass
     return None, {}, False
@@ -360,7 +394,7 @@ def fmt_tokens(t: Optional[Dict]) -> str:
     return f"in {k(t['input'])}{cached} · out {k(t['output'])}"
 
 
-def _result(ok, output, stderr, rc, t0, limited, error, auth=False) -> Dict:
+def _result(ok, output, stderr, rc, t0, limited, error, auth=False, denied=False) -> Dict:
     return {
         "ok": ok,
         "output": output,
@@ -369,6 +403,7 @@ def _result(ok, output, stderr, rc, t0, limited, error, auth=False) -> Dict:
         "seconds": round(time.time() - t0, 2),
         "rate_limited": limited,
         "auth_required": auth,
+        "permission_denied": denied,
         "error": error,
         "model_id": None,
         "tokens": None,

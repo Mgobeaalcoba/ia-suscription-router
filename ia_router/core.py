@@ -3,13 +3,18 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
+import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from . import adapters, attachments as att_mod, connectors as connectors_mod, router, scoring, state
 
 MAX_CONTEXT_CHARS = 400_000
-
+COMMAND_TIMEOUT = 60          # seconds an approved command may run
+COMMAND_OUTPUT_CHARS = 4000   # what the model gets back of an approved command's output
+MAX_COMMAND_ROUNDS = 2        # approved commands per task, at most
+PERMISSION_HINT = ("agy asked for a tool that its headless mode cannot grant. Shell commands run only when you approve each one in the chat, so this answer came without it. Ask again and approve the command it names, or ask for an answer without running commands.")
 
 PACKAGED_MODELS = Path(__file__).resolve().parent / "data" / "models.json"
 
@@ -69,6 +74,31 @@ def route(task: str, cfg: Dict, context_len: int = 0, prefer: Optional[str] = No
     return {"weights": weights, "classifier": "rules", "ranking": ranking, "chosen": chosen, "metrics": bool(cfg.get("_scored"))}
 
 
+
+def _is_agy(spec: Dict) -> bool:
+    return (spec.get("usage") or {}).get("parser") == "agy"
+
+
+def run_command(command: str, cwd: Optional[str]) -> Tuple[int, str]:
+    """Runs a command the user approved. There is no shell: the words are split the way a shell splits them, but pipes,
+    redirections and `&&` are not interpreted, so the model is asked for one plain command at a time."""
+    try:
+        argv = shlex.split(command)
+    except ValueError as exc:
+        return -1, f"could not read the command: {exc}"
+    if not argv:
+        return -1, "empty command"
+    try:
+        proc = subprocess.run(argv, cwd=cwd or None, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=COMMAND_TIMEOUT)
+    except FileNotFoundError:
+        return 127, f"command not found: {argv[0]}"
+    except subprocess.TimeoutExpired:
+        return -1, f"timed out after {COMMAND_TIMEOUT} seconds"
+    except OSError as exc:
+        return -1, str(exc)
+    return proc.returncode, ((proc.stdout or "") + (proc.stderr or ""))[-COMMAND_OUTPUT_CHARS:]
+
+
 def ask(
     task: str,
     cfg: Dict,
@@ -83,13 +113,16 @@ def ask(
     attachments: Optional[List[att_mod.Attachment]] = None,
     connectors: Optional[bool] = None,
     stream: Optional[Dict] = None,
+    approve: Optional[Callable[[str], bool]] = None,
 ) -> Dict:
     """`preamble` (e.g. the chat history) is prepended to the prompt but does not influence routing.
     `route_text` lets you classify with a different text than the one sent (e.g. a short follow-up inherits the previous topic).
     `attachments`: text ones are appended as context; images/PDFs/binaries/folders are referenced by path and
     force the use of a model that can open files.
     `connectors`: the registered MCP connectors (Gmail, Calendar…) the model gets through the router's proxy. None = automatic: only
-    those the task needs (see connectors.select); True = every enabled connector; False = none."""
+    those the task needs (see connectors.select); True = every enabled connector; False = none.
+    `approve(command) -> bool`: agy cannot run commands by itself, so when it asks for one (a RUN line) the router runs it only if
+    this returns True, and only once per request. None (the default, used by the MCP server and scripts) means nothing runs."""
     inline, referenced = att_mod.split_for_prompt(attachments or [])
     prompt, ctx_len, warnings = build_prompt(task, list(context_files or []) + inline)
     prompt = preamble + prompt + att_mod.reference_block(referenced)
@@ -108,7 +141,7 @@ def ask(
     att_dirs = sorted({str(a.path if a.kind == "dir" else a.path.parent) for a in referenced})
     enabled = connectors_mod.enabled_servers()
     use_mcp = list(enabled) if connectors is True else [] if connectors is False else connectors_mod.select(route_text or task, enabled)
-    result: Dict = {"decision": decision, "order": order, "warnings": warnings, "attempts": [], "ok": False, "output": "", "connectors": use_mcp}
+    result: Dict = {"decision": decision, "order": order, "warnings": warnings, "attempts": [], "ok": False, "output": "", "connectors": use_mcp, "commands": []}
     if dry_run:
         result["dry_run"] = True
         return result
@@ -116,14 +149,33 @@ def ask(
         result["error"] = "no model available (are the CLIs installed? in cooldown?). Run `python3 cli.py doctor`."
         return result
 
-    for name in order:
-        res = adapters.run_cli(name, models[name], prompt, timeout=timeout, cwd=cwd, usage=True, extra_dirs=att_dirs, mcp=use_mcp, stream=stream)
-        attempt = {k: res[k] for k in ("seconds", "returncode", "rate_limited", "auth_required", "error", "model_id", "tokens")}
+    def attempt_once(name: str, text: str) -> Dict:
+        res = adapters.run_cli(name, models[name], text, timeout=timeout, cwd=cwd, usage=True, extra_dirs=att_dirs, mcp=use_mcp, stream=stream)
+        attempt = {k: res[k] for k in ("seconds", "returncode", "rate_limited", "auth_required", "permission_denied", "error", "model_id", "tokens")}
         attempt["model"] = name
         result["attempts"].append(attempt)
         state.remember_model_id(name, res["model_id"])  # this is how we learn which model each CLI uses without spending a separate query
         state.log_event({"model": name, "model_id": res["model_id"], "tokens": res["tokens"], "ok": res["ok"], "seconds": res["seconds"],
                          "error": res["error"], "task_chars": len(task), "weights": decision["weights"]})
+        return res
+
+    for name in order:
+        res = attempt_once(name, prompt)
+        rounds = 0
+        while res["ok"] and approve and _is_agy(models[name]) and rounds < MAX_COMMAND_ROUNDS:
+            cmd = adapters.requested_command(res["output"])
+            if not cmd:
+                break
+            rounds += 1
+            if not approve(cmd):
+                result["commands"].append({"command": cmd, "approved": False})
+                res["output"] = adapters.strip_run_line(res["output"]) + f"\n\n(Not run: the command `{cmd}` was not approved.)"
+                break
+            rc, out = run_command(cmd, cwd)
+            result["commands"].append({"command": cmd, "approved": True, "returncode": rc})
+            if stream and stream.get("on_reset"):
+                stream["on_reset"]()   # the answer that asked for the command is replaced by the one that uses its output
+            res = attempt_once(name, prompt + f"\n\nThe user approved `{cmd}` and it ran with exit code {rc}. Its output:\n{out}\n\nNow answer the original task.")
         if stream and not res["ok"] and stream.get("on_reset"):
             stream["on_reset"]()           # drop whatever this failed attempt already showed before the next model starts
         if res["ok"]:
@@ -135,7 +187,10 @@ def ask(
         elif res["auth_required"]:  # no login/API key: do not retry until the user fixes it
             state.set_auth_missing(name, True)
             state.set_cooldown(name, cfg.get("auth_cooldown_minutes", 60))
+        # A permission denial depends on what the task made the model try, so the next task may well work: no cooldown.
     result["error"] = "all attempts failed"
+    if any(a.get("permission_denied") for a in result["attempts"]):
+        result["hint"] = PERMISSION_HINT
     return result
 
 

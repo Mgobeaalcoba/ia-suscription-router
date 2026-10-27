@@ -243,7 +243,7 @@ async function ndjson(resp, on) {
   }
 }
 function answerHtml(r) {
-  if (!r.ok) return '<div class="err">' + esc(r.error || "failed") + "</div>" + (r.attempts.length ? '<div class="meta">' + esc(r.attempts.map(a => a.model + ": " + (a.error || "ok")).join("; ")) + "</div>" : "");
+  if (!r.ok) return '<div class="err">' + esc(r.error || "failed") + "</div>" + (r.attempts.length ? '<div class="meta">' + esc(r.attempts.map(a => a.model + ": " + (a.error || "ok")).join("; ")) + "</div>" : "") + (r.hint ? '<div class="meta">' + esc(r.hint) + "</div>" : "");
   return '<div class="meta">' + metaLine(r) + '</div><div class="answer">' + md(r.output) + "</div>" + whyHtml(r);
 }
 
@@ -274,7 +274,7 @@ async function send(text) {
   const status = body.children[0], raw = body.children[1];
   ctrl = new AbortController();
   try {
-    const resp = await api("/api/ask", {task, model: $("model").value, connectors: $("connectors").value, compare, session, files,
+    const resp = await api("/api/ask", {task, model: $("model").value, connectors: $("connectors").value, compare, session, files, approve_commands: true,
       models: compare && $("model").value !== "auto" && $("vs").value !== "auto" && $("model").value !== $("vs").value ? [$("model").value, $("vs").value] : undefined}, ctrl.signal);
     if (!resp.ok) throw new Error((await resp.json()).error || resp.status);
     const reader = resp.body.getReader(), dec = new TextDecoder(); let buf = "", text = "";
@@ -288,6 +288,7 @@ async function send(text) {
         if (ev.type === "text") { text += ev.text; status.textContent = "Writing…"; raw.textContent = text; scroll(); }
         else if (ev.type === "status") status.textContent = "Using " + ev.text + "…";
         else if (ev.type === "reset") { text = ""; raw.textContent = ""; status.textContent = "That attempt failed, trying the next model…"; }
+        else if (ev.type === "approval") askApproval(body, ev);
         else if (ev.type === "error") body.innerHTML = '<div class="err">' + esc(ev.text) + "</div>";
         else if (ev.type === "done") {
           if (ev.compare) {
@@ -419,6 +420,19 @@ function newChat() { session = null; history.replaceState(null, "", location.pat
 
 // ---- connectors manager ----
 let cdata = {connectors: [], templates: []}, cmode = "template";
+function askApproval(body, ev) {
+  // agy asked to run a command: nothing runs until the user clicks Allow on this exact command
+  const box = document.createElement("div");
+  box.className = "confirm";
+  box.innerHTML = '<b>agy wants to run this command on your machine, once:</b><code></code><div class="chead" style="margin-top:8px"><button class="btn primary" data-allow="1">Allow once</button><button class="btn" data-allow="0">Deny</button></div>';
+  box.querySelector("code").textContent = ev.command;
+  body.appendChild(box);
+  box.querySelectorAll("button").forEach(b => b.onclick = () => {
+    box.querySelectorAll("button").forEach(x => x.disabled = true);
+    cj("/api/approve", {id: ev.id, allow: b.dataset.allow === "1"}).catch(() => {});
+    box.insertAdjacentHTML("beforeend", b.dataset.allow === "1" ? '<div class="meta">Allowed once. Running…</div>' : '<div class="meta">Denied. Not run.</div>');
+  });
+}
 const cj = (path, body) => api(path, body).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || r.status); return d; });
 function setMode(m) {
   cmode = m; $("c-confirm").innerHTML = "";

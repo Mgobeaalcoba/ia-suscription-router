@@ -89,6 +89,15 @@ def _compare(cfg, args, task, route_text) -> int:
     return 0 if any(r["ok"] for r in results) else 1
 
 
+def _approve_cli(command: str) -> bool:
+    """agy asked to run a command: only a 'y' typed now lets it run, once."""
+    print(f"agy asks to run: {command}", file=sys.stderr)
+    try:
+        return input("Allow this one command? [y/N]: ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
 def cmd_ask(cfg, args) -> int:
     task = (args.task or "").strip()
     piped = _read_stdin(force=args.stdin or task == "-").strip()
@@ -112,7 +121,8 @@ def cmd_ask(cfg, args) -> int:
     try:
         res = core.ask(task, cfg, model=args.model, context_files=args.context, dry_run=args.dry_run, route_text=route_text,
                        connectors=False if args.no_connectors else True if args.all_connectors else None,
-                       stream={"on_text": live.on_text, "on_status": lambda s: print(f"⚙ {s}", file=sys.stderr), "on_reset": lambda: print("\n(attempt failed, trying the next model)", file=sys.stderr)} if live else None)
+                       stream={"on_text": live.on_text, "on_status": lambda s: print(f"⚙ {s}", file=sys.stderr), "on_reset": lambda: print("\n(attempt failed, trying the next model)", file=sys.stderr)} if live else None,
+                       approve=_approve_cli if sys.stdin.isatty() and not quiet else None)
     except ValueError as exc:
         if args.json:
             print(json.dumps({"ok": False, "error": str(exc)}))
@@ -146,6 +156,8 @@ def cmd_ask(cfg, args) -> int:
             print(f"\n[{core.format_usage(res)}]\n{render.render(res['output'], color=_color())}")
         return 0
     print(f"Failed: {res.get('error')}", file=sys.stderr)
+    if res.get("hint"):
+        print(res["hint"], file=sys.stderr)
     return 1
 
 

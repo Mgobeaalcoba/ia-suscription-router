@@ -56,6 +56,37 @@ def snapshot(cfg: Dict) -> Dict:
     }
 
 
+APPROVALS: Dict[str, Dict] = {}     # commands waiting for the user's yes/no, by id
+APPROVALS_LOCK = threading.Lock()
+APPROVAL_WAIT = 300                 # seconds; after that the command is not run
+
+
+def _await_approval(emit, command: str) -> bool:
+    """Shows the exact command on the page and blocks this task until the user answers (or the wait runs out: then no)."""
+    ident = uuid.uuid4().hex
+    slot = {"gate": threading.Event(), "allow": False}
+    with APPROVALS_LOCK:
+        APPROVALS[ident] = slot
+    try:
+        emit({"type": "approval", "id": ident, "command": command})
+        slot["gate"].wait(APPROVAL_WAIT)
+        return bool(slot["allow"])
+    finally:
+        with APPROVALS_LOCK:
+            APPROVALS.pop(ident, None)
+
+
+def answer_approval(body: Dict) -> Dict:
+    ident = str(body.get("id") or "")
+    with APPROVALS_LOCK:
+        slot = APPROVALS.get(ident)
+    if slot is None:
+        raise ValueError("no command is waiting for an answer (it may have timed out)")
+    slot["allow"] = body.get("allow") is True
+    slot["gate"].set()
+    return {"ok": True, "allowed": slot["allow"]}
+
+
 def run_ask(body: Dict, cfg: Dict, emit) -> Dict:
     """Runs one task (or a comparison) and returns the payload of the final 'done' event. `emit(event_dict)` receives the streaming events."""
     task = str(body.get("task") or "").strip()
@@ -78,7 +109,8 @@ def run_ask(body: Dict, cfg: Dict, emit) -> Dict:
     res = core.ask(task, cfg, model=str(body.get("model") or "auto"), attachments=atts, preamble=chat.build_preamble(history), connectors=conn,
                    route_text=(history[-1][0] + "\n" + task) if follow_up else None,
                    stream={"on_text": lambda d: emit({"type": "text", "text": d}), "on_status": lambda s: emit({"type": "status", "text": s}),
-                           "on_reset": lambda: emit({"type": "reset"})})
+                           "on_reset": lambda: emit({"type": "reset"})},
+                   approve=(lambda command: _await_approval(emit, command)) if body.get("approve_commands") is True else None)
     out = core.result_json(res, cfg)
     if res["ok"]:
         sessions.add_turn(session, task, res["model_used"], res["output"])
@@ -362,6 +394,8 @@ class Handler(BaseHTTPRequestHandler):
             cfg = None
             if url.path == "/api/upload":
                 return self._json(save_upload(body.get("name"), body.get("data")))
+            if url.path == "/api/approve":
+                return self._json(answer_approval(body))
             if url.path == "/api/route":
                 return self._json(route_preview(body, core.load_config()))
             if url.path == "/api/probe":

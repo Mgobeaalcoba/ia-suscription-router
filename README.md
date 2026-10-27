@@ -202,7 +202,7 @@ The same router in a local browser tab, for when you would rather not live in a 
 | `ia_router/usage.py` · `sessions.py` · `stream.py` | Usage meter, saved sessions and live streaming output. |
 | `ia_router/envfile.py` · `state.py` · `mcp_server.py` | `.env` reader, state and log, MCP server. |
 | `tools/update_snapshot.py` | For whoever maintains the repo: regenerates the Arena snapshot before publishing. |
-| `tests/` | 436 tests and fake CLIs (`tests/fake_bin`). |
+| `tests/` | 444 tests and fake CLIs (`tests/fake_bin`). |
 
 ## Connectors: let any model use your other apps (MCP)
 
